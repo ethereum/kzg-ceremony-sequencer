@@ -45,7 +45,7 @@ async fn main() {
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not pinged in a
     // considerable amount of time
     let interval = tokio::time::interval(Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64));
-    tokio::spawn(clear_queue_on_interval(shared_state_clone, interval));
+    tokio::spawn(clear_lobby_on_interval(shared_state_clone, interval));
 
     let oauth_client = oauth_client();
 
@@ -142,7 +142,7 @@ impl AppState {
     }
 }
 
-pub(crate) async fn clear_queue_on_interval(state: SharedState, mut interval: Interval) {
+pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
     loop {
         interval.tick().await;
 
@@ -154,14 +154,14 @@ pub(crate) async fn clear_queue_on_interval(state: SharedState, mut interval: In
         };
 
         let clone = state.clone();
-        clear_queue(clone, predicate).await
+        clear_lobby(clone, predicate).await
     }
 }
 
-async fn clear_queue(state: SharedState, predicate: impl Fn(&SessionInfo) -> bool) {
+async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> bool) {
     let mut app_state = state.write().await;
 
-    // Iterate top `MAX_QUEUE_SIZE` participants and check if they have
+    // Iterate top `MAX_LOBBY_SIZE` participants and check if they have
     let participants = app_state.lobby.keys().cloned();
     let mut sessions_to_kick = Vec::new();
 
@@ -184,65 +184,61 @@ async fn clear_queue(state: SharedState, predicate: impl Fn(&SessionInfo) -> boo
     }
 }
 
-// #[tokio::test]
-// async fn flush_on_predicate() {
-//     // We want to test that the clear_queue_on_interval function works as expected.
-//     //
-//     // It uses time which can get a bit messy to test correctly
-//     // However, the clear_queue function which is a sub procedure takes
-//     // in a predicate function
-//     //
-//     // We can test this instead to ensure that if the predicate fails
-//     // users get kicked. We will use the predicate on the `exp` field
-//     // instead of the ping-time
+#[tokio::test]
+async fn flush_on_predicate() {
+    // We want to test that the clear_lobby_on_interval function works as expected.
+    //
+    // It uses time which can get a bit messy to test correctly
+    // However, the clear_lobby function which is a sub procedure takes
+    // in a predicate function
+    //
+    // We can test this instead to ensure that if the predicate fails
+    // users get kicked. We will use the predicate on the `exp` field
+    // instead of the ping-time
 
-//     let to_add = 100;
+    let to_add = 100;
 
-//     let arc_state = SharedState::default();
-//     // Put it in this block so the lock on state
-//     // gets dropped when block finishes
-//     {
-//         let mut state = arc_state.write().await;
-//         // We could move the max queue size condition to the queue object
+    let arc_state = SharedState::default();
 
-//         fn test_jwt(exp: u64) -> jwt::IdToken {
-//             jwt::IdToken {
-//                 sub: String::from("foo"),
-//                 nickname: String::from("foo"),
-//                 provider: String::from("foo"),
-//                 exp,
-//             }
-//         }
+    {
+        let mut state = arc_state.write().await;
 
-//         for i in 0..to_add {
-//             let id = SessionId::new();
+        fn test_jwt(exp: u64) -> jwt::IdToken {
+            jwt::IdToken {
+                sub: String::from("foo"),
+                nickname: String::from("foo"),
+                provider: String::from("foo"),
+                exp,
+            }
+        }
 
-//             state.queue.add_participant(id.clone());
+        for i in 0..to_add {
+            let id = SessionId::new();
 
-//             let session_info = SessionInfo {
-//                 token: test_jwt(i as u64),
-//                 last_ping_time: Instant::now(),
-//             };
+            let session_info = SessionInfo {
+                token: test_jwt(i as u64),
+                last_ping_time: Instant::now(),
+            };
 
-//             state.sessions.insert(id, session_info);
-//         }
-//     }
+            state.lobby.insert(id, session_info);
+        }
+    }
 
-//     // Now we are going to kick all of the participants whom have an
-//     // expiry which is an even number
-//     let predicate = |session_info: &SessionInfo| -> bool { session_info.token.exp % 2 == 0 };
+    // Now we are going to kick all of the participants whom have an
+    // expiry which is an even number
+    let predicate = |session_info: &SessionInfo| -> bool { session_info.token.exp % 2 == 0 };
 
-//     clear_queue(arc_state.clone(), predicate).await;
+    clear_lobby(arc_state.clone(), predicate).await;
 
-//     // Now we expect that half of the queue should be
-//     // kicked
-//     let state = arc_state.write().await;
-//     assert_eq!(state.queue.num_participants(), to_add / 2);
+    // Now we expect that half of the lobby should be
+    // kicked
+    let state = arc_state.write().await;
+    assert_eq!(state.lobby.len(), to_add / 2);
 
-//     let session_ids = state.queue.get_first_n(to_add / 2);
-//     for id in session_ids {
-//         let info = state.sessions.get(&id).unwrap();
-//         // We should just be left with `exp` numbers which are odd
-//         assert!(info.token.exp % 2 == 1)
-//     }
-// }
+    let session_ids = state.lobby.keys().cloned();
+    for id in session_ids {
+        let info = state.lobby.get(&id).unwrap();
+        // We should just be left with `exp` numbers which are odd
+        assert!(info.token.exp % 2 == 1)
+    }
+}
