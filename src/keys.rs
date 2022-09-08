@@ -66,7 +66,7 @@ mod tests {
             exp: 200000000000,
         };
 
-        let keys = Keys::new_from_pem();
+        let keys = Keys::new();
         let encoded_token = keys.encode(&t).unwrap();
         let token_data = keys.decode::<Token>(&encoded_token).unwrap();
         let got_token = token_data.claims;
