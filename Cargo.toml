@@ -22,6 +22,7 @@ oauth2 = "4.1"
 headers = "0.3"
 http = "0.2"
 async-session = "3.0.0"
+
 # Use Rustls because it makes it easier to cross-compile on CI
 reqwest = { version = "0.11", default-features = false, features = [
     "rustls-tls",
@@ -31,7 +32,7 @@ reqwest = { version = "0.11", default-features = false, features = [
 hex = "*"
 small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-tau" }
 
-jsonwebtoken = "8.0"
+jsonwebtoken = { version = "8.0", features = ["use_pem"] }
 once_cell = "1.8"
 
 indexmap = "1.9.1"

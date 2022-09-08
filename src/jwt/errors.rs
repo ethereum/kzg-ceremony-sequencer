@@ -7,8 +7,6 @@ use serde_json::json;
 
 #[derive(Debug)]
 pub enum JwtError {
-    WrongCredentials,
-    MissingCredentials,
     TokenCreation,
     InvalidToken,
 }
@@ -16,10 +14,8 @@ pub enum JwtError {
 impl IntoResponse for JwtError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
-            JwtError::WrongCredentials => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
-            JwtError::MissingCredentials => (StatusCode::BAD_REQUEST, "Missing credentials"),
-            JwtError::TokenCreation => (StatusCode::INTERNAL_SERVER_ERROR, "Token creation error"),
-            JwtError::InvalidToken => (StatusCode::BAD_REQUEST, "Invalid token"),
+            JwtError::TokenCreation => (StatusCode::INTERNAL_SERVER_ERROR, "token creation error"),
+            JwtError::InvalidToken => (StatusCode::BAD_REQUEST, "invalid token"),
         };
         let body = Json(json!({
             "error": error_message,

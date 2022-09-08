@@ -1,12 +1,15 @@
-#![allow(dead_code)]
-
 mod api;
 mod constants;
 mod jwt;
 mod keys;
-mod queue_simple;
 mod sessions;
 
+use crate::api::v1::{
+    auth::{auth_client_string, authorised},
+    contribute::contribute,
+    info::{current_state, jwt_info, status},
+    slot::slot_join,
+};
 use axum::{
     extract::Extension,
     response::Html,
@@ -14,12 +17,11 @@ use axum::{
     Router,
 };
 use constants::{
-    ACTIVE_ZONE_CHECKIN_DEADLINE, MAX_QUEUE_SIZE, OAUTH_AUTH_URL, OAUTH_REDIRECT_URL,
-    OAUTH_TOKEN_URL, QUEUE_FLUSH_INTERVAL,
+    LOBBY_CHECKIN_DEADLINE, LOBBY_FLUSH_INTERVAL, OAUTH_AUTH_URL, OAUTH_REDIRECT_URL,
+    OAUTH_TOKEN_URL,
 };
 use jwt::Receipt;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
-use queue_simple::Queue;
 use sessions::{SessionId, SessionInfo};
 use small_powers_of_tau::sdk::Transcript;
 use std::{
@@ -29,16 +31,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{sync::RwLock, time::Interval};
-
-// TODO Add CSRF validation for oauth CsrfToken (right now we ignore it)
-
-use crate::api::v1::{
-    auth::{auth_client_string, authorized},
-    contribute::contribute,
-    info::{current_transcript, history, status},
-    ping::online_ping,
-    queue::queue_join,
-};
 
 pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
@@ -50,8 +42,9 @@ async fn main() {
 
     let shared_state_clone = shared_state.clone();
 
-    // Spawn automatic queue flusher
-    let interval = tokio::time::interval(Duration::from_secs(QUEUE_FLUSH_INTERVAL as u64));
+    // Spawn automatic queue flusher -- flushes those in the lobby whom have not pinged in a
+    // considerable amount of time
+    let interval = tokio::time::interval(Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64));
     tokio::spawn(clear_queue_on_interval(shared_state_clone, interval));
 
     let oauth_client = oauth_client();
@@ -59,14 +52,12 @@ async fn main() {
     let app = Router::new()
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_string))
-        .route("/auth/authorized", get(authorized))
-        .route("/queue/join", post(queue_join))
-        .route("/status", post(status))
-        // Probably remove
-        .route("/history", post(history))
-        .route("/current_transcript", get(current_transcript))
+        .route("/auth/authorised", get(authorised))
+        .route("/slot/join", post(slot_join))
         .route("/contribute", post(contribute))
-        .route("/ping", post(online_ping))
+        .route("/info/status", get(status))
+        .route("/info/jwt", get(jwt_info))
+        .route("/info/current_state", get(current_state))
         .layer(Extension(shared_state))
         .layer(Extension(oauth_client))
         .layer(Extension(transcript));
@@ -100,31 +91,54 @@ async fn hello_world() -> Html<&'static str> {
     Html("<h1>Server is Running</h1>")
 }
 
+type IdTokenSub = String;
+type CsrfToken = String;
+
 // TODO This is currently in memory as its easier to test.
 // TODO We can add a trait to describe what we need adn make storage persistent
 // TODO we only need to Save
 #[derive(Default)]
 pub(crate) struct AppState {
-    // The queue object which stores the Id of all participants
-    //
-    // N.B. We cannot do Queue<SessionId, SessionInfo>
-    // Because a user can have a SessionId but not be in the Queue
-    queue: Queue<SessionId>,
-    sessions: BTreeMap<SessionId, SessionInfo>,
+    // Use can now be in the lobby and only those who are in
+    // the lobby can ping to start participating
+    lobby: BTreeMap<SessionId, SessionInfo>,
+
+    // CSRF tokens for oAUTH
+    csrf_tokens: BTreeSet<CsrfToken>,
+
+    // A map between a users unique social id
+    // and their session.
+    // We use this to check if a user has already entered the lobby
+    unique_id_session: BTreeMap<IdTokenSub, SessionId>,
+
+    num_contributions: usize,
+
+    // This is the Id of the current participant
+    // Only they are allowed to call /contribute
+    participant: Option<(SessionId, SessionInfo)>,
 
     receipts: Vec<Receipt>,
 
     // List of all users who have finished contributing, we store them using the
     // unique id, we attain from the social provider
     // This is their `sub`
-    finished_contribution: BTreeSet<String>,
+    // TODO: we also need to save the blacklist of those
+    // TODO who went over three minutes
+    //
+    finished_contribution: BTreeSet<IdTokenSub>,
 }
 
 impl AppState {
-    pub fn advance_queue(&mut self) {
-        if let Some(session_id) = self.queue.remove_participant_at_front() {
-            self.sessions.remove(&session_id);
-        };
+    pub fn clear_contribution_spot(&mut self) {
+        // Note: when reserving a contribution spot
+        // we remove the user from the lobby
+        // So simply setting this to None, will forget them
+        self.participant = None;
+    }
+    pub fn reserve_contribution_spot(&mut self, session_id: SessionId) {
+        let session_info = self.lobby.remove(&session_id).unwrap();
+
+        self.participant = Some((session_id, session_info));
     }
 }
 
@@ -136,7 +150,7 @@ pub(crate) async fn clear_queue_on_interval(state: SharedState, mut interval: In
         // Predicate that returns true whenever users go over the ping deadline
         let predicate = |session_info: &SessionInfo| -> bool {
             let time_diff = now - session_info.last_ping_time;
-            time_diff > Duration::from_secs(ACTIVE_ZONE_CHECKIN_DEADLINE as u64)
+            time_diff > Duration::from_secs(LOBBY_CHECKIN_DEADLINE as u64)
         };
 
         let clone = state.clone();
@@ -148,12 +162,12 @@ async fn clear_queue(state: SharedState, predicate: impl Fn(&SessionInfo) -> boo
     let mut app_state = state.write().await;
 
     // Iterate top `MAX_QUEUE_SIZE` participants and check if they have
-    let participants = app_state.queue.get_first_n(MAX_QUEUE_SIZE);
+    let participants = app_state.lobby.keys().cloned();
     let mut sessions_to_kick = Vec::new();
 
     for participant in participants {
         // Check if they are over their ping deadline
-        match app_state.sessions.get(&participant) {
+        match app_state.lobby.get(&participant) {
             Some(session_info) => {
                 if predicate(session_info) {
                     sessions_to_kick.push(participant)
@@ -166,70 +180,69 @@ async fn clear_queue(state: SharedState, predicate: impl Fn(&SessionInfo) -> boo
         }
     }
     for session_id in sessions_to_kick {
-        app_state.sessions.remove(&session_id);
-        app_state.queue.remove(&session_id);
+        app_state.lobby.remove(&session_id);
     }
 }
 
-#[tokio::test]
-async fn flush_on_predicate() {
-    // We want to test that the clear_queue_on_interval function works as expected.
-    //
-    // It uses time which can get a bit messy to test correctly
-    // However, the clear_queue function which is a sub procedure takes
-    // in a predicate function
-    //
-    // We can test this instead to ensure that if the predicate fails
-    // users get kicked. We will use the predicate on the `exp` field
-    // instead of the ping-time
+// #[tokio::test]
+// async fn flush_on_predicate() {
+//     // We want to test that the clear_queue_on_interval function works as expected.
+//     //
+//     // It uses time which can get a bit messy to test correctly
+//     // However, the clear_queue function which is a sub procedure takes
+//     // in a predicate function
+//     //
+//     // We can test this instead to ensure that if the predicate fails
+//     // users get kicked. We will use the predicate on the `exp` field
+//     // instead of the ping-time
 
-    let to_add = 100;
+//     let to_add = 100;
 
-    let arc_state = SharedState::default();
-    // Put it in this block so the lock on state
-    // gets dropped when block finishes
-    {
-        let mut state = arc_state.write().await;
-        // We could move the max queue size condition to the queue object
+//     let arc_state = SharedState::default();
+//     // Put it in this block so the lock on state
+//     // gets dropped when block finishes
+//     {
+//         let mut state = arc_state.write().await;
+//         // We could move the max queue size condition to the queue object
 
-        fn test_jwt(exp: u64) -> jwt::IdToken {
-            jwt::IdToken {
-                sub: String::from("foo"),
-                nickname: String::from("foo"),
-                provider: String::from("foo"),
-                exp,
-            }
-        }
+//         fn test_jwt(exp: u64) -> jwt::IdToken {
+//             jwt::IdToken {
+//                 sub: String::from("foo"),
+//                 nickname: String::from("foo"),
+//                 provider: String::from("foo"),
+//                 exp,
+//             }
+//         }
 
-        for i in 0..to_add {
-            let id = SessionId::new();
+//         for i in 0..to_add {
+//             let id = SessionId::new();
 
-            state.queue.add_participant(id.clone());
+//             state.queue.add_participant(id.clone());
 
-            let session_info = SessionInfo {
-                token: test_jwt(i as u64),
-                last_ping_time: Instant::now(),
-            };
+//             let session_info = SessionInfo {
+//                 token: test_jwt(i as u64),
+//                 last_ping_time: Instant::now(),
+//             };
 
-            state.sessions.insert(id, session_info);
-        }
-    }
+//             state.sessions.insert(id, session_info);
+//         }
+//     }
 
-    // Now we are going to kick all of the participants whom have an
-    // expiry which is an even number
-    let predicate = |session_info: &SessionInfo| -> bool { session_info.token.exp % 2 == 0 };
+//     // Now we are going to kick all of the participants whom have an
+//     // expiry which is an even number
+//     let predicate = |session_info: &SessionInfo| -> bool { session_info.token.exp % 2 == 0 };
 
-    clear_queue(arc_state.clone(), predicate).await;
+//     clear_queue(arc_state.clone(), predicate).await;
 
-    // Now we expect that half of the queue should be
-    // kicked
-    let state = arc_state.write().await;
-    assert_eq!(state.queue.num_participants(), to_add / 2);
+//     // Now we expect that half of the queue should be
+//     // kicked
+//     let state = arc_state.write().await;
+//     assert_eq!(state.queue.num_participants(), to_add / 2);
 
-    let session_ids = state.queue.get_first_n(to_add / 2);
-    for id in session_ids {
-        let info = state.sessions.get(&id).unwrap();
-        // We should just be left with `exp` numbers which are odd
-        assert!(info.token.exp % 2 == 1)
-    }
-}
+//     let session_ids = state.queue.get_first_n(to_add / 2);
+//     for id in session_ids {
+//         let info = state.sessions.get(&id).unwrap();
+//         // We should just be left with `exp` numbers which are odd
+//         assert!(info.token.exp % 2 == 1)
+//     }
+// }

@@ -1,8 +1,7 @@
 pub mod errors;
 use errors::JwtError;
 
-use crate::{api::v1::contribute::UpdateProofJson, keys};
-use jsonwebtoken::{decode, encode, Header, Validation};
+use crate::{api::v1::contribute::UpdateProofJson, keys::KEYS};
 use serde::{Deserialize, Serialize};
 use small_powers_of_tau::sdk::NUM_CEREMONIES;
 
@@ -17,14 +16,11 @@ pub struct Receipt {
 
 impl Receipt {
     pub fn encode(&self) -> Result<String, JwtError> {
-        encode(&Header::default(), self, &crate::keys::KEYS.encoding)
-            .map_err(|_| JwtError::TokenCreation)
+        KEYS.encode(self).map_err(|_| JwtError::TokenCreation)
     }
-    pub fn decode(contrib_token: &str) -> Result<Self, JwtError> {
-        let token_data =
-            decode::<Self>(contrib_token, &keys::KEYS.decoding, &Validation::default())
-                .map_err(|_| JwtError::InvalidToken)?;
-
+    #[allow(unused)]
+    pub fn decode(token: &str) -> Result<Self, JwtError> {
+        let token_data = KEYS.decode(token).map_err(|_| JwtError::InvalidToken)?;
         Ok(token_data.claims)
     }
 }
@@ -51,14 +47,11 @@ impl IdToken {
     }
 
     pub fn encode(&self) -> Result<String, JwtError> {
-        encode(&Header::default(), self, &crate::keys::KEYS.encoding)
-            .map_err(|_| JwtError::TokenCreation)
+        KEYS.encode(self).map_err(|_| JwtError::TokenCreation)
     }
-    pub fn decode(contrib_token: &str) -> Result<Self, JwtError> {
-        let token_data =
-            decode::<Self>(contrib_token, &keys::KEYS.decoding, &Validation::default())
-                .map_err(|_| JwtError::InvalidToken)?;
-
+    #[allow(unused)]
+    pub fn decode(token: &str) -> Result<Self, JwtError> {
+        let token_data = KEYS.decode(token).map_err(|_| JwtError::InvalidToken)?;
         Ok(token_data.claims)
     }
 }

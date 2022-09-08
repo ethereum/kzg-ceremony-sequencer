@@ -23,7 +23,7 @@ pub struct ContributePayload {
 }
 
 pub enum ContributeResponse {
-    QueueEmpty,
+    ParticipantSpotEmpty,
     NotUsersTurn,
     InvalidContribution,
     TranscriptDecodeError,
@@ -34,16 +34,16 @@ pub enum ContributeResponse {
 impl IntoResponse for ContributeResponse {
     fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
-            ContributeResponse::QueueEmpty => {
-                let body = Json(json!({"error" : "queue is empty, join queue to contribute"}));
+            ContributeResponse::ParticipantSpotEmpty => {
+                let body = Json(json!({"error" : "the spot to participate is empty"}));
                 (StatusCode::BAD_REQUEST, body)
             }
             ContributeResponse::NotUsersTurn => {
-                let body = Json(json!({"error" : "not your turn to participate "}));
+                let body = Json(json!({"error" : "not your turn to participate"}));
                 (StatusCode::BAD_REQUEST, body)
             }
             ContributeResponse::InvalidContribution => {
-                let body = Json(json!({"error" : "contribution invalid "}));
+                let body = Json(json!({"error" : "contribution invalid"}));
                 (StatusCode::BAD_REQUEST, body)
             }
             ContributeResponse::TranscriptDecodeError => {
@@ -68,15 +68,15 @@ pub(crate) async fn contribute(
     Json(payload): Json<ContributePayload>,
     Extension(store): Extension<SharedState>,
     Extension(shared_transcript): Extension<SharedTranscript>,
-) -> impl IntoResponse {
+) -> ContributeResponse {
     // 1. Check if this person should be contributing
 
     let mut app_state = store.write().await;
 
-    let id = match app_state.queue.front() {
+    let (id, session_info) = match &app_state.participant {
         Some(participant_id) => participant_id,
         None => {
-            return ContributeResponse::QueueEmpty;
+            return ContributeResponse::ParticipantSpotEmpty;
         }
     };
 
@@ -84,7 +84,7 @@ pub(crate) async fn contribute(
         return ContributeResponse::NotUsersTurn;
     }
 
-    // We also know that if they were in the queue
+    // We also know that if they were in the lobby
     // then they did not participate already because
     // when we auth participants, this is checked
 
@@ -92,12 +92,11 @@ pub(crate) async fn contribute(
     let mut transcript = shared_transcript.write().await;
 
     if !check_transition(&transcript, &payload.state, payload.witness.clone()) {
-        // Kick from queue
-        app_state.queue.remove_participant_at_front();
-        app_state.sessions.remove(&session_id);
+        app_state.clear_contribution_spot();
 
         return ContributeResponse::InvalidContribution;
     }
+
     let new_transcript: Option<Transcript> = (&payload.state).into();
     match new_transcript {
         Some(new_transcript) => {
@@ -110,9 +109,7 @@ pub(crate) async fn contribute(
 
     // Given that the state transition was correct
     //
-    // Add witness to list of witnesses
-    // Get session info
-    let session_info = app_state.sessions.get(&session_id).unwrap();
+    // record this contribution and clean up the user
 
     let receipt = Receipt {
         id_token: session_info.token.clone(),
@@ -127,11 +124,12 @@ pub(crate) async fn contribute(
     // not be able to participate
     app_state
         .finished_contribution
-        .insert(receipt.id_token.sub.clone());
+        .insert(receipt.id_token.unique_identifier().to_owned());
     app_state.receipts.push(receipt);
+    app_state.num_contributions += 1;
 
-    // Move the queue onto the next person
-    app_state.advance_queue();
+    // Remove this person from the contribution spot
+    app_state.clear_contribution_spot();
 
     ContributeResponse::Receipt(encoded_receipt_token)
 }

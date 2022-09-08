@@ -1,4 +1,5 @@
 use crate::{
+    constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
     SessionId, SessionInfo, SharedState,
 };
@@ -17,24 +18,14 @@ use std::time::Instant;
 pub enum Providers {
     Google,
     Github,
-    Twitter,
     Ethereum,
 }
 
 impl Providers {
-    pub fn auth0_string(&self) -> &str {
-        match self {
-            Providers::Google => "google-oauth2",
-            Providers::Github => "github",
-            Providers::Twitter => "twitter",
-            Providers::Ethereum => "siwe",
-        }
-    }
     pub fn to_string(&self) -> &str {
         match self {
             Providers::Google => "Google",
             Providers::Github => "Github",
-            Providers::Twitter => "Twitter",
             Providers::Ethereum => "Ethereum",
         }
     }
@@ -53,6 +44,9 @@ impl Providers {
 
 pub(crate) enum AuthResponse {
     AuthUrl(String),
+    LobbyIsFull,
+    UserAlreadyContributed,
+    InvalidCsrf,
     Jwt(JwtError),
     UnknownIdProvider,
     InvalidAuthCode,
@@ -80,13 +74,13 @@ impl IntoResponse for AuthResponse {
                 let body = Json(json!({
                     "error": "could not fetch user data from auth server",
                 }));
-                (StatusCode::BAD_REQUEST, body)
+                (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
             AuthResponse::CouldNotExtractUserData => {
                 let body = Json(json!({
                     "error": "could not extract user data from auth server response",
                 }));
-                (StatusCode::BAD_REQUEST, body)
+                (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
             AuthResponse::UnknownIdProvider => {
                 let body = Json(json!({
@@ -96,6 +90,22 @@ impl IntoResponse for AuthResponse {
             }
             AuthResponse::Jwt(jwt_err) => return jwt_err.into_response(),
             AuthResponse::UserVerified(body) => return Json(body).into_response(),
+            AuthResponse::LobbyIsFull => {
+                let body = Json(json!({
+                    "error": "lobby is full",
+                }));
+                (StatusCode::SERVICE_UNAVAILABLE, body)
+            }
+            AuthResponse::InvalidCsrf => {
+                let body = Json(json!({
+                    "error": "invalid csrf token",
+                }));
+                (StatusCode::BAD_REQUEST, body)
+            }
+            AuthResponse::UserAlreadyContributed => {
+                let body = Json(json!({ "error": "user has already contributed" }));
+                (StatusCode::BAD_REQUEST, body)
+            }
         };
         (status, body).into_response()
     }
@@ -103,13 +113,32 @@ impl IntoResponse for AuthResponse {
 
 // Returns the url that the user needs to call
 // in order to get an authorisation code
-pub(crate) async fn auth_client_string(Extension(client): Extension<BasicClient>) -> AuthResponse {
-    // csrf token is not being check!
-    let (auth_url, _csrf_token) = client
+pub(crate) async fn auth_client_string(
+    Extension(client): Extension<BasicClient>,
+    Extension(store): Extension<SharedState>,
+) -> AuthResponse {
+    // Fist check if the lobby is full before giving users an auth link
+    // Note: we use CSRF tokens, so just copying the url will not work either
+    //
+    {
+        let lobby_size = store.read().await.lobby.len();
+        if lobby_size >= MAX_LOBBY_SIZE {
+            return AuthResponse::LobbyIsFull;
+        }
+    }
+
+    let (auth_url, csrf_token) = client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("openid".to_string()))
         .add_scope(Scope::new("profile".to_string()))
         .url();
+
+    // Store CSRF token
+    store
+        .write()
+        .await
+        .csrf_tokens
+        .insert(csrf_token.secret().to_owned());
 
     AuthResponse::AuthUrl(auth_url.to_string())
 }
@@ -144,7 +173,7 @@ struct Auth0User {
 // was malicious. What can happen is coordinator can claim that someone
 // participated when they did not. Is this Okay? Maybe that person can then just say
 // they did not
-pub(crate) async fn authorized(
+pub(crate) async fn authorised(
     // TODO: switch to POST request
     Query(payload): Query<AuthPayload>,
     Extension(store): Extension<SharedState>,
@@ -152,6 +181,14 @@ pub(crate) async fn authorized(
 ) -> AuthResponse {
     // N.B. Its possible that the client gets an error during oAUTH
     // It is their responsibility to ensure that this is checked
+
+    // Check CSRF
+    {
+        let app_state = store.read().await;
+        if !app_state.csrf_tokens.contains(&payload.state) {
+            return AuthResponse::InvalidCsrf;
+        }
+    }
 
     // Swap authorization code for access token
     let token = match oauth_client
@@ -180,10 +217,25 @@ pub(crate) async fn authorized(
         Err(_) => return AuthResponse::CouldNotExtractUserData,
     };
 
+    // Check if they have already contributed
+    {
+        let app_state = store.read().await;
+        // Check if they've already contributed
+        if let Some(_) = app_state.finished_contribution.get(&user_data.sub) {
+            return AuthResponse::UserAlreadyContributed;
+        }
+    }
+
     let mut app_state = store.write().await;
 
-    // TODO: we can probably get this from the authorisation server
-    // TODO: than using regex
+    // Check if this user is already in the lobby
+    // If so, we send them back their session id
+    let session_id = if let Some(session_id) = app_state.unique_id_session.get(&user_data.sub) {
+        session_id.clone()
+    } else {
+        SessionId::new()
+    };
+
     let provider = match Providers::from_auth0_sub(&user_data.sub) {
         Some(provider) => provider,
         None => return AuthResponse::UnknownIdProvider,
@@ -198,15 +250,14 @@ pub(crate) async fn authorized(
         sub: user_data.sub,
         provider: provider.to_string().to_owned(),
         nickname,
-        exp: 200000000000,
+        exp: u64::MAX,
     };
     let id_token_encoded = match id_token.encode() {
         Ok(encoded) => encoded,
         Err(err) => return AuthResponse::Jwt(err),
     };
 
-    let session_id = SessionId::new();
-    app_state.sessions.insert(
+    app_state.lobby.insert(
         session_id.clone(),
         SessionInfo {
             token: id_token,
@@ -226,10 +277,6 @@ pub(crate) struct AuthBody {
     id_token: String,
 
     session_id: String,
-
-    token_type: String,
-    // TODO: do this when we switch away from HMAC JWT
-    // jwt_decode_key: String,
 }
 
 impl AuthBody {
@@ -237,7 +284,6 @@ impl AuthBody {
         Self {
             id_token,
             session_id: session_id.to_string(),
-            token_type: "Bearer".to_string(),
         }
     }
 }

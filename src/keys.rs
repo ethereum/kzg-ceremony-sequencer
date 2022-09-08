@@ -1,38 +1,55 @@
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
+use std::str::FromStr;
+
+use jsonwebtoken::{
+    decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
+};
 use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 
 // Keys needed by the coordinator to attest to JWT claims
-pub(crate) static KEYS: Lazy<Keys> = Lazy::new(|| {
-    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-    Keys::new(secret.as_bytes())
-});
+pub(crate) static KEYS: Lazy<Keys> = Lazy::new(|| Keys::new());
 
 pub(crate) struct Keys {
-    pub(crate) encoding: EncodingKey,
-    pub(crate) decoding: DecodingKey,
+    encoding: EncodingKey,
+    decoding: DecodingKey,
 }
 
 impl Keys {
-    fn new(secret: &[u8]) -> Self {
-        // TODO: This uses HMAC which is not right for our usecase
-        // TODO: since we want contributors to verify the veracity of
-        // TODO: of the token
-        // TODO: we will add the public key to AuthBody when we send it to contributor
+    fn new() -> Self {
+        let private_key = include_bytes!("../private.key");
+        let public_key = include_bytes!("../publickey.pem");
         Self {
-            encoding: EncodingKey::from_secret(secret),
-            decoding: DecodingKey::from_secret(secret),
+            encoding: EncodingKey::from_rsa_pem(private_key).unwrap(),
+            decoding: DecodingKey::from_rsa_pem(public_key).unwrap(),
         }
     }
 
-    pub fn encode<T: Serialize>(&self, token: &T) -> Result<String, jsonwebtoken::errors::Error> {
-        encode(&Header::default(), token, &self.encoding)
+    pub(crate) fn encode<T: Serialize>(
+        &self,
+        token: &T,
+    ) -> Result<String, jsonwebtoken::errors::Error> {
+        encode(&Header::new(Keys::alg()), token, &self.encoding)
     }
-    pub fn decode<T: DeserializeOwned>(
+    #[allow(unused)]
+    pub(crate) fn decode<T: DeserializeOwned>(
         &self,
         token: &str,
     ) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
-        decode::<T>(token, &self.decoding, &Validation::default())
+        decode::<T>(token, &self.decoding, &Validation::new(Keys::alg()))
+    }
+
+    pub fn alg_str() -> &'static str {
+        "PS256"
+    }
+    fn alg() -> Algorithm {
+        Algorithm::from_str(Keys::alg_str()).expect("unknown algorithm")
+    }
+
+    pub fn decode_key_to_bytes(&self) -> Vec<u8> {
+        include_bytes!("../publickey.pem").to_vec()
+    }
+    pub fn decode_key_to_string(&self) -> String {
+        include_str!("../publickey.pem").to_owned()
     }
 }
 
@@ -41,7 +58,7 @@ mod tests {
     use super::*;
     use serde::Deserialize;
     #[test]
-    fn encode_decode() {
+    fn encode_decode_pem() {
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
         pub struct Token {
             foo: String,
@@ -53,7 +70,7 @@ mod tests {
             exp: 200000000000,
         };
 
-        let keys = Keys::new(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let keys = Keys::new_from_pem();
         let encoded_token = keys.encode(&t).unwrap();
         let token_data = keys.decode::<Token>(&encoded_token).unwrap();
         let got_token = token_data.claims;

@@ -10,25 +10,17 @@ use std::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Hash, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct SessionId {
-    // TODO: Can change to a named tuple, just need to check how serde
-    // deserialises everything
-    session_id: String,
-}
+#[serde(rename = "session_id")]
+pub(crate) struct SessionId(String);
 
 impl SessionId {
     // Create a random session id
     pub fn new() -> SessionId {
-        SessionId {
-            session_id: Uuid::new_v4().to_string(),
-        }
+        SessionId(Uuid::new_v4().to_string())
     }
 
     pub fn to_string(&self) -> String {
-        self.session_id.to_owned()
-    }
-    pub fn as_string(&self) -> &str {
-        &self.session_id
+        self.0.to_owned()
     }
 }
 
@@ -52,9 +44,7 @@ where
             TypedHeader::<Authorization<Bearer>>::from_request(req)
                 .await
                 .map_err(|_| JwtError::InvalidToken)?;
-        let session_id = SessionId {
-            session_id: bearer.token().to_owned(),
-        };
-        Ok(session_id)
+
+        Ok(SessionId(bearer.token().to_owned()))
     }
 }
