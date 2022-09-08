@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use crate::jwt::errors::JwtError;
 use crate::jwt::Receipt;
 use crate::{SessionId, SharedState, SharedTranscript};
@@ -12,6 +10,7 @@ use small_powers_of_tau::sdk::{
     transcript_verify_update, Transcript, TranscriptJSON, NUM_CEREMONIES,
 };
 use small_powers_of_tau::update_proof::UpdateProof;
+use std::convert::TryInto;
 
 // TODO: Move this into Small Powers of Tau repo
 pub type UpdateProofJson = [String; 2];

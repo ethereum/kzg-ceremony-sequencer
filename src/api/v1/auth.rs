@@ -52,7 +52,10 @@ pub(crate) enum AuthResponse {
     InvalidAuthCode,
     FetchUserDataError,
     CouldNotExtractUserData,
-    UserVerified(AuthBody),
+    UserVerified {
+        id_token: String,
+        session_id: String,
+    },
 }
 
 impl IntoResponse for AuthResponse {
@@ -89,7 +92,16 @@ impl IntoResponse for AuthResponse {
                 (StatusCode::BAD_REQUEST, body)
             }
             AuthResponse::Jwt(jwt_err) => return jwt_err.into_response(),
-            AuthResponse::UserVerified(body) => return Json(body).into_response(),
+            AuthResponse::UserVerified {
+                id_token,
+                session_id,
+            } => {
+                return Json(json!({
+                    "id_token" : id_token,
+                    "session_id" : session_id,
+                }))
+                .into_response()
+            }
             AuthResponse::LobbyIsFull => {
                 let body = Json(json!({
                     "error": "lobby is full",
@@ -265,25 +277,8 @@ pub(crate) async fn authorised(
         },
     );
 
-    return AuthResponse::UserVerified(AuthBody::new(id_token_encoded, session_id));
-}
-
-// This is the information that the coordinator sends to the client
-#[derive(Debug, Serialize)]
-pub(crate) struct AuthBody {
-    // ID token that gives a client access to some of the coordinators API
-    // Some endpoints do not require an id token
-    // For example; "NumPeopleInQueue"
-    id_token: String,
-
-    session_id: String,
-}
-
-impl AuthBody {
-    pub fn new(id_token: String, session_id: SessionId) -> Self {
-        Self {
-            id_token,
-            session_id: session_id.to_string(),
-        }
-    }
+    return AuthResponse::UserVerified {
+        id_token: id_token_encoded,
+        session_id: session_id.to_string(),
+    };
 }
