@@ -1,10 +1,9 @@
-use std::str::FromStr;
-
 use jsonwebtoken::{
     decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
+use std::str::FromStr;
 
 // Keys needed by the coordinator to attest to JWT claims
 pub(crate) static KEYS: Lazy<Keys> = Lazy::new(|| Keys::new());
@@ -45,9 +44,6 @@ impl Keys {
         Algorithm::from_str(Keys::alg_str()).expect("unknown algorithm")
     }
 
-    pub fn decode_key_to_bytes(&self) -> Vec<u8> {
-        include_bytes!("../publickey.pem").to_vec()
-    }
     pub fn decode_key_to_string(&self) -> String {
         include_str!("../publickey.pem").to_owned()
     }
