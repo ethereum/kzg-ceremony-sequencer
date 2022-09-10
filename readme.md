@@ -3,7 +3,7 @@
 
 ## Endpoints
 
-This implements all of the endpoints located in [link] . Much of the rationale is also located in that file.
+This implements all of the endpoints located [here](https://hackmd.io/vTOy8-XwSOO4ugLHTyA5pw) . Much of the rationale is also located in that file.
 
 ## Requirements
 
