@@ -1,5 +1,5 @@
 [package]
-name = "coordinator_rest"
+name = "kzg_ceremony_sequencer"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,8 +16,6 @@ tower = { version = "0.4.13", features = ["full"] }
 tower-http = { version = "0.3.4", features = ["full"] }
 tracing = "0.1.35"
 serde_json = "1.0"
-tracing-subscriber = { version = "0.3.14", features = ["env-filter"] }
-chrono = "0.4"
 oauth2 = "4.1"
 headers = "0.3"
 http = "0.2"
