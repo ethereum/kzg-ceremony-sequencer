@@ -1,17 +1,18 @@
-use crate::{constants::COMPUTE_DEADLINE, SessionId, SharedState};
+use crate::{constants::COMPUTE_DEADLINE, SessionId, SharedState, SharedTranscript};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
 use http::StatusCode;
 use serde_json::json;
+use small_powers_of_tau::sdk::TranscriptJSON;
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub enum SlotJoinResponse {
     UnknownSessionId,
     SlotIsFull,
-    Success,
+    Success(TranscriptJSON),
 }
 
 impl IntoResponse for SlotJoinResponse {
@@ -30,9 +31,9 @@ impl IntoResponse for SlotJoinResponse {
                 }));
                 (StatusCode::SERVICE_UNAVAILABLE, body)
             }
-            SlotJoinResponse::Success => {
+            SlotJoinResponse::Success(transcript) => {
                 let body = Json(json!({
-                    "success": "successfully reserved the contribution spot",
+                    "state": transcript,
                 }));
                 (StatusCode::OK, body)
             }
@@ -45,6 +46,7 @@ impl IntoResponse for SlotJoinResponse {
 pub(crate) async fn slot_join(
     session_id: SessionId,
     Extension(store): Extension<SharedState>,
+    Extension(transcript): Extension<SharedTranscript>,
 ) -> SlotJoinResponse {
     let store_clone = store.clone();
     let app_state = &mut store.write().await;
@@ -73,7 +75,11 @@ pub(crate) async fn slot_join(
             clear_spot_on_interval(store_clone, session_id).await;
         });
     }
-    return SlotJoinResponse::Success;
+
+    let transcript = transcript.read().await;
+    let transcript_json = TranscriptJSON::from(&*transcript);
+
+    return SlotJoinResponse::Success(transcript_json);
 }
 
 // Clears the contribution spot on `COMPUTE_DEADLINE` interval
