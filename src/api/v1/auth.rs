@@ -1,16 +1,13 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
-    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState,
+    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweAuthClient,
 };
 use axum::response::Response;
 use axum::{extract::Query, response::IntoResponse, Extension, Json};
 use chrono::DateTime;
 use http::StatusCode;
-use oauth2::{
-    basic::BasicClient, reqwest::async_http_client, AuthorizationCode, CsrfToken, Scope,
-    TokenResponse,
-};
+use oauth2::{reqwest::async_http_client, AuthorizationCode, CsrfToken, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Instant;
@@ -36,7 +33,6 @@ pub(crate) enum AuthError {
     UserAlreadyContributed,
     InvalidCsrf,
     Jwt(JwtError),
-    UnknownIdProvider,
     InvalidAuthCode,
     FetchUserDataError,
     CouldNotExtractUserData,
@@ -49,15 +45,15 @@ pub(crate) struct UserVerified {
 }
 
 pub(crate) struct AuthUrl {
-    auth_url: String,
+    siwe_auth_url: String,
     github_auth_url: String,
 }
 
 impl IntoResponse for AuthUrl {
     fn into_response(self) -> Response {
         Json(json!({
-            "auth_url": self.auth_url.to_string(),
-            "github_auth_url": self.github_auth_url.to_string(),
+            "auth_url": self.siwe_auth_url,
+            "github_auth_url": self.github_auth_url,
         }))
         .into_response()
     }
@@ -74,7 +70,7 @@ impl IntoResponse for UserVerified {
 }
 
 impl IntoResponse for AuthError {
-    fn into_response(self) -> axum::response::Response {
+    fn into_response(self) -> Response {
         let (status, body) = match self {
             AuthError::InvalidAuthCode => {
                 let body = Json(json!({
@@ -93,12 +89,6 @@ impl IntoResponse for AuthError {
                     "error": "could not extract user data from auth server response",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
-            }
-            AuthError::UnknownIdProvider => {
-                let body = Json(json!({
-                    "error": "unknown identity provider",
-                }));
-                (StatusCode::BAD_REQUEST, body)
             }
             AuthError::Jwt(jwt_err) => return jwt_err.into_response(),
 
@@ -130,8 +120,8 @@ impl IntoResponse for AuthError {
 // Returns the url that the user needs to call
 // in order to get an authorisation code
 pub(crate) async fn auth_client_string(
-    Extension(client): Extension<BasicClient>,
     Extension(store): Extension<SharedState>,
+    Extension(siwe_client): Extension<SiweAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
 ) -> Result<AuthUrl, AuthError> {
     // Fist check if the lobby is full before giving users an auth link
@@ -146,20 +136,15 @@ pub(crate) async fn auth_client_string(
 
     let csrf_token = CsrfToken::new_random();
 
-    let (auth_url, csrf_token) = client
+    let (auth_url, csrf_token) = siwe_client
         .authorize_url(|| csrf_token)
         .add_scope(Scope::new("openid".to_string()))
-        .add_scope(Scope::new("profile".to_string()))
         .url();
 
-    let (gh_url, csrf_token) = gh_client
-        .client
-        .authorize_url(|| csrf_token)
-        .add_scope(Scope::new("email".to_string()))
-        .url();
+    let (gh_url, csrf_token) = gh_client.client.authorize_url(|| csrf_token).url();
 
     // Store CSRF token
-    // TODO[MK] These should be cleaned periodically
+    // TODO These should be cleaned periodically
     store
         .write()
         .await
@@ -167,7 +152,7 @@ pub(crate) async fn auth_client_string(
         .insert(csrf_token.secret().to_owned());
 
     Ok(AuthUrl {
-        auth_url: auth_url.to_string(),
+        siwe_auth_url: auth_url.to_string(),
         github_auth_url: gh_url.to_string(),
     })
 }
@@ -186,7 +171,7 @@ pub(crate) struct AuthPayload {
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthenticatedUser {
     uid: String,
-    nickname: Option<String>,
+    nickname: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -200,6 +185,7 @@ pub(crate) async fn github_callback(
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
+    Extension(http_client): Extension<reqwest::Client>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &store).await?;
     let token = gh_oauth_client
@@ -208,8 +194,7 @@ pub(crate) async fn github_callback(
         .await
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
-    let client = reqwest::Client::new();
-    let response = client
+    let response = http_client
         .get("https://api.github.com/user")
         .bearer_auth(token.access_token().secret())
         .header("User-Agent", "ethereum-kzg-ceremony-sequencer")
@@ -227,9 +212,15 @@ pub(crate) async fn github_callback(
     }
     let user = AuthenticatedUser {
         uid: format!("gh::{}", gh_user_info.login),
-        nickname: Some(gh_user_info.login),
+        nickname: gh_user_info.login,
     };
     post_authenticate(store, user, AuthProvider::Github).await
+}
+
+#[derive(Debug, Deserialize)]
+struct SiweUserInfo {
+    sub: String,
+    preferred_username: String,
 }
 
 // This endpoint allows one to consume an oAUTH authorisation code
@@ -241,39 +232,84 @@ pub(crate) async fn github_callback(
 // was malicious. What can happen is coordinator can claim that someone
 // participated when they did not. Is this Okay? Maybe that person can then just say
 // they did not
-pub(crate) async fn authorised(
-    // TODO: switch to POST request
+pub(crate) async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
+    Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
-    Extension(oauth_client): Extension<BasicClient>,
+    Extension(oauth_client): Extension<SiweAuthClient>,
+    Extension(http_client): Extension<reqwest::Client>,
 ) -> Result<UserVerified, AuthError> {
-    // N.B. Its possible that the client gets an error during oAUTH
-    // It is their responsibility to ensure that this is checked
-    //
     verify_csrf(&payload, &store).await?;
-
-    // Swap authorization code for access token
     let token = oauth_client
-        .exchange_code(AuthorizationCode::new(payload.code.clone()))
+        .exchange_code(AuthorizationCode::new(payload.code))
         .request_async(async_http_client)
         .await
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
-    // Fetch user data from oauth provider
-    let client = reqwest::Client::new();
-    let response = client
-        .get("https://kev-kzg-ceremony.eu.auth0.com/userinfo")
+    let response = http_client
+        .get("https://oidc.signinwithethereum.org/userinfo")
         .bearer_auth(token.access_token().secret())
         .send()
         .await
         .map_err(|_| AuthError::FetchUserDataError)?;
 
-    let user_data: AuthenticatedUser = response
-        .json::<AuthenticatedUser>()
+    let siwe_user = response
+        .json::<SiweUserInfo>()
         .await
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
 
+    let addr_parts: Vec<_> = siwe_user.sub.split(':').collect();
+    let address = addr_parts
+        .get(2)
+        .ok_or(AuthError::CouldNotExtractUserData)?
+        .to_string();
+
+    let tx_count = get_tx_count(
+        &address,
+        &config.eth_max_first_transaction_block,
+        &http_client,
+        &config,
+    )
+    .await
+    .ok_or(AuthError::CouldNotExtractUserData)?;
+
+    if tx_count < 1 {
+        return Err(AuthError::UserCreatedAfterDeadline);
+    }
+
+    let user_data = AuthenticatedUser {
+        uid: format!("siwe::{}", address),
+        nickname: siwe_user.preferred_username,
+    };
+
     post_authenticate(store, user_data, AuthProvider::Ethereum).await
+}
+
+async fn get_tx_count(
+    address: &str,
+    at_block: &str,
+    client: &reqwest::Client,
+    config: &AppConfig,
+) -> Option<i64> {
+    let rpc_payload = json!({
+        "id": 1,
+        "jsonrpc": "2.0",
+        "params": [&address, &at_block],
+        "method": "eth_getTransactionCount"
+    });
+
+    let rpc_response = client
+        .post(&config.eth_rpc_url)
+        .json(&rpc_payload)
+        .send()
+        .await
+        .ok()?;
+
+    let rpc_response_json = rpc_response.json::<serde_json::Value>().await.ok()?;
+
+    let rpc_result = rpc_response_json.get("result")?.as_str()?;
+
+    i64::from_str_radix(rpc_result.trim_start_matches("0x"), 16).ok()
 }
 
 async fn verify_csrf(payload: &AuthPayload, store: &SharedState) -> Result<(), AuthError> {
@@ -293,8 +329,11 @@ async fn post_authenticate(
     // Check if they have already contributed
     {
         let app_state = store.read().await;
-        // Check if they've already contributed
-        if let Some(_) = app_state.finished_contribution.get(&user_data.uid) {
+        if app_state
+            .finished_contribution
+            .get(&user_data.uid)
+            .is_some()
+        {
             return Err(AuthError::UserAlreadyContributed);
         }
     }
@@ -306,18 +345,17 @@ async fn post_authenticate(
     let session_id = if let Some(session_id) = app_state.unique_id_session.get(&user_data.uid) {
         session_id.clone()
     } else {
-        SessionId::new()
-    };
-
-    let nickname = match user_data.nickname {
-        Some(oauth_nickname) => oauth_nickname,
-        None => String::from("Unknown"),
+        let id = SessionId::new();
+        app_state
+            .unique_id_session
+            .insert(user_data.uid.clone(), id.clone());
+        id
     };
 
     let id_token = IdToken {
         sub: user_data.uid,
         provider: auth_provider.to_string().to_owned(),
-        nickname,
+        nickname: user_data.nickname,
         exp: u64::MAX,
     };
 
