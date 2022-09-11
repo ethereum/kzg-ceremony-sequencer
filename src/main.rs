@@ -4,12 +4,14 @@ mod jwt;
 mod keys;
 mod sessions;
 
+use crate::api::v1::auth::github_callback;
 use crate::api::v1::{
     auth::{auth_client_string, authorised},
     contribute::contribute,
     info::{current_state, jwt_info, status},
     slot::slot_join,
 };
+use crate::constants::{GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL};
 use axum::{
     extract::Extension,
     response::Html,
@@ -24,6 +26,7 @@ use jwt::Receipt;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
 use small_powers_of_tau::sdk::Transcript;
+use std::ops::Deref;
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
@@ -52,7 +55,8 @@ async fn main() {
     let app = Router::new()
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_string))
-        .route("/auth/authorised", get(authorised))
+        .route("/auth/callback/github", get(github_callback))
+        .route("/auth/authorized", get(authorised))
         .route("/slot/join", post(slot_join))
         .route("/contribute", post(contribute))
         .route("/info/status", get(status))
@@ -60,6 +64,7 @@ async fn main() {
         .route("/info/current_state", get(current_state))
         .layer(Extension(shared_state))
         .layer(Extension(oauth_client))
+        .layer(Extension(github_oauth_client()))
         .layer(Extension(transcript));
 
     let addr = "[::]:3000".parse().unwrap();
@@ -85,6 +90,38 @@ fn oauth_client() -> BasicClient {
         Some(TokenUrl::new(token_url).unwrap()),
     )
     .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap())
+}
+
+#[derive(Clone)]
+struct GithubOAuthClient {
+    client: BasicClient,
+}
+
+impl Deref for GithubOAuthClient {
+    type Target = BasicClient;
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
+
+fn github_oauth_client() -> GithubOAuthClient {
+    let client_id = env::var("GITHUB_CLIENT_ID").expect("Missing GITHUB_CLIENT_ID!");
+    let client_secret = env::var("GITHUB_CLIENT_SECRET").expect("Missing GITHUB_CLIENT_SECRET!");
+    let redirect_url =
+        env::var("GITHUB_REDIRECT_URL").unwrap_or_else(|_| GITHUB_OAUTH_REDIRECT_URL.to_string());
+    let auth_url =
+        env::var("GITHUB_AUTH_URL").unwrap_or_else(|_| GITHUB_OAUTH_AUTH_URL.to_string());
+    let token_url =
+        env::var("GITHUB_TOKEN_URL").unwrap_or_else(|_| GITHUB_OAUTH_TOKEN_URL.to_string());
+    GithubOAuthClient {
+        client: BasicClient::new(
+            ClientId::new(client_id),
+            Some(ClientSecret::new(client_secret)),
+            AuthUrl::new(auth_url).unwrap(),
+            Some(TokenUrl::new(token_url).unwrap()),
+        )
+        .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap()),
+    }
 }
 
 async fn hello_world() -> Html<&'static str> {

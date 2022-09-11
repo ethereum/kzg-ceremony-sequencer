@@ -1,3 +1,5 @@
+use chrono::{DateTime, FixedOffset};
+
 // In seconds, This is the amount of time that
 // a contributor has to complete their contribution
 pub const COMPUTE_DEADLINE: usize = 180;
@@ -21,6 +23,12 @@ pub const HISTORY_RECEIPTS_COUNT: usize = 20;
 // This constant defines how often we check, In seconds
 pub const LOBBY_FLUSH_INTERVAL: usize = 5;
 
-pub const OAUTH_REDIRECT_URL: &str = "http://127.0.0.1:3002/auth/authorized";
+pub const OAUTH_REDIRECT_URL: &str = "http://127.0.0.1:3000/auth/authorized";
 pub const OAUTH_AUTH_URL: &str = "https://kev-kzg-ceremony.eu.auth0.com/authorize";
 pub const OAUTH_TOKEN_URL: &str = "https://kev-kzg-ceremony.eu.auth0.com/oauth/token";
+
+pub const GITHUB_OAUTH_REDIRECT_URL: &str = "http://127.0.0.1:3000/auth/callback/github";
+pub const GITHUB_OAUTH_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
+pub const GITHUB_OAUTH_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+
+pub const GITHUB_ACCOUNT_CREATION_DEADLINE: &str = "2022-08-01T00:00:00Z";
