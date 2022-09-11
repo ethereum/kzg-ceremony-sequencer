@@ -1,10 +1,11 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
-    GithubOAuthClient, SessionId, SessionInfo, SharedState,
+    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState,
 };
 use axum::response::Response;
 use axum::{extract::Query, response::IntoResponse, Extension, Json};
+use chrono::DateTime;
 use http::StatusCode;
 use oauth2::{
     basic::BasicClient, reqwest::async_http_client, AuthorizationCode, CsrfToken, Scope,
@@ -16,29 +17,16 @@ use std::time::Instant;
 
 // These are the providers that are supported
 // via oauth
-pub enum Providers {
-    Google,
+pub enum AuthProvider {
     Github,
     Ethereum,
 }
 
-impl Providers {
+impl AuthProvider {
     pub fn to_string(&self) -> &str {
         match self {
-            Providers::Google => "Google",
-            Providers::Github => "Github",
-            Providers::Ethereum => "Ethereum",
-        }
-    }
-    pub fn from_auth0_sub(sub: &String) -> Option<Self> {
-        if sub.contains("google") {
-            return Some(Providers::Google);
-        } else if sub.contains("github") {
-            return Some(Providers::Github);
-        } else if sub.contains("siwe") {
-            return Some(Providers::Ethereum);
-        } else {
-            return None;
+            AuthProvider::Github => "Github",
+            AuthProvider::Ethereum => "Ethereum",
         }
     }
 }
@@ -52,6 +40,7 @@ pub(crate) enum AuthError {
     InvalidAuthCode,
     FetchUserDataError,
     CouldNotExtractUserData,
+    UserCreatedAfterDeadline,
 }
 
 pub(crate) struct UserVerified {
@@ -129,6 +118,10 @@ impl IntoResponse for AuthError {
                 let body = Json(json!({ "error": "user has already contributed" }));
                 (StatusCode::BAD_REQUEST, body)
             }
+            AuthError::UserCreatedAfterDeadline => {
+                let body = Json(json!({ "error": "user account was created after the deadline"}));
+                (StatusCode::UNAUTHORIZED, body)
+            }
         };
         (status, body).into_response()
     }
@@ -196,13 +189,19 @@ struct AuthenticatedUser {
     nickname: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct GhUserInfo {
+    login: String,
+    created_at: String,
+}
+
 pub(crate) async fn github_callback(
     Query(payload): Query<AuthPayload>,
+    Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &store).await?;
-    println!("{:?}", payload);
     let token = gh_oauth_client
         .exchange_code(AuthorizationCode::new(payload.code))
         .request_async(async_http_client)
@@ -217,7 +216,20 @@ pub(crate) async fn github_callback(
         .send()
         .await
         .map_err(|_| AuthError::FetchUserDataError)?;
-    Err(AuthError::UnknownIdProvider)
+    let gh_user_info = response
+        .json::<GhUserInfo>()
+        .await
+        .map_err(|_| AuthError::CouldNotExtractUserData)?;
+    let creation_time = DateTime::parse_from_rfc3339(&gh_user_info.created_at)
+        .map_err(|_| AuthError::CouldNotExtractUserData)?;
+    if creation_time > config.github_max_creation_time {
+        return Err(AuthError::UserCreatedAfterDeadline);
+    }
+    let user = AuthenticatedUser {
+        uid: format!("gh::{}", gh_user_info.login),
+        nickname: Some(gh_user_info.login),
+    };
+    post_authenticate(store, user, AuthProvider::Github).await
 }
 
 // This endpoint allows one to consume an oAUTH authorisation code
@@ -261,7 +273,7 @@ pub(crate) async fn authorised(
         .await
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
 
-    post_authenticate(store, user_data).await
+    post_authenticate(store, user_data, AuthProvider::Ethereum).await
 }
 
 async fn verify_csrf(payload: &AuthPayload, store: &SharedState) -> Result<(), AuthError> {
@@ -276,6 +288,7 @@ async fn verify_csrf(payload: &AuthPayload, store: &SharedState) -> Result<(), A
 async fn post_authenticate(
     store: SharedState,
     user_data: AuthenticatedUser,
+    auth_provider: AuthProvider,
 ) -> Result<UserVerified, AuthError> {
     // Check if they have already contributed
     {
@@ -296,11 +309,6 @@ async fn post_authenticate(
         SessionId::new()
     };
 
-    let provider = match Providers::from_auth0_sub(&user_data.uid) {
-        Some(provider) => provider,
-        None => return Err(AuthError::UnknownIdProvider),
-    };
-
     let nickname = match user_data.nickname {
         Some(oauth_nickname) => oauth_nickname,
         None => String::from("Unknown"),
@@ -308,7 +316,7 @@ async fn post_authenticate(
 
     let id_token = IdToken {
         sub: user_data.uid,
-        provider: provider.to_string().to_owned(),
+        provider: auth_provider.to_string().to_owned(),
         nickname,
         exp: u64::MAX,
     };

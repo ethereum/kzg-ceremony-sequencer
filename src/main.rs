@@ -18,6 +18,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use chrono::{DateTime, FixedOffset};
 use constants::{
     LOBBY_CHECKIN_DEADLINE, LOBBY_FLUSH_INTERVAL, OAUTH_AUTH_URL, OAUTH_REDIRECT_URL,
     OAUTH_TOKEN_URL,
@@ -65,6 +66,7 @@ async fn main() {
         .layer(Extension(shared_state))
         .layer(Extension(oauth_client))
         .layer(Extension(github_oauth_client()))
+        .layer(Extension(AppConfig::default()))
         .layer(Extension(transcript));
 
     let addr = "[::]:3000".parse().unwrap();
@@ -126,6 +128,22 @@ fn github_oauth_client() -> GithubOAuthClient {
 
 async fn hello_world() -> Html<&'static str> {
     Html("<h1>Server is Running</h1>")
+}
+
+#[derive(Clone)]
+pub(crate) struct AppConfig {
+    github_max_creation_time: DateTime<FixedOffset>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        AppConfig {
+            github_max_creation_time: DateTime::parse_from_rfc3339(
+                constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
+            )
+            .unwrap(),
+        }
+    }
 }
 
 type IdTokenSub = String;

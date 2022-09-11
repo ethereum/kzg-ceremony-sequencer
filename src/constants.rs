@@ -1,5 +1,3 @@
-use chrono::{DateTime, FixedOffset};
-
 // In seconds, This is the amount of time that
 // a contributor has to complete their contribution
 pub const COMPUTE_DEADLINE: usize = 180;
