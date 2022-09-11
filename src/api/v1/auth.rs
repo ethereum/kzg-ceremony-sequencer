@@ -156,7 +156,7 @@ pub(crate) async fn auth_client_string(
 }
 
 // This is the payload that the client will send
-// to the coordinator, that will be used to generate a JWT token.
+// to the sequencer, that will be used to generate a JWT token.
 // Since we are using oAUTH, this will contain the information
 // that we need to check that the user did indeed login with
 // an identity provider
@@ -178,11 +178,11 @@ struct Auth0User {
 
 // This endpoint allows one to consume an oAUTH authorisation code
 //  and produce a JWT token
-// So Coordinator could give out fake identities, we are trusting the coordinator
+// So Sequencer could give out fake identities, we are trusting the sequencer
 // to not do that.
 //
-// Now this is catchable by the client. They will clearly see that the coordinator
-// was malicious. What can happen is coordinator can claim that someone
+// Now this is catchable by the client. They will clearly see that the sequencer
+// was malicious. What can happen is sequencer can claim that someone
 // participated when they did not. Is this Okay? Maybe that person can then just say
 // they did not
 pub(crate) async fn authorised(

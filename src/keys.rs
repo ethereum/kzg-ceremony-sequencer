@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 use std::str::FromStr;
 
-// Keys needed by the coordinator to attest to JWT claims
+// Keys needed by the sequencer to attest to JWT claims
 pub(crate) static KEYS: Lazy<Keys> = Lazy::new(|| Keys::new());
 
 pub(crate) struct Keys {

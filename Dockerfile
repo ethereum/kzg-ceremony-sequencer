@@ -1,8 +1,8 @@
 FROM rust:1.62 as build
 
 # create a new empty shell project
-RUN USER=root cargo new --bin coordinator
-WORKDIR /coordinator
+RUN USER=root cargo new --bin sequencer
+WORKDIR /sequencer
 
 # copy private key and public key
 COPY ./private.key ./private.key
@@ -20,14 +20,14 @@ RUN rm src/*.rs
 COPY ./src ./src
 
 # build for release
-RUN rm ./target/release/deps/kzg_ceremony_coordinator*
+RUN rm ./target/release/deps/kzg_ceremony_sequencer*
 RUN cargo build --release
 
 # our final base
 FROM debian:buster-slim
 
 # copy the build artifact from the build stage
-COPY --from=build /coordinator/target/release/kzg_ceremony_coordinator .
+COPY --from=build /sequencer/target/release/kzg_ceremony_sequencer .
 
 # set the startup command to run your binary
-ENTRYPOINT ./coordinator
+ENTRYPOINT ./sequencer
