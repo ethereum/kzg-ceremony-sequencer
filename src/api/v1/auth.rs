@@ -211,7 +211,7 @@ pub(crate) async fn github_callback(
         return Err(AuthError::UserCreatedAfterDeadline);
     }
     let user = AuthenticatedUser {
-        uid: format!("gh::{}", gh_user_info.login),
+        uid: format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
     post_authenticate(store, user, AuthProvider::Github).await
@@ -266,19 +266,19 @@ pub(crate) async fn siwe_callback(
 
     let tx_count = get_tx_count(
         &address,
-        &config.eth_max_first_transaction_block,
+        &config.eth_check_nonce_at_block,
         &http_client,
         &config,
     )
     .await
     .ok_or(AuthError::CouldNotExtractUserData)?;
 
-    if tx_count < 1 {
+    if tx_count < config.eth_min_nonce {
         return Err(AuthError::UserCreatedAfterDeadline);
     }
 
     let user_data = AuthenticatedUser {
-        uid: format!("siwe::{}", address),
+        uid: format!("eth | {}", address),
         nickname: siwe_user.preferred_username,
     };
 

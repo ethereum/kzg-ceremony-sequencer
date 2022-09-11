@@ -29,5 +29,11 @@ pub const GITHUB_OAUTH_REDIRECT_URL: &str = "http://127.0.0.1:3000/auth/callback
 pub const GITHUB_OAUTH_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
 pub const GITHUB_OAUTH_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 
+// The latest time for creating a Github account eligible for participation
 pub const GITHUB_ACCOUNT_CREATION_DEADLINE: &str = "2022-08-01T00:00:00Z";
-pub const ETH_FIRST_TRANSACTION_DEADLINE: &str = "0xE4D540";
+
+// The hex block number at which we require participants to have a certain nonce
+pub const ETH_CHECK_NONCE_AT_BLOCK: &str = "0xE4D540";
+
+// The minimum nonce we require from eligible participants
+pub const ETH_MIN_NONCE: i64 = 4;

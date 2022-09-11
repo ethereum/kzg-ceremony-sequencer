@@ -150,7 +150,8 @@ async fn hello_world() -> Html<&'static str> {
 #[derive(Clone)]
 pub(crate) struct AppConfig {
     github_max_creation_time: DateTime<FixedOffset>,
-    eth_max_first_transaction_block: String,
+    eth_check_nonce_at_block: String,
+    eth_min_nonce: i64,
     eth_rpc_url: String,
 }
 
@@ -161,7 +162,8 @@ impl Default for AppConfig {
                 constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
             )
             .unwrap(),
-            eth_max_first_transaction_block: constants::ETH_FIRST_TRANSACTION_DEADLINE.to_string(),
+            eth_check_nonce_at_block: constants::ETH_CHECK_NONCE_AT_BLOCK.to_string(),
+            eth_min_nonce: constants::ETH_MIN_NONCE,
             eth_rpc_url: env::var("ETH_RPC_URL").expect("Missing ETH_RPC_URL"),
         }
     }
