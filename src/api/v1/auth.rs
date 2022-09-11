@@ -1,7 +1,7 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
-    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweAuthClient,
+    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient,
 };
 use axum::response::Response;
 use axum::{extract::Query, response::IntoResponse, Extension, Json};
@@ -121,7 +121,7 @@ impl IntoResponse for AuthError {
 // in order to get an authorisation code
 pub(crate) async fn auth_client_string(
     Extension(store): Extension<SharedState>,
-    Extension(siwe_client): Extension<SiweAuthClient>,
+    Extension(siwe_client): Extension<SiweOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
 ) -> Result<AuthUrl, AuthError> {
     // Fist check if the lobby is full before giving users an auth link
@@ -236,7 +236,7 @@ pub(crate) async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
-    Extension(oauth_client): Extension<SiweAuthClient>,
+    Extension(oauth_client): Extension<SiweOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &store).await?;

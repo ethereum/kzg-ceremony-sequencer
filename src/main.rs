@@ -79,7 +79,19 @@ async fn main() {
         .unwrap();
 }
 
-fn siwe_oauth_client() -> SiweAuthClient {
+#[derive(Clone)]
+struct SiweOAuthClient {
+    client: BasicClient,
+}
+
+impl Deref for SiweOAuthClient {
+    type Target = BasicClient;
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
+
+fn siwe_oauth_client() -> SiweOAuthClient {
     let client_id = env::var("SIWE_CLIENT_ID").expect("Missing SIWE_CLIENT_ID!");
     let client_secret = env::var("SIWE_CLIENT_SECRET").expect("Missing SIWE_CLIENT_SECRET!");
 
@@ -88,7 +100,7 @@ fn siwe_oauth_client() -> SiweAuthClient {
     let auth_url = env::var("SIWE_AUTH_URL").unwrap_or_else(|_| SIWE_OAUTH_AUTH_URL.to_string());
     let token_url = env::var("SIWE_TOKEN_URL").unwrap_or_else(|_| SIWE_OAUTH_TOKEN_URL.to_string());
 
-    SiweAuthClient {
+    SiweOAuthClient {
         client: BasicClient::new(
             ClientId::new(client_id),
             Some(ClientSecret::new(client_secret)),
@@ -105,18 +117,6 @@ struct GithubOAuthClient {
 }
 
 impl Deref for GithubOAuthClient {
-    type Target = BasicClient;
-    fn deref(&self) -> &Self::Target {
-        &self.client
-    }
-}
-
-#[derive(Clone)]
-struct SiweAuthClient {
-    client: BasicClient,
-}
-
-impl Deref for SiweAuthClient {
     type Target = BasicClient;
     fn deref(&self) -> &Self::Target {
         &self.client
