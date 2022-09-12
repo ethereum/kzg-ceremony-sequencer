@@ -23,7 +23,7 @@ pub const MAX_LOBBY_SIZE: usize = 1_000;
 pub const HISTORY_RECEIPTS_COUNT: usize = 20;
 
 // Periodically, we check whether the participants
-// have not pinged the coordinator on time.
+// have not pinged the sequencer on time.
 // This constant defines how often we check, In seconds
 pub const LOBBY_FLUSH_INTERVAL: usize = 5;
 
