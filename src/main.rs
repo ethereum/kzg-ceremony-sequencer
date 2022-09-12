@@ -23,7 +23,7 @@ use sessions::{SessionId, SessionInfo};
 
 use crate::api::v1::auth::{github_callback, siwe_callback};
 use crate::api::v1::{
-    auth::auth_client_string,
+    auth::auth_client_link,
     contribute::contribute,
     info::{current_state, jwt_info, status},
     slot::slot_join,
@@ -56,7 +56,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/hello_world", get(hello_world))
-        .route("/auth/request_link", get(auth_client_string))
+        .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/siwe", get(siwe_callback))
         .route("/slot/join", post(slot_join))

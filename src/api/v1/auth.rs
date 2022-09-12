@@ -7,9 +7,12 @@ use axum::response::Response;
 use axum::{extract::Query, response::IntoResponse, Extension, Json};
 use chrono::DateTime;
 use http::StatusCode;
-use oauth2::{reqwest::async_http_client, AuthorizationCode, CsrfToken, Scope, TokenResponse};
+use oauth2::{
+    reqwest::async_http_client, AuthorizationCode, CsrfToken, RedirectUrl, Scope, TokenResponse,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::borrow::Cow;
 use std::time::Instant;
 
 // These are the providers that are supported
@@ -117,9 +120,15 @@ impl IntoResponse for AuthError {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct AuthClientLinkQueryParams {
+    redirect_to: Option<String>,
+}
+
 // Returns the url that the user needs to call
 // in order to get an authorisation code
-pub(crate) async fn auth_client_string(
+pub(crate) async fn auth_client_link(
+    Query(params): Query<AuthClientLinkQueryParams>,
     Extension(store): Extension<SharedState>,
     Extension(siwe_client): Extension<SiweOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
@@ -136,12 +145,30 @@ pub(crate) async fn auth_client_string(
 
     let csrf_token = CsrfToken::new_random();
 
-    let (auth_url, csrf_token) = siwe_client
-        .authorize_url(|| csrf_token)
-        .add_scope(Scope::new("openid".to_string()))
-        .url();
+    let redirect_uri = params
+        .redirect_to
+        .and_then(|uri| RedirectUrl::new(uri).ok());
 
-    let (gh_url, csrf_token) = gh_client.client.authorize_url(|| csrf_token).url();
+    let auth_request = siwe_client
+        .authorize_url(|| csrf_token)
+        .add_scope(Scope::new("openid".to_string()));
+
+    let redirected_auth_request = if let Some(redirect) = &redirect_uri {
+        auth_request.set_redirect_uri(Cow::Borrowed(redirect))
+    } else {
+        auth_request
+    };
+
+    let (auth_url, csrf_token) = redirected_auth_request.url();
+
+    let gh_auth_request = gh_client.client.authorize_url(|| csrf_token);
+    let redirected_gh_auth_request = if let Some(redirect) = &redirect_uri {
+        gh_auth_request.set_redirect_uri(Cow::Borrowed(redirect))
+    } else {
+        gh_auth_request
+    };
+
+    let (gh_url, csrf_token) = redirected_gh_auth_request.url();
 
     // Store CSRF token
     // TODO These should be cleaned periodically
