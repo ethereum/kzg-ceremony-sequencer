@@ -5,7 +5,7 @@ use crate::{api::v1::contribute::UpdateProofJson, keys::KEYS};
 use serde::{Deserialize, Serialize};
 use small_powers_of_tau::sdk::NUM_CEREMONIES;
 
-// Receipt for contributor that coordinator has
+// Receipt for contributor that sequencer has
 // included their contribution
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Receipt {
@@ -25,7 +25,7 @@ impl Receipt {
     }
 }
 
-// This is the JWT token that the coordinator will hand out to contributors
+// This is the JWT token that the sequencer will hand out to contributors
 // after they have authenticated through oAUTH
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct IdToken {
