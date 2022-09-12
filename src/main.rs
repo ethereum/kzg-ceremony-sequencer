@@ -1,36 +1,43 @@
-mod api;
-mod constants;
-mod jwt;
-mod keys;
-mod sessions;
-
-use crate::api::v1::{
-    auth::{auth_client_string, authorised},
-    contribute::contribute,
-    info::{current_state, jwt_info, status},
-    slot::slot_join,
-};
-use axum::{
-    extract::Extension,
-    response::Html,
-    routing::{get, post},
-    Router,
-};
-use constants::{
-    LOBBY_CHECKIN_DEADLINE, LOBBY_FLUSH_INTERVAL, OAUTH_AUTH_URL, OAUTH_REDIRECT_URL,
-    OAUTH_TOKEN_URL,
-};
-use jwt::Receipt;
-use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
-use sessions::{SessionId, SessionInfo};
-use small_powers_of_tau::sdk::Transcript;
+use std::ops::Deref;
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use axum::{
+    extract::Extension,
+    response::Html,
+    routing::{get, post},
+    Router,
+};
+use chrono::{DateTime, FixedOffset};
+use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use small_powers_of_tau::sdk::Transcript;
 use tokio::{sync::RwLock, time::Interval};
+
+use constants::{LOBBY_CHECKIN_DEADLINE, LOBBY_FLUSH_INTERVAL};
+use jwt::Receipt;
+use sessions::{SessionId, SessionInfo};
+
+use crate::api::v1::auth::{github_callback, siwe_callback};
+use crate::api::v1::{
+    auth::auth_client_link,
+    contribute::contribute,
+    info::{current_state, jwt_info, status},
+    slot::slot_join,
+};
+use crate::constants::{
+    GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL, SIWE_OAUTH_AUTH_URL,
+    SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
+};
+
+mod api;
+mod constants;
+mod jwt;
+mod keys;
+mod sessions;
 
 pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
@@ -47,19 +54,21 @@ async fn main() {
     let interval = tokio::time::interval(Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64));
     tokio::spawn(clear_lobby_on_interval(shared_state_clone, interval));
 
-    let oauth_client = oauth_client();
-
     let app = Router::new()
         .route("/hello_world", get(hello_world))
-        .route("/auth/request_link", get(auth_client_string))
-        .route("/auth/authorised", get(authorised))
+        .route("/auth/request_link", get(auth_client_link))
+        .route("/auth/callback/github", get(github_callback))
+        .route("/auth/callback/siwe", get(siwe_callback))
         .route("/slot/join", post(slot_join))
         .route("/contribute", post(contribute))
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
         .layer(Extension(shared_state))
-        .layer(Extension(oauth_client))
+        .layer(Extension(siwe_oauth_client()))
+        .layer(Extension(github_oauth_client()))
+        .layer(Extension(reqwest::Client::new()))
+        .layer(Extension(AppConfig::default()))
         .layer(Extension(transcript));
 
     let addr = "[::]:3000".parse().unwrap();
@@ -70,25 +79,94 @@ async fn main() {
         .unwrap();
 }
 
-fn oauth_client() -> BasicClient {
-    let client_id = env::var("CLIENT_ID").expect("Missing CLIENT_ID!");
-    let client_secret = env::var("CLIENT_SECRET").expect("Missing CLIENT_SECRET!");
+#[derive(Clone)]
+struct SiweOAuthClient {
+    client: BasicClient,
+}
 
-    let redirect_url = env::var("REDIRECT_URL").unwrap_or_else(|_| OAUTH_REDIRECT_URL.to_string());
-    let auth_url = env::var("AUTH_URL").unwrap_or_else(|_| OAUTH_AUTH_URL.to_string());
-    let token_url = env::var("TOKEN_URL").unwrap_or_else(|_| OAUTH_TOKEN_URL.to_string());
+impl Deref for SiweOAuthClient {
+    type Target = BasicClient;
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
 
-    BasicClient::new(
-        ClientId::new(client_id),
-        Some(ClientSecret::new(client_secret)),
-        AuthUrl::new(auth_url).unwrap(),
-        Some(TokenUrl::new(token_url).unwrap()),
-    )
-    .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap())
+fn siwe_oauth_client() -> SiweOAuthClient {
+    let client_id = env::var("SIWE_CLIENT_ID").expect("Missing SIWE_CLIENT_ID!");
+    let client_secret = env::var("SIWE_CLIENT_SECRET").expect("Missing SIWE_CLIENT_SECRET!");
+
+    let redirect_url =
+        env::var("SIWE_REDIRECT_URL").unwrap_or_else(|_| SIWE_OAUTH_REDIRECT_URL.to_string());
+    let auth_url = env::var("SIWE_AUTH_URL").unwrap_or_else(|_| SIWE_OAUTH_AUTH_URL.to_string());
+    let token_url = env::var("SIWE_TOKEN_URL").unwrap_or_else(|_| SIWE_OAUTH_TOKEN_URL.to_string());
+
+    SiweOAuthClient {
+        client: BasicClient::new(
+            ClientId::new(client_id),
+            Some(ClientSecret::new(client_secret)),
+            AuthUrl::new(auth_url).unwrap(),
+            Some(TokenUrl::new(token_url).unwrap()),
+        )
+        .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap()),
+    }
+}
+
+#[derive(Clone)]
+struct GithubOAuthClient {
+    client: BasicClient,
+}
+
+impl Deref for GithubOAuthClient {
+    type Target = BasicClient;
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
+
+fn github_oauth_client() -> GithubOAuthClient {
+    let client_id = env::var("GITHUB_CLIENT_ID").expect("Missing GITHUB_CLIENT_ID!");
+    let client_secret = env::var("GITHUB_CLIENT_SECRET").expect("Missing GITHUB_CLIENT_SECRET!");
+    let redirect_url =
+        env::var("GITHUB_REDIRECT_URL").unwrap_or_else(|_| GITHUB_OAUTH_REDIRECT_URL.to_string());
+    let auth_url =
+        env::var("GITHUB_AUTH_URL").unwrap_or_else(|_| GITHUB_OAUTH_AUTH_URL.to_string());
+    let token_url =
+        env::var("GITHUB_TOKEN_URL").unwrap_or_else(|_| GITHUB_OAUTH_TOKEN_URL.to_string());
+    GithubOAuthClient {
+        client: BasicClient::new(
+            ClientId::new(client_id),
+            Some(ClientSecret::new(client_secret)),
+            AuthUrl::new(auth_url).unwrap(),
+            Some(TokenUrl::new(token_url).unwrap()),
+        )
+        .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap()),
+    }
 }
 
 async fn hello_world() -> Html<&'static str> {
     Html("<h1>Server is Running</h1>")
+}
+
+#[derive(Clone)]
+pub(crate) struct AppConfig {
+    github_max_creation_time: DateTime<FixedOffset>,
+    eth_check_nonce_at_block: String,
+    eth_min_nonce: i64,
+    eth_rpc_url: String,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        AppConfig {
+            github_max_creation_time: DateTime::parse_from_rfc3339(
+                constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
+            )
+            .unwrap(),
+            eth_check_nonce_at_block: constants::ETH_CHECK_NONCE_AT_BLOCK.to_string(),
+            eth_min_nonce: constants::ETH_MIN_NONCE,
+            eth_rpc_url: env::var("ETH_RPC_URL").expect("Missing ETH_RPC_URL"),
+        }
+    }
 }
 
 type IdTokenSub = String;
@@ -239,6 +317,6 @@ async fn flush_on_predicate() {
     for id in session_ids {
         let info = state.lobby.get(&id).unwrap();
         // We should just be left with `exp` numbers which are odd
-        assert!(info.token.exp % 2 == 1)
+        assert_eq!(info.token.exp % 2, 1)
     }
 }
