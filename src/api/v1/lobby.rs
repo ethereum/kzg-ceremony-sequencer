@@ -1,4 +1,4 @@
-use crate::{constants::COMPUTE_DEADLINE, SessionId, SharedState};
+use crate::{constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC}, SessionId, SharedState};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 #[derive(Debug)]
 pub enum TryContributeResponse {
     UnknownSessionId,
-    LobbyIsFull,
+    RateLimited,
+    AnotherContributionInProgress,
     Success,
 }
 
@@ -24,11 +25,18 @@ impl IntoResponse for TryContributeResponse {
                 (StatusCode::BAD_REQUEST, body)
             }
 
-            TryContributeResponse::LobbyIsFull => {
+            TryContributeResponse::RateLimited => {
                 let body = Json(json!({
-                    "error": "lobby is full",
+                    "error": "call came too early. rate limited",
                 }));
-                (StatusCode::SERVICE_UNAVAILABLE, body)
+                (StatusCode::BAD_REQUEST, body)
+            }
+
+            TryContributeResponse::AnotherContributionInProgress => {
+                let body = Json(json!({
+                    "message": "another contribution in progress",
+                }));
+                (StatusCode::OK, body)
             }
             TryContributeResponse::Success => {
                 let body = Json(json!({
@@ -57,20 +65,31 @@ pub(crate) async fn try_contribute(
                 return TryContributeResponse::UnknownSessionId;
             }
         };
+
+        let min_diff = Duration::from_secs(
+            (LOBBY_CHECKIN_FREQUENCY_SEC - LOBBY_CHECKIN_TOLERANCE_SEC) as u64
+        );
+    
+        let now = Instant::now();
+        if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
+            return TryContributeResponse::RateLimited;
+        }
+
+        info.is_first_ping_attempt = false;
         info.last_ping_time = Instant::now();
     }
 
-    // Check if the contribution lobby is taken is full
+    // Check if there is an existing contribution in progress
     if app_state.participant.is_some() {
-        return TryContributeResponse::LobbyIsFull;
+        return TryContributeResponse::AnotherContributionInProgress;
     }
 
     {
         // This user now reserves this spot. This also removes them from the lobby
-        app_state.reserve_contribution_spot(session_id.clone());
+        app_state.set_current_contributor(session_id.clone());
         // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
         tokio::spawn(async move {
-            clear_spot_on_interval(store_clone, session_id).await;
+            remove_participant_on_deadline(store_clone, session_id).await;
         });
     }
     return TryContributeResponse::Success;
@@ -78,11 +97,9 @@ pub(crate) async fn try_contribute(
 
 // Clears the contribution spot on `COMPUTE_DEADLINE` interval
 // We use the session_id to avoid needing a channel to check if
-pub(crate) async fn clear_spot_on_interval(state: SharedState, session_id: SessionId) {
-    // let mut interval = tokio::time::interval(Duration::from_secs(COMPUTE_DEADLINE as u64));
-    // interval.tick().await;
+pub(crate) async fn remove_participant_on_deadline(state: SharedState, session_id: SessionId) {
     tokio::time::sleep(Duration::from_secs(COMPUTE_DEADLINE as u64)).await;
-    // tokio::thread::sleep(Duration::from_secs(COMPUTE_DEADLINE as u64));
+
     {
         // Check if the contributor has already left the position
         if let Some((participant_session_id, _)) = &state.read().await.participant {
@@ -96,9 +113,10 @@ pub(crate) async fn clear_spot_on_interval(state: SharedState, session_id: Sessi
             return;
         }
     }
+
     println!(
         "User with session id {} took too long to contribute",
         &session_id.to_string()
     );
-    state.write().await.clear_contribution_spot();
+    state.write().await.clear_current_contributor();
 }

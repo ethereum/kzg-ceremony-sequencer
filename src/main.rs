@@ -17,8 +17,8 @@ use axum::{
     Router,
 };
 use constants::{
-    LOBBY_CHECKIN_DEADLINE, LOBBY_FLUSH_INTERVAL, OAUTH_AUTH_URL, OAUTH_REDIRECT_URL,
-    OAUTH_TOKEN_URL,
+    LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
+    OAUTH_AUTH_URL, OAUTH_REDIRECT_URL, OAUTH_TOKEN_URL,
 };
 use jwt::Receipt;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
@@ -129,13 +129,13 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
-    pub fn clear_contribution_spot(&mut self) {
+    pub fn clear_current_contributor(&mut self) {
         // Note: when reserving a contribution spot
         // we remove the user from the lobby
         // So simply setting this to None, will forget them
         self.participant = None;
     }
-    pub fn reserve_contribution_spot(&mut self, session_id: SessionId) {
+    pub fn set_current_contributor(&mut self, session_id: SessionId) {
         let session_info = self.lobby.remove(&session_id).unwrap();
 
         self.participant = Some((session_id, session_info));
@@ -143,6 +143,9 @@ impl AppState {
 }
 
 pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
+    let max_diff = Duration::from_secs(
+        (LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64
+    );
     loop {
         interval.tick().await;
 
@@ -150,7 +153,7 @@ pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: In
         // Predicate that returns true whenever users go over the ping deadline
         let predicate = |session_info: &SessionInfo| -> bool {
             let time_diff = now - session_info.last_ping_time;
-            time_diff > Duration::from_secs(LOBBY_CHECKIN_DEADLINE as u64)
+            time_diff > max_diff
         };
 
         let clone = state.clone();
@@ -218,6 +221,7 @@ async fn flush_on_predicate() {
             let session_info = SessionInfo {
                 token: test_jwt(i as u64),
                 last_ping_time: Instant::now(),
+                is_first_ping_attempt: true,
             };
 
             state.lobby.insert(id, session_info);

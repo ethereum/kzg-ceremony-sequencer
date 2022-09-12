@@ -274,6 +274,7 @@ pub(crate) async fn authorised(
         SessionInfo {
             token: id_token,
             last_ping_time: Instant::now(),
+            is_first_ping_attempt: true,
         },
     );
 
