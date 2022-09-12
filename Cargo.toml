@@ -9,6 +9,7 @@ edition = "2021"
 uuid = { version = "1.1.2", features = ["serde", "v4"] }
 axum = { version = "0.5.15", features = ["headers"] }
 axum-extra = { version = "0.3.7", features = ["erased-json"] }
+chrono = "0.4"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full", "test-util"] }
