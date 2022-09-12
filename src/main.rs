@@ -4,6 +4,9 @@ mod jwt;
 mod keys;
 mod sessions;
 
+#[cfg(test)]
+mod test_util;
+
 use crate::api::v1::{
     auth::{auth_client_string, authorised},
     contribute::contribute,
@@ -28,9 +31,9 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
-use tokio::{sync::RwLock, time::Interval};
+use tokio::{sync::RwLock, time::Interval, time::Instant};
 
 pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
@@ -189,6 +192,8 @@ async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> boo
 
 #[tokio::test]
 async fn flush_on_predicate() {
+    use crate::test_util::create_test_session_info;
+
     // We want to test that the clear_lobby_on_interval function works as expected.
     //
     // It uses time which can get a bit messy to test correctly
@@ -206,23 +211,9 @@ async fn flush_on_predicate() {
     {
         let mut state = arc_state.write().await;
 
-        fn test_jwt(exp: u64) -> jwt::IdToken {
-            jwt::IdToken {
-                sub: String::from("foo"),
-                nickname: String::from("foo"),
-                provider: String::from("foo"),
-                exp,
-            }
-        }
-
         for i in 0..to_add {
             let id = SessionId::new();
-
-            let session_info = SessionInfo {
-                token: test_jwt(i as u64),
-                last_ping_time: Instant::now(),
-                is_first_ping_attempt: true,
-            };
+            let session_info = create_test_session_info(i as u64);
 
             state.lobby.insert(id, session_info);
         }

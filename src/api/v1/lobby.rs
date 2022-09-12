@@ -5,7 +5,7 @@ use axum::{
 };
 use http::StatusCode;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use tokio::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub enum TryContributeResponse {
@@ -69,14 +69,15 @@ pub(crate) async fn try_contribute(
         let min_diff = Duration::from_secs(
             (LOBBY_CHECKIN_FREQUENCY_SEC - LOBBY_CHECKIN_TOLERANCE_SEC) as u64
         );
-    
+
+
         let now = Instant::now();
         if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
             return TryContributeResponse::RateLimited;
         }
 
         info.is_first_ping_attempt = false;
-        info.last_ping_time = Instant::now();
+        info.last_ping_time = now;
     }
 
     // Check if there is an existing contribution in progress
@@ -119,4 +120,54 @@ pub(crate) async fn remove_participant_on_deadline(state: SharedState, session_i
         &session_id.to_string()
     );
     state.write().await.clear_current_contributor();
+}
+
+#[tokio::test]
+async fn lobby_try_contribute_test() {
+    use crate::test_util::create_test_session_info;
+
+    // manually control time in tests
+    tokio::time::pause();
+
+    let shared_state = SharedState::default();
+
+    let session_id = SessionId::new();
+    let other_session_id = SessionId::new();
+
+    // no users in lobby
+    let unknown_session_response = try_contribute(session_id.clone(), Extension(shared_state.clone())).await;
+    assert!(matches!(unknown_session_response, TryContributeResponse::UnknownSessionId));
+
+    // add two participants to lobby
+    {
+        let mut state = shared_state.write().await;
+        state.lobby.insert(session_id.clone(), create_test_session_info(100));
+        state.lobby.insert(other_session_id.clone(), create_test_session_info(100));
+    }
+
+    // "other participant" is contributing
+    try_contribute(other_session_id.clone(), Extension(shared_state.clone())).await;
+    let contribution_in_progress_response = try_contribute(session_id.clone(), Extension(shared_state.clone())).await;
+    assert!(matches!(contribution_in_progress_response, TryContributeResponse::AnotherContributionInProgress));
+
+    // call the endpoint too soon - rate limited, other participant computing
+    tokio::time::advance(Duration::from_secs(5)).await;
+    let too_soon_response = try_contribute(session_id.clone(), Extension(shared_state.clone())).await;
+    assert!(matches!(too_soon_response, TryContributeResponse::RateLimited));
+
+    // "other participant" finished contributing
+    {
+        let mut state = shared_state.write().await;
+        state.participant = None;
+    }
+
+    // call the endpoint too soon - rate limited, no one computing
+    tokio::time::advance(Duration::from_secs(5)).await;
+    let too_soon_response = try_contribute(session_id.clone(), Extension(shared_state.clone())).await;
+    assert!(matches!(too_soon_response, TryContributeResponse::RateLimited));
+    
+    // wait enough time to be able to contribute
+    tokio::time::advance(Duration::from_secs(19)).await;
+    let success_response = try_contribute(session_id.clone(), Extension(shared_state.clone())).await;
+    assert!(matches!(success_response, TryContributeResponse::Success));
 }

@@ -6,7 +6,7 @@ use axum::{
 };
 use headers::{authorization::Bearer, Authorization};
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Hash, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]

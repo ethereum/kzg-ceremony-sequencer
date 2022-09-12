@@ -11,7 +11,7 @@ use oauth2::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::time::Instant;
+use tokio::time::Instant;
 
 // These are the providers that are supported
 // via oauth
