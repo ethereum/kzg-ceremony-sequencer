@@ -8,29 +8,29 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
-pub enum SlotJoinResponse {
+pub enum TryContributeResponse {
     UnknownSessionId,
-    SlotIsFull,
+    LobbyIsFull,
     Success,
 }
 
-impl IntoResponse for SlotJoinResponse {
+impl IntoResponse for TryContributeResponse {
     fn into_response(self) -> Response {
         let (status, body) = match self {
-            SlotJoinResponse::UnknownSessionId => {
+            TryContributeResponse::UnknownSessionId => {
                 let body = Json(json!({
                     "error": "unknown session id",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
 
-            SlotJoinResponse::SlotIsFull => {
+            TryContributeResponse::LobbyIsFull => {
                 let body = Json(json!({
-                    "error": "slot is full",
+                    "error": "lobby is full",
                 }));
                 (StatusCode::SERVICE_UNAVAILABLE, body)
             }
-            SlotJoinResponse::Success => {
+            TryContributeResponse::Success => {
                 let body = Json(json!({
                     "success": "successfully reserved the contribution spot",
                 }));
@@ -42,10 +42,10 @@ impl IntoResponse for SlotJoinResponse {
     }
 }
 
-pub(crate) async fn slot_join(
+pub(crate) async fn try_contribute(
     session_id: SessionId,
     Extension(store): Extension<SharedState>,
-) -> SlotJoinResponse {
+) -> TryContributeResponse {
     let store_clone = store.clone();
     let app_state = &mut store.write().await;
 
@@ -54,15 +54,15 @@ pub(crate) async fn slot_join(
         let info = match app_state.lobby.get_mut(&session_id) {
             Some(info) => info,
             None => {
-                return SlotJoinResponse::UnknownSessionId;
+                return TryContributeResponse::UnknownSessionId;
             }
         };
         info.last_ping_time = Instant::now();
     }
 
-    // Check if the contribution slot is taken is full
+    // Check if the contribution lobby is taken is full
     if app_state.participant.is_some() {
-        return SlotJoinResponse::SlotIsFull;
+        return TryContributeResponse::LobbyIsFull;
     }
 
     {
@@ -73,7 +73,7 @@ pub(crate) async fn slot_join(
             clear_spot_on_interval(store_clone, session_id).await;
         });
     }
-    return SlotJoinResponse::Success;
+    return TryContributeResponse::Success;
 }
 
 // Clears the contribution spot on `COMPUTE_DEADLINE` interval

@@ -8,7 +8,7 @@ use crate::api::v1::{
     auth::{auth_client_string, authorised},
     contribute::contribute,
     info::{current_state, jwt_info, status},
-    slot::slot_join,
+    lobby::try_contribute,
 };
 use axum::{
     extract::Extension,
@@ -53,7 +53,7 @@ async fn main() {
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_string))
         .route("/auth/authorised", get(authorised))
-        .route("/slot/join", post(slot_join))
+        .route("/lobby/try_contribute", post(try_contribute))
         .route("/contribute", post(contribute))
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
