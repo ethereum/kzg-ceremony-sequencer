@@ -13,7 +13,7 @@ use oauth2::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
-use std::time::Instant;
+use tokio::time::Instant;
 
 // These are the providers that are supported
 // via oauth
@@ -396,6 +396,7 @@ async fn post_authenticate(
         SessionInfo {
             token: id_token,
             last_ping_time: Instant::now(),
+            is_first_ping_attempt: true,
         },
     );
 

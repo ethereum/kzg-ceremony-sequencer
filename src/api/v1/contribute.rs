@@ -93,7 +93,7 @@ pub(crate) async fn contribute(
     let mut transcript = shared_transcript.write().await;
 
     if !check_transition(&transcript, &payload.state, payload.witness.clone()) {
-        app_state.clear_contribution_spot();
+        app_state.clear_current_contributor();
 
         return ContributeResponse::InvalidContribution;
     }
@@ -130,7 +130,7 @@ pub(crate) async fn contribute(
     app_state.num_contributions += 1;
 
     // Remove this person from the contribution spot
-    app_state.clear_contribution_spot();
+    app_state.clear_current_contributor();
 
     ContributeResponse::Receipt(encoded_receipt_token)
 }
