@@ -1,7 +1,7 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
-    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient,
+    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient, storage::{PersistentStorage, StorageError},
 };
 use axum::response::Response;
 use axum::{extract::Query, response::IntoResponse, Extension, Json};
@@ -40,6 +40,7 @@ pub(crate) enum AuthError {
     FetchUserDataError,
     CouldNotExtractUserData,
     UserCreatedAfterDeadline,
+    Storage(StorageError),
 }
 
 pub(crate) struct UserVerified {
@@ -115,6 +116,7 @@ impl IntoResponse for AuthError {
                 let body = Json(json!({ "error": "user account was created after the deadline"}));
                 (StatusCode::UNAUTHORIZED, body)
             }
+            AuthError::Storage(storage_error) => return storage_error.into_response()
         };
         (status, body).into_response()
     }
@@ -211,6 +213,7 @@ pub(crate) async fn github_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
+    Extension(storage): Extension<PersistentStorage>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
 ) -> Result<UserVerified, AuthError> {
@@ -241,7 +244,7 @@ pub(crate) async fn github_callback(
         uid: format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
-    post_authenticate(store, user, AuthProvider::Github).await
+    post_authenticate(store, storage, user, AuthProvider::Github).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -263,6 +266,7 @@ pub(crate) async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
+    Extension(storage): Extension<PersistentStorage>,
     Extension(oauth_client): Extension<SiweOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
 ) -> Result<UserVerified, AuthError> {
@@ -309,7 +313,7 @@ pub(crate) async fn siwe_callback(
         nickname: siwe_user.preferred_username,
     };
 
-    post_authenticate(store, user_data, AuthProvider::Ethereum).await
+    post_authenticate(store, storage, user_data, AuthProvider::Ethereum).await
 }
 
 async fn get_tx_count(
@@ -350,19 +354,15 @@ async fn verify_csrf(payload: &AuthPayload, store: &SharedState) -> Result<(), A
 
 async fn post_authenticate(
     store: SharedState,
+    storage: PersistentStorage,
     user_data: AuthenticatedUser,
     auth_provider: AuthProvider,
 ) -> Result<UserVerified, AuthError> {
     // Check if they have already contributed
-    {
-        let app_state = store.read().await;
-        if app_state
-            .finished_contribution
-            .get(&user_data.uid)
-            .is_some()
-        {
-            return Err(AuthError::UserAlreadyContributed);
-        }
+    match storage.has_contributed(&user_data.uid).await {
+        Err(error) => return Err(AuthError::Storage(error)),
+        Ok(true) => return Err(AuthError::UserAlreadyContributed),
+        Ok(false) => ()
     }
 
     let mut app_state = store.write().await;
