@@ -93,8 +93,12 @@ pub(crate) async fn contribute(
     let mut transcript = shared_transcript.write().await;
 
     if !check_transition(&transcript, &payload.state, payload.witness.clone()) {
+        let uid = session_info.token.unique_identifier().to_owned();
         app_state.clear_current_contributor();
 
+        drop(app_state); // Release AppState lock
+        storage.expire_contribution(&uid).await;
+    
         return ContributeResponse::InvalidContribution;
     }
 
@@ -104,6 +108,10 @@ pub(crate) async fn contribute(
             *transcript = new_transcript;
         }
         None => {
+            let uid = session_info.token.unique_identifier().to_owned();
+            drop(app_state); // Release AppState lock
+            storage.expire_contribution(&uid).await;
+    
             return ContributeResponse::TranscriptDecodeError;
         }
     }
@@ -119,7 +127,13 @@ pub(crate) async fn contribute(
     };
     let encoded_receipt_token = match receipt.encode() {
         Ok(encoded_token) => encoded_token,
-        Err(err) => return ContributeResponse::Auth(err),
+        Err(err) => {
+            let uid = session_info.token.unique_identifier().to_owned();
+            drop(app_state); // Release AppState lock
+            storage.expire_contribution(&uid).await;
+
+            return ContributeResponse::Auth(err)
+        }
     };
     // Log the contributors unique social id
     // So if they use the same login again, they will
@@ -130,9 +144,7 @@ pub(crate) async fn contribute(
     // Remove this person from the contribution spot
     app_state.clear_current_contributor();
 
-    // Release AppState lock
-    drop(app_state);
-
+    drop(app_state); // Release AppState lock
     storage.finish_contribution(&uid).await;
 
     ContributeResponse::Receipt(encoded_receipt_token)
