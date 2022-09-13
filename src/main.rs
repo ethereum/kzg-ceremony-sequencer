@@ -177,9 +177,6 @@ impl Default for AppConfig {
 type IdTokenSub = String;
 type CsrfToken = String;
 
-// TODO This is currently in memory as its easier to test.
-// TODO We can add a trait to describe what we need adn make storage persistent
-// TODO we only need to Save
 #[derive(Default)]
 pub(crate) struct AppState {
     // Use can now be in the lobby and only those who are in

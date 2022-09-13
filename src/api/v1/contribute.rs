@@ -124,8 +124,6 @@ pub(crate) async fn contribute(
     // Log the contributors unique social id
     // So if they use the same login again, they will
     // not be able to participate
-    // TODO: we shouldn't do it while we keep the lock
-    // TODO: we should only update 'successful' field here
     app_state.receipts.push(receipt);
     app_state.num_contributions += 1;
 
