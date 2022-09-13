@@ -1,9 +1,14 @@
-## KZG Ceremony Rest API
+# KZG Ceremony Rest API
 
+This implements [KZG Ceremony Specification](https://github.com/ethereum/kzg-ceremony-specs).
 
-## Endpoints
+## Setup
 
-This implements all of the endpoints located [here](https://hackmd.io/vTOy8-XwSOO4ugLHTyA5pw) . Much of the rationale is also located in that file.
+### Database
+1. Run `cargo install sqlx-cli`
+2. Set `DATABASE_URL=sqlite:/path/to/sequencer.db`
+3. Run `sqlx database create`
+4. Migrations will be run automatically on server startup
 
 ## Requirements
 

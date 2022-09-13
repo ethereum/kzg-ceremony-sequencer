@@ -1,5 +1,6 @@
 use std::env;
 
+use chrono::Utc;
 use sqlx::{Sqlite, Pool, sqlite::SqlitePoolOptions, Executor, Row};
 
 pub enum StorageError {
@@ -11,7 +12,7 @@ pub struct PersistentStorage(Pool<Sqlite>);
 
 impl PersistentStorage {
     pub async fn has_contributed(&self, uid: &str) -> Result<bool, StorageError> {
-        let sql = "SELECT EXISTS(SELECT 1 FROM finished_contributors WHERE uid = ?1";
+        let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1";
         let result = self.0
             .fetch_one(sqlx::query(sql).bind(uid))
             .await
@@ -22,9 +23,25 @@ impl PersistentStorage {
     }
 
     pub async fn insert_contributor(&self, uid: &str) {
-        let sql = "INSERT INTO finished_contributors (uid, successful) VALUES (?1, ?2)";
+        let sql = "INSERT INTO contributors (uid, started_at) VALUES (?1, ?2)";
         self.0
-            .execute(sqlx::query(sql).bind(uid).bind(true))
+            .execute(sqlx::query(sql).bind(uid).bind(Utc::now()))
+            .await
+            .ok();
+    }
+
+    pub async fn finish_contribution(&self, uid: &str) {
+        let sql = "UPDATE contributors SET finished_at = ?1 WHERE uid = ?2";
+        self.0
+            .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
+            .await
+            .ok();
+    }
+
+    pub async fn expire_contribution(&self, uid: &str) {
+        let sql = "UPDATE contributors SET expired_at = ?1 WHERE uid = ?2";
+        self.0
+            .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
             .await
             .ok();
     }
@@ -36,6 +53,18 @@ pub async fn persistent_storage_client() -> PersistentStorage {
         .connect(&url)
         .await
         .expect("Unable to connect to DATABASE_URL");
+
+    sqlx::migrate!().run(&db_pool).await.unwrap();
+
+    PersistentStorage(db_pool)
+}
+
+#[cfg(test)]
+pub async fn test_storage_client() -> PersistentStorage {
+    let db_pool = SqlitePoolOptions::new()
+        .connect("sqlite://:memory:")
+        .await
+        .expect("Unable to connect to memory database");
 
     sqlx::migrate!().run(&db_pool).await.unwrap();
 

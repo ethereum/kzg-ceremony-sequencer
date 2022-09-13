@@ -112,6 +112,7 @@ pub(crate) async fn contribute(
     //
     // record this contribution and clean up the user
 
+    let uid = session_info.token.unique_identifier().to_owned();
     let receipt = Receipt {
         id_token: session_info.token.clone(),
         witness: payload.witness,
@@ -125,12 +126,16 @@ pub(crate) async fn contribute(
     // not be able to participate
     // TODO: we shouldn't do it while we keep the lock
     // TODO: we should only update 'successful' field here
-    storage.insert_contributor(receipt.id_token.unique_identifier()).await;
     app_state.receipts.push(receipt);
     app_state.num_contributions += 1;
 
     // Remove this person from the contribution spot
     app_state.clear_current_contributor();
+
+    // Release AppState lock
+    drop(app_state);
+
+    storage.finish_contribution(&uid).await;
 
     ContributeResponse::Receipt(encoded_receipt_token)
 }
