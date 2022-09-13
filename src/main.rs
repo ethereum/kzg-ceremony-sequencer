@@ -6,6 +6,7 @@
 #![allow(clippy::multiple_crate_versions)]
 #![allow(clippy::module_name_repetitions)]
 
+use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
@@ -52,18 +53,21 @@ use crate::{
     },
     keys::Keys,
 };
+use crate::data::transcript::{Contribution, Transcript};
+use crate::test_transcript::TestTranscript;
 
 mod api;
 mod constants;
+mod data;
 mod jwt;
 mod keys;
 mod sessions;
 mod storage;
-
 #[cfg(test)]
 mod test_util;
+mod test_transcript;
 
-pub type SharedTranscript = Arc<RwLock<Transcript>>;
+pub type SharedTranscript<T> = Arc<RwLock<T>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
@@ -88,7 +92,10 @@ async fn async_main(options: Options) -> EyreResult<()> {
         .map_err(|_e| eyre!("KEYS was already set."))?;
 
     let transcript = SharedTranscript::default();
+
     let shared_state = SharedState::default();
+
+    let transcript = SharedTranscript::<TestTranscript>::default();
 
     let shared_state_clone = shared_state.clone();
 
@@ -104,7 +111,7 @@ async fn async_main(options: Options) -> EyreResult<()> {
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/siwe", get(siwe_callback))
         .route("/lobby/try_contribute", post(try_contribute))
-        .route("/contribute", post(contribute))
+        .route("/contribute", post(contribute::<TestTranscript>))
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
@@ -201,8 +208,9 @@ async fn hello_world() -> Html<&'static str> {
 pub struct AppConfig {
     github_max_creation_time: DateTime<FixedOffset>,
     eth_check_nonce_at_block: String,
-    eth_min_nonce:            i64,
-    eth_rpc_url:              String,
+    eth_min_nonce: i64,
+    eth_rpc_url: String,
+    transcript_file: PathBuf,
 }
 
 impl Default for AppConfig {
@@ -215,6 +223,9 @@ impl Default for AppConfig {
             eth_check_nonce_at_block: constants::ETH_CHECK_NONCE_AT_BLOCK.to_string(),
             eth_min_nonce:            constants::ETH_MIN_NONCE,
             eth_rpc_url:              env::var("ETH_RPC_URL").expect("Missing ETH_RPC_URL"),
+            transcript_file: PathBuf::from(
+                env::var("TRANSCRIPT_FILE").unwrap_or_else(|_| "./transcript.json".to_string()),
+            ),
         }
     }
 }
@@ -242,7 +253,13 @@ pub struct AppState {
     // Only they are allowed to call /contribute
     participant: Option<(SessionId, SessionInfo)>,
 
-    receipts: Vec<Receipt>,
+    // List of all users who have finished contributing, we store them using the
+    // unique id, we attain from the social provider
+    // This is their `sub`
+    // TODO: we also need to save the blacklist of those
+    // TODO who went over three minutes
+    //
+    finished_contribution: BTreeSet<IdTokenSub>,
 }
 
 impl AppState {

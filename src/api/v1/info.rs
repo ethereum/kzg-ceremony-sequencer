@@ -1,7 +1,7 @@
 use crate::{
     constants::HISTORY_RECEIPTS_COUNT,
     keys::{Keys, KEYS},
-    SharedState, SharedTranscript,
+    AppConfig, SharedState, SharedTranscript,
 };
 use axum::{
     response::{IntoResponse, Response},
@@ -16,8 +16,6 @@ use small_powers_of_tau::sdk::TranscriptJSON;
 pub struct StatusResponse {
     lobby_size:        usize,
     num_contributions: usize,
-    // Receipts are returned in encoded format
-    receipts:          Vec<String>,
 }
 
 impl IntoResponse for StatusResponse {
@@ -33,18 +31,9 @@ pub async fn status(Extension(store): Extension<SharedState>) -> StatusResponse 
     let lobby_size = app_state.lobby.len();
     let num_contributions = app_state.num_contributions;
 
-    let receipts: Vec<_> = app_state
-        .receipts
-        .iter()
-        .rev()
-        .take(HISTORY_RECEIPTS_COUNT)
-        .map(|receipt| receipt.encode().unwrap())
-        .collect();
-
     StatusResponse {
         lobby_size,
         num_contributions,
-        receipts,
     }
 }
 
@@ -60,11 +49,12 @@ impl IntoResponse for CurrentStateResponse {
     }
 }
 
-pub async fn current_state(
-    Extension(transcript): Extension<SharedTranscript>,
+
+pub(crate) async fn current_state(
+    Extension(config): Extension<AppConfig>,
 ) -> CurrentStateResponse {
-    let app_state = transcript.read().await;
-    let transcript_json = TranscriptJSON::from(&*app_state);
+    // let app_state = transcript.read().await;
+    let transcript_json = todo!(); //TranscriptJSON::from(&*app_state);
     CurrentStateResponse {
         state: transcript_json,
     }
