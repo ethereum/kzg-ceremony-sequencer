@@ -1,5 +1,6 @@
 use crate::jwt::errors::JwtError;
 use crate::jwt::Receipt;
+use crate::storage::PersistentStorage;
 use crate::{SessionId, SharedState, SharedTranscript};
 use axum::{response::IntoResponse, Extension, Json};
 use http::StatusCode;
@@ -66,6 +67,7 @@ pub(crate) async fn contribute(
     session_id: SessionId,
     Json(payload): Json<ContributePayload>,
     Extension(store): Extension<SharedState>,
+    Extension(storage): Extension<PersistentStorage>,
     Extension(shared_transcript): Extension<SharedTranscript>,
 ) -> ContributeResponse {
     // 1. Check if this person should be contributing
@@ -121,9 +123,9 @@ pub(crate) async fn contribute(
     // Log the contributors unique social id
     // So if they use the same login again, they will
     // not be able to participate
-    app_state
-        .finished_contribution
-        .insert(receipt.id_token.unique_identifier().to_owned());
+    // TODO: we shouldn't do it while we keep the lock
+    // TODO: we should only update 'successful' field here
+    storage.insert_contributor(receipt.id_token.unique_identifier()).await;
     app_state.receipts.push(receipt);
     app_state.num_contributions += 1;
 

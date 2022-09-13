@@ -15,6 +15,7 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use small_powers_of_tau::sdk::Transcript;
+use storage::persistent_storage_client;
 use tokio::{sync::RwLock, time::Interval};
 
 use constants::{LOBBY_CHECKIN_DEADLINE, LOBBY_FLUSH_INTERVAL};
@@ -38,6 +39,7 @@ mod constants;
 mod jwt;
 mod keys;
 mod sessions;
+mod storage;
 
 pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
@@ -68,6 +70,7 @@ async fn main() {
         .layer(Extension(siwe_oauth_client()))
         .layer(Extension(github_oauth_client()))
         .layer(Extension(reqwest::Client::new()))
+        .layer(Extension(persistent_storage_client().await))
         .layer(Extension(AppConfig::default()))
         .layer(Extension(transcript));
 
@@ -196,14 +199,6 @@ pub(crate) struct AppState {
     participant: Option<(SessionId, SessionInfo)>,
 
     receipts: Vec<Receipt>,
-
-    // List of all users who have finished contributing, we store them using the
-    // unique id, we attain from the social provider
-    // This is their `sub`
-    // TODO: we also need to save the blacklist of those
-    // TODO who went over three minutes
-    //
-    finished_contribution: BTreeSet<IdTokenSub>,
 }
 
 impl AppState {
