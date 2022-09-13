@@ -2,11 +2,17 @@
 // a contributor has to complete their contribution
 pub const COMPUTE_DEADLINE: usize = 180;
 
-// In seconds, This is the amount of time that
-// a contributor can go without pinging the sequencer
-// while in the lobby. Contributors will be kicked
-// from the lobby if they exceed this deadline.
-pub const LOBBY_CHECKIN_DEADLINE: usize = 30;
+// In seconds, This is the expected amout of time
+// between calls to /lobby/try_contribute 
+// Contributors will be kicked from the lobby if they
+// exceed this deadline, and rate limited if they
+// call too often
+pub const LOBBY_CHECKIN_FREQUENCY_SEC: usize = 30;
+
+// This is the allowed deviation from the FREQUENCY
+// constant. (e.g FREQUENCY = 30, TOLERANCE = 2 means
+// participants MUST call every 28-32 seconds).  
+pub const LOBBY_CHECKIN_TOLERANCE_SEC: usize = 2;
 
 // This is the maximum amount of people that can be held in the
 // lobby. Users in the lobby are allowed to ping to contribute

@@ -6,7 +6,7 @@ use axum::{
 };
 use headers::{authorization::Bearer, Authorization};
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Hash, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -29,6 +29,9 @@ pub(crate) struct SessionInfo {
     pub(crate) token: IdToken,
     // Specifies the last time the user pinged
     pub(crate) last_ping_time: Instant,
+    // Indicates whether an early /lobby/try_contribute call is accepted.
+    // (only allowed right after authentication)
+    pub(crate) is_first_ping_attempt: bool,
 }
 
 #[async_trait]

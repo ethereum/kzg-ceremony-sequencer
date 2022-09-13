@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use axum::{
@@ -15,9 +15,7 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use small_powers_of_tau::sdk::Transcript;
-use tokio::{sync::RwLock, time::Interval};
-
-use constants::{LOBBY_CHECKIN_DEADLINE, LOBBY_FLUSH_INTERVAL};
+use tokio::{sync::RwLock, time::{Instant, Interval}};
 use jwt::Receipt;
 use sessions::{SessionId, SessionInfo};
 
@@ -26,10 +24,11 @@ use crate::api::v1::{
     auth::auth_client_link,
     contribute::contribute,
     info::{current_state, jwt_info, status},
-    slot::slot_join,
+    lobby::try_contribute,
 };
 use crate::constants::{
     GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL, SIWE_OAUTH_AUTH_URL,
+    LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
     SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
 };
 
@@ -38,6 +37,9 @@ mod constants;
 mod jwt;
 mod keys;
 mod sessions;
+
+#[cfg(test)]
+mod test_util;
 
 pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
@@ -59,7 +61,7 @@ async fn main() {
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/siwe", get(siwe_callback))
-        .route("/slot/join", post(slot_join))
+        .route("/lobby/try_contribute", post(try_contribute))
         .route("/contribute", post(contribute))
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
@@ -207,13 +209,13 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
-    pub fn clear_contribution_spot(&mut self) {
+    pub fn clear_current_contributor(&mut self) {
         // Note: when reserving a contribution spot
         // we remove the user from the lobby
         // So simply setting this to None, will forget them
         self.participant = None;
     }
-    pub fn reserve_contribution_spot(&mut self, session_id: SessionId) {
+    pub fn set_current_contributor(&mut self, session_id: SessionId) {
         let session_info = self.lobby.remove(&session_id).unwrap();
 
         self.participant = Some((session_id, session_info));
@@ -221,6 +223,9 @@ impl AppState {
 }
 
 pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
+    let max_diff = Duration::from_secs(
+        (LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64
+    );
     loop {
         interval.tick().await;
 
@@ -228,7 +233,7 @@ pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: In
         // Predicate that returns true whenever users go over the ping deadline
         let predicate = |session_info: &SessionInfo| -> bool {
             let time_diff = now - session_info.last_ping_time;
-            time_diff > Duration::from_secs(LOBBY_CHECKIN_DEADLINE as u64)
+            time_diff > max_diff
         };
 
         let clone = state.clone();
@@ -264,6 +269,8 @@ async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> boo
 
 #[tokio::test]
 async fn flush_on_predicate() {
+    use crate::test_util::create_test_session_info;
+
     // We want to test that the clear_lobby_on_interval function works as expected.
     //
     // It uses time which can get a bit messy to test correctly
@@ -281,23 +288,9 @@ async fn flush_on_predicate() {
     {
         let mut state = arc_state.write().await;
 
-        fn test_jwt(exp: u64) -> jwt::IdToken {
-            jwt::IdToken {
-                sub: String::from("foo"),
-                nickname: String::from("foo"),
-                provider: String::from("foo"),
-                exp,
-            }
-        }
-
         for i in 0..to_add {
             let id = SessionId::new();
-
-            let session_info = SessionInfo {
-                token: test_jwt(i as u64),
-                last_ping_time: Instant::now(),
-            };
-
+            let session_info = create_test_session_info(i as u64);
             state.lobby.insert(id, session_info);
         }
     }
