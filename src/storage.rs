@@ -1,10 +1,24 @@
 use std::env;
 
+use axum::{response::{IntoResponse, Response}, Json};
 use chrono::Utc;
+use http::StatusCode;
+use serde_json::json;
 use sqlx::{Sqlite, Pool, sqlite::SqlitePoolOptions, Executor, Row};
 
+#[derive(Debug)]
 pub enum StorageError {
     DatabaseError(sqlx::error::Error)
+}
+
+impl IntoResponse for StorageError {
+    fn into_response(self) -> Response {
+        let message = match self {
+            StorageError::DatabaseError(error) => error.to_string()
+        };
+        let body = Json(json!({ "error": message}));
+        (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
+    }
 }
 
 #[derive(Clone)]

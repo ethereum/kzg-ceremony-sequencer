@@ -1,7 +1,7 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
-    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient, storage::PersistentStorage,
+    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient, storage::{PersistentStorage, StorageError},
 };
 use axum::response::Response;
 use axum::{extract::Query, response::IntoResponse, Extension, Json};
@@ -40,7 +40,7 @@ pub(crate) enum AuthError {
     FetchUserDataError,
     CouldNotExtractUserData,
     UserCreatedAfterDeadline,
-    ServerError,
+    Storage(StorageError),
 }
 
 pub(crate) struct UserVerified {
@@ -116,10 +116,7 @@ impl IntoResponse for AuthError {
                 let body = Json(json!({ "error": "user account was created after the deadline"}));
                 (StatusCode::UNAUTHORIZED, body)
             }
-            AuthError::ServerError => {
-                let body = Json(json!({ "error": "internal server error"}));
-                (StatusCode::INTERNAL_SERVER_ERROR, body)
-            }
+            AuthError::Storage(storage_error) => return storage_error.into_response()
         };
         (status, body).into_response()
     }
@@ -363,7 +360,7 @@ async fn post_authenticate(
 ) -> Result<UserVerified, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
-        Err(_) => return Err(AuthError::ServerError),
+        Err(error) => return Err(AuthError::Storage(error)),
         Ok(true) => return Err(AuthError::UserAlreadyContributed),
         Ok(false) => ()
     }
