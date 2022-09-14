@@ -1,3 +1,7 @@
+#![doc = include_str!("../Readme.md")]
+#![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
+#![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
