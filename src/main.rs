@@ -5,6 +5,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     ops::Deref,
     sync::Arc,
     time::Duration,
@@ -14,12 +15,12 @@ use axum::{
     extract::Extension,
     response::Html,
     routing::{get, post},
-    Router,
+    Router, Server,
 };
 use chrono::{DateTime, FixedOffset};
 use clap::Parser;
-use cli_batteries::version;
-use eyre::Result as EyreResult;
+use cli_batteries::{await_shutdown, version};
+use eyre::{bail, ensure, Result as EyreResult};
 use jwt::Receipt;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
@@ -29,6 +30,9 @@ use tokio::{
     sync::RwLock,
     time::{Instant, Interval},
 };
+use tower_http::trace::TraceLayer;
+use tracing::{info, info_span};
+use url::{Host, Url};
 
 use crate::{
     api::v1::{
@@ -58,7 +62,11 @@ pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
 
 #[derive(Clone, Debug, PartialEq, Parser)]
-pub struct Options {}
+pub struct Options {
+    /// API Server url to bind
+    #[clap(long, env, default_value = "http://127.0.0.1:8080/")]
+    pub server: Url,
+}
 
 fn main() {
     cli_batteries::run(version!(crypto, small_powers_of_tau), async_main);
@@ -76,6 +84,7 @@ async fn async_main(options: Options) -> EyreResult<()> {
     tokio::spawn(clear_lobby_on_interval(shared_state_clone, interval));
 
     let app = Router::new()
+        .layer(TraceLayer::new_for_http())
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
@@ -93,11 +102,12 @@ async fn async_main(options: Options) -> EyreResult<()> {
         .layer(Extension(AppConfig::default()))
         .layer(Extension(transcript));
 
-    let addr = "[::]:3000".parse().unwrap();
-
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await?;
+    // Run the server
+    let (addr, prefix) = parse_url(&options.server)?;
+    let app = Router::new().nest(prefix, app);
+    let server = Server::try_bind(&addr)?.serve(app.into_make_service());
+    info!("Listening on http://{}{}", server.local_addr(), prefix);
+    server.with_graceful_shutdown(await_shutdown()).await?;
 
     Ok(())
 }
@@ -324,4 +334,22 @@ async fn flush_on_predicate() {
         // We should just be left with `exp` numbers which are odd
         assert_eq!(info.token.exp % 2, 1)
     }
+}
+
+fn parse_url(url: &Url) -> EyreResult<(SocketAddr, &str)> {
+    ensure!(
+        url.scheme() == "http",
+        "Only http:// is supported in {}",
+        url
+    );
+    let prefix = url.path();
+    let ip: IpAddr = match url.host() {
+        Some(Host::Ipv4(ip)) => ip.into(),
+        Some(Host::Ipv6(ip)) => ip.into(),
+        Some(_) => bail!("Cannot bind {}", url),
+        None => Ipv4Addr::LOCALHOST.into(),
+    };
+    let port = url.port().unwrap_or(8080);
+    let addr = SocketAddr::new(ip, port);
+    Ok((addr, prefix))
 }
