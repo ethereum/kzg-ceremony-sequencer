@@ -18,6 +18,7 @@ impl Receipt {
     pub fn encode(&self) -> Result<String, JwtError> {
         KEYS.encode(self).map_err(|_| JwtError::TokenCreation)
     }
+
     #[allow(unused)]
     pub fn decode(token: &str) -> Result<Self, JwtError> {
         let token_data = KEYS.decode(token).map_err(|_| JwtError::InvalidToken)?;
@@ -30,11 +31,11 @@ impl Receipt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct IdToken {
     pub(crate) sub: String,
-    pub nickname: String,
+    pub nickname:   String,
     // The provider whom the client used to login with
     // Example, Google, Ethereum, Facebook
-    pub provider: String,
-    pub exp: u64,
+    pub provider:   String,
+    pub exp:        u64,
 }
 
 impl IdToken {
@@ -49,6 +50,7 @@ impl IdToken {
     pub fn encode(&self) -> Result<String, JwtError> {
         KEYS.encode(self).map_err(|_| JwtError::TokenCreation)
     }
+
     #[allow(unused)]
     pub fn decode(token: &str) -> Result<Self, JwtError> {
         let token_data = KEYS.decode(token).map_err(|_| JwtError::InvalidToken)?;

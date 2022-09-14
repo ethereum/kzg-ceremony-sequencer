@@ -29,6 +29,7 @@ impl Keys {
     ) -> Result<String, jsonwebtoken::errors::Error> {
         encode(&Header::new(Keys::alg()), token, &self.encoding)
     }
+
     #[allow(unused)]
     pub(crate) fn decode<T: DeserializeOwned>(
         &self,
@@ -40,6 +41,7 @@ impl Keys {
     pub fn alg_str() -> &'static str {
         "PS256"
     }
+
     fn alg() -> Algorithm {
         Algorithm::from_str(Keys::alg_str()).expect("unknown algorithm")
     }

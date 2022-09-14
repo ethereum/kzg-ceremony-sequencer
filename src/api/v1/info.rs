@@ -14,10 +14,10 @@ use small_powers_of_tau::sdk::TranscriptJSON;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct StatusResponse {
-    lobby_size: usize,
+    lobby_size:        usize,
     num_contributions: usize,
     // Receipts are returned in encoded format
-    receipts: Vec<String>,
+    receipts:          Vec<String>,
 }
 
 impl IntoResponse for StatusResponse {
@@ -72,7 +72,7 @@ pub(crate) async fn current_state(
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JwtInfoResponse {
-    alg: &'static str,
+    alg:         &'static str,
     rsa_pem_key: String,
 }
 
@@ -87,7 +87,7 @@ pub(crate) async fn jwt_info() -> JwtInfoResponse {
     let rsa_public_key_pem_as_string = KEYS.decode_key_to_string();
 
     JwtInfoResponse {
-        alg: Keys::alg_str(),
+        alg:         Keys::alg_str(),
         rsa_pem_key: rsa_public_key_pem_as_string,
     }
 }

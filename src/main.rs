@@ -1,7 +1,7 @@
-use std::ops::Deref;
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
+    ops::Deref,
     sync::Arc,
     time::Duration,
 };
@@ -13,24 +13,28 @@ use axum::{
     Router,
 };
 use chrono::{DateTime, FixedOffset};
+use jwt::Receipt;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use sessions::{SessionId, SessionInfo};
 use small_powers_of_tau::sdk::Transcript;
 use storage::persistent_storage_client;
-use tokio::{sync::RwLock, time::{Instant, Interval}};
-use jwt::Receipt;
-use sessions::{SessionId, SessionInfo};
-
-use crate::api::v1::auth::{github_callback, siwe_callback};
-use crate::api::v1::{
-    auth::auth_client_link,
-    contribute::contribute,
-    info::{current_state, jwt_info, status},
-    lobby::try_contribute,
+use tokio::{
+    sync::RwLock,
+    time::{Instant, Interval},
 };
-use crate::constants::{
-    GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL, SIWE_OAUTH_AUTH_URL,
-    LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
-    SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
+
+use crate::{
+    api::v1::{
+        auth::{auth_client_link, github_callback, siwe_callback},
+        contribute::contribute,
+        info::{current_state, jwt_info, status},
+        lobby::try_contribute,
+    },
+    constants::{
+        GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL,
+        LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
+        SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
+    },
 };
 
 mod api;
@@ -53,8 +57,8 @@ async fn main() {
 
     let shared_state_clone = shared_state.clone();
 
-    // Spawn automatic queue flusher -- flushes those in the lobby whom have not pinged in a
-    // considerable amount of time
+    // Spawn automatic queue flusher -- flushes those in the lobby whom have not
+    // pinged in a considerable amount of time
     let interval = tokio::time::interval(Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64));
     tokio::spawn(clear_lobby_on_interval(shared_state_clone, interval));
 
@@ -91,6 +95,7 @@ struct SiweOAuthClient {
 
 impl Deref for SiweOAuthClient {
     type Target = BasicClient;
+
     fn deref(&self) -> &Self::Target {
         &self.client
     }
@@ -123,6 +128,7 @@ struct GithubOAuthClient {
 
 impl Deref for GithubOAuthClient {
     type Target = BasicClient;
+
     fn deref(&self) -> &Self::Target {
         &self.client
     }
@@ -156,8 +162,8 @@ async fn hello_world() -> Html<&'static str> {
 pub(crate) struct AppConfig {
     github_max_creation_time: DateTime<FixedOffset>,
     eth_check_nonce_at_block: String,
-    eth_min_nonce: i64,
-    eth_rpc_url: String,
+    eth_min_nonce:            i64,
+    eth_rpc_url:              String,
 }
 
 impl Default for AppConfig {
@@ -168,8 +174,8 @@ impl Default for AppConfig {
             )
             .unwrap(),
             eth_check_nonce_at_block: constants::ETH_CHECK_NONCE_AT_BLOCK.to_string(),
-            eth_min_nonce: constants::ETH_MIN_NONCE,
-            eth_rpc_url: env::var("ETH_RPC_URL").expect("Missing ETH_RPC_URL"),
+            eth_min_nonce:            constants::ETH_MIN_NONCE,
+            eth_rpc_url:              env::var("ETH_RPC_URL").expect("Missing ETH_RPC_URL"),
         }
     }
 }
@@ -207,6 +213,7 @@ impl AppState {
         // So simply setting this to None, will forget them
         self.participant = None;
     }
+
     pub fn set_current_contributor(&mut self, session_id: SessionId) {
         let session_info = self.lobby.remove(&session_id).unwrap();
 
@@ -215,9 +222,8 @@ impl AppState {
 }
 
 pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
-    let max_diff = Duration::from_secs(
-        (LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64
-    );
+    let max_diff =
+        Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
     loop {
         interval.tick().await;
 

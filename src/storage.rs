@@ -1,22 +1,25 @@
 use std::env;
 
-use axum::{response::{IntoResponse, Response}, Json};
+use axum::{
+    response::{IntoResponse, Response},
+    Json,
+};
 use chrono::Utc;
 use http::StatusCode;
 use serde_json::json;
-use sqlx::{Sqlite, Pool, sqlite::SqlitePoolOptions, Executor, Row};
+use sqlx::{sqlite::SqlitePoolOptions, Executor, Pool, Row, Sqlite};
 
 #[derive(Debug)]
 pub enum StorageError {
-    DatabaseError(sqlx::error::Error)
+    DatabaseError(sqlx::error::Error),
 }
 
 impl IntoResponse for StorageError {
     fn into_response(self) -> Response {
         let message = match self {
-            StorageError::DatabaseError(error) => error.to_string()
+            StorageError::DatabaseError(error) => error.to_string(),
         };
-        let body = Json(json!({ "error": message}));
+        let body = Json(json!({ "error": message }));
         (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
     }
 }
@@ -27,7 +30,8 @@ pub struct PersistentStorage(Pool<Sqlite>);
 impl PersistentStorage {
     pub async fn has_contributed(&self, uid: &str) -> Result<bool, StorageError> {
         let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1";
-        let result = self.0
+        let result = self
+            .0
             .fetch_one(sqlx::query(sql).bind(uid))
             .await
             .map(|row| row.get(0))

@@ -13,8 +13,8 @@ pub(crate) fn test_jwt(exp: u64) -> jwt::IdToken {
 
 pub(crate) fn create_test_session_info(exp: u64) -> SessionInfo {
     SessionInfo {
-        token: test_jwt(exp),
-        last_ping_time: Instant::now(),
+        token:                 test_jwt(exp),
+        last_ping_time:        Instant::now(),
         is_first_ping_attempt: true,
     }
 }

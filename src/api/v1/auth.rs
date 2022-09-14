@@ -1,10 +1,14 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
-    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient, storage::{PersistentStorage, StorageError},
+    storage::{PersistentStorage, StorageError},
+    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient,
 };
-use axum::response::Response;
-use axum::{extract::Query, response::IntoResponse, Extension, Json};
+use axum::{
+    extract::Query,
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
 use chrono::DateTime;
 use http::StatusCode;
 use oauth2::{
@@ -44,12 +48,12 @@ pub(crate) enum AuthError {
 }
 
 pub(crate) struct UserVerified {
-    id_token: String,
+    id_token:   String,
     session_id: String,
 }
 
 pub(crate) struct AuthUrl {
-    siwe_auth_url: String,
+    siwe_auth_url:   String,
     github_auth_url: String,
 }
 
@@ -116,7 +120,7 @@ impl IntoResponse for AuthError {
                 let body = Json(json!({ "error": "user account was created after the deadline"}));
                 (StatusCode::UNAUTHORIZED, body)
             }
-            AuthError::Storage(storage_error) => return storage_error.into_response()
+            AuthError::Storage(storage_error) => return storage_error.into_response(),
         };
         (status, body).into_response()
     }
@@ -181,7 +185,7 @@ pub(crate) async fn auth_client_link(
         .insert(csrf_token.secret().to_owned());
 
     Ok(AuthUrl {
-        siwe_auth_url: auth_url.to_string(),
+        siwe_auth_url:   auth_url.to_string(),
         github_auth_url: gh_url.to_string(),
     })
 }
@@ -193,19 +197,19 @@ pub(crate) async fn auth_client_link(
 // an identity provider
 #[derive(Debug, Deserialize)]
 pub(crate) struct AuthPayload {
-    code: String,
+    code:  String,
     state: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthenticatedUser {
-    uid: String,
+    uid:      String,
     nickname: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct GhUserInfo {
-    login: String,
+    login:      String,
     created_at: String,
 }
 
@@ -241,7 +245,7 @@ pub(crate) async fn github_callback(
         return Err(AuthError::UserCreatedAfterDeadline);
     }
     let user = AuthenticatedUser {
-        uid: format!("github | {}", gh_user_info.login),
+        uid:      format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
     post_authenticate(store, storage, user, AuthProvider::Github).await
@@ -249,7 +253,7 @@ pub(crate) async fn github_callback(
 
 #[derive(Debug, Deserialize)]
 struct SiweUserInfo {
-    sub: String,
+    sub:                String,
     preferred_username: String,
 }
 
@@ -260,8 +264,8 @@ struct SiweUserInfo {
 //
 // Now this is catchable by the client. They will clearly see that the sequencer
 // was malicious. What can happen is sequencer can claim that someone
-// participated when they did not. Is this Okay? Maybe that person can then just say
-// they did not
+// participated when they did not. Is this Okay? Maybe that person can then just
+// say they did not
 pub(crate) async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
@@ -309,7 +313,7 @@ pub(crate) async fn siwe_callback(
     }
 
     let user_data = AuthenticatedUser {
-        uid: format!("eth | {}", address),
+        uid:      format!("eth | {}", address),
         nickname: siwe_user.preferred_username,
     };
 
@@ -362,7 +366,7 @@ async fn post_authenticate(
     match storage.has_contributed(&user_data.uid).await {
         Err(error) => return Err(AuthError::Storage(error)),
         Ok(true) => return Err(AuthError::UserAlreadyContributed),
-        Ok(false) => ()
+        Ok(false) => (),
     }
 
     let mut app_state = store.write().await;
@@ -380,25 +384,22 @@ async fn post_authenticate(
     };
 
     let id_token = IdToken {
-        sub: user_data.uid,
+        sub:      user_data.uid,
         provider: auth_provider.to_string().to_owned(),
         nickname: user_data.nickname,
-        exp: u64::MAX,
+        exp:      u64::MAX,
     };
 
     let id_token_encoded = id_token.encode().map_err(AuthError::Jwt)?;
 
-    app_state.lobby.insert(
-        session_id.clone(),
-        SessionInfo {
-            token: id_token,
-            last_ping_time: Instant::now(),
-            is_first_ping_attempt: true,
-        },
-    );
+    app_state.lobby.insert(session_id.clone(), SessionInfo {
+        token:                 id_token,
+        last_ping_time:        Instant::now(),
+        is_first_ping_attempt: true,
+    });
 
     Ok(UserVerified {
-        id_token: id_token_encoded,
+        id_token:   id_token_encoded,
         session_id: session_id.to_string(),
     })
 }

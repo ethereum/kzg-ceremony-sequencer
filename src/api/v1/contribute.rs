@@ -1,16 +1,17 @@
-use crate::jwt::errors::JwtError;
-use crate::jwt::Receipt;
-use crate::storage::PersistentStorage;
-use crate::{SessionId, SharedState, SharedTranscript};
+use crate::{
+    jwt::{errors::JwtError, Receipt},
+    storage::PersistentStorage,
+    SessionId, SharedState, SharedTranscript,
+};
 use axum::{response::IntoResponse, Extension, Json};
 use http::StatusCode;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use small_powers_of_tau::sdk::{
-    transcript_verify_update, Transcript, TranscriptJSON, NUM_CEREMONIES,
+use small_powers_of_tau::{
+    sdk::{transcript_verify_update, Transcript, TranscriptJSON, NUM_CEREMONIES},
+    update_proof::UpdateProof,
 };
-use small_powers_of_tau::update_proof::UpdateProof;
 use std::convert::TryInto;
 
 // TODO: Move this into Small Powers of Tau repo
@@ -18,7 +19,7 @@ pub type UpdateProofJson = [String; 2];
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContributePayload {
-    state: TranscriptJSON,
+    state:   TranscriptJSON,
     witness: [UpdateProofJson; NUM_CEREMONIES],
 }
 
@@ -98,7 +99,7 @@ pub(crate) async fn contribute(
 
         drop(app_state); // Release AppState lock
         storage.expire_contribution(&uid).await;
-    
+
         return ContributeResponse::InvalidContribution;
     }
 
@@ -111,7 +112,7 @@ pub(crate) async fn contribute(
             let uid = session_info.token.unique_identifier().to_owned();
             drop(app_state); // Release AppState lock
             storage.expire_contribution(&uid).await;
-    
+
             return ContributeResponse::TranscriptDecodeError;
         }
     }
@@ -123,7 +124,7 @@ pub(crate) async fn contribute(
     let uid = session_info.token.unique_identifier().to_owned();
     let receipt = Receipt {
         id_token: session_info.token.clone(),
-        witness: payload.witness,
+        witness:  payload.witness,
     };
     let encoded_receipt_token = match receipt.encode() {
         Ok(encoded_token) => encoded_token,
@@ -132,7 +133,7 @@ pub(crate) async fn contribute(
             drop(app_state); // Release AppState lock
             storage.expire_contribution(&uid).await;
 
-            return ContributeResponse::Auth(err)
+            return ContributeResponse::Auth(err);
         }
     };
     // Log the contributors unique social id

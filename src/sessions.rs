@@ -26,9 +26,9 @@ impl SessionId {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SessionInfo {
-    pub(crate) token: IdToken,
+    pub(crate) token:                 IdToken,
     // Specifies the last time the user pinged
-    pub(crate) last_ping_time: Instant,
+    pub(crate) last_ping_time:        Instant,
     // Indicates whether an early /lobby/try_contribute call is accepted.
     // (only allowed right after authentication)
     pub(crate) is_first_ping_attempt: bool,
