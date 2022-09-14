@@ -1,8 +1,4 @@
-use crate::{
-    constants::HISTORY_RECEIPTS_COUNT,
-    keys::{Keys, KEYS},
-    SharedState, SharedTranscript,
-};
+use crate::{constants::HISTORY_RECEIPTS_COUNT, keys::Keys, SharedState, SharedTranscript};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
@@ -27,7 +23,7 @@ impl IntoResponse for StatusResponse {
     }
 }
 
-pub(crate) async fn status(Extension(store): Extension<SharedState>) -> StatusResponse {
+pub async fn status(Extension(store): Extension<SharedState>) -> StatusResponse {
     let app_state = store.read().await;
 
     let lobby_size = app_state.lobby.len();
@@ -60,7 +56,7 @@ impl IntoResponse for CurrentStateResponse {
     }
 }
 
-pub(crate) async fn current_state(
+pub async fn current_state(
     Extension(transcript): Extension<SharedTranscript>,
 ) -> CurrentStateResponse {
     let app_state = transcript.read().await;
@@ -83,8 +79,9 @@ impl IntoResponse for JwtInfoResponse {
 }
 
 // Returns the relevant JWT information
-pub(crate) async fn jwt_info() -> JwtInfoResponse {
-    let rsa_public_key_pem_as_string = KEYS.decode_key_to_string();
+#[allow(clippy::unused_async)] // Required for axum function signature
+pub async fn jwt_info() -> JwtInfoResponse {
+    let rsa_public_key_pem_as_string = Keys::decode_key_to_string();
 
     JwtInfoResponse {
         alg:         Keys::alg_str(),

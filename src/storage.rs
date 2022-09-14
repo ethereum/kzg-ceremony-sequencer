@@ -17,7 +17,7 @@ pub enum StorageError {
 impl IntoResponse for StorageError {
     fn into_response(self) -> Response {
         let message = match self {
-            StorageError::DatabaseError(error) => error.to_string(),
+            Self::DatabaseError(error) => error.to_string(),
         };
         let body = Json(json!({ "error": message }));
         (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
@@ -30,14 +30,11 @@ pub struct PersistentStorage(Pool<Sqlite>);
 impl PersistentStorage {
     pub async fn has_contributed(&self, uid: &str) -> Result<bool, StorageError> {
         let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1";
-        let result = self
-            .0
+        self.0
             .fetch_one(sqlx::query(sql).bind(uid))
             .await
             .map(|row| row.get(0))
-            .map_err(|e| StorageError::DatabaseError(e));
-
-        result
+            .map_err(StorageError::DatabaseError)
     }
 
     pub async fn insert_contributor(&self, uid: &str) {

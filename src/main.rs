@@ -1,6 +1,10 @@
 #![doc = include_str!("../Readme.md")]
 #![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
+// TODO: These lints
+#![allow(clippy::cargo_common_metadata)]
+#![allow(clippy::multiple_crate_versions)]
+#![allow(clippy::module_name_repetitions)]
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -31,7 +35,7 @@ use tokio::{
     time::{Instant, Interval},
 };
 use tower_http::trace::TraceLayer;
-use tracing::{info, info_span};
+use tracing::info;
 use url::{Host, Url};
 
 use crate::{
@@ -61,7 +65,7 @@ mod test_util;
 pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
 
-#[derive(Clone, Debug, PartialEq, Parser)]
+#[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
     /// API Server url to bind
     #[clap(long, env, default_value = "http://127.0.0.1:8080/")]
@@ -113,7 +117,7 @@ async fn async_main(options: Options) -> EyreResult<()> {
 }
 
 #[derive(Clone)]
-struct SiweOAuthClient {
+pub struct SiweOAuthClient {
     client: BasicClient,
 }
 
@@ -146,7 +150,7 @@ fn siwe_oauth_client() -> SiweOAuthClient {
 }
 
 #[derive(Clone)]
-struct GithubOAuthClient {
+pub struct GithubOAuthClient {
     client: BasicClient,
 }
 
@@ -178,12 +182,13 @@ fn github_oauth_client() -> GithubOAuthClient {
     }
 }
 
+#[allow(clippy::unused_async)] // Required for axum function signature
 async fn hello_world() -> Html<&'static str> {
     Html("<h1>Server is Running</h1>")
 }
 
 #[derive(Clone)]
-pub(crate) struct AppConfig {
+pub struct AppConfig {
     github_max_creation_time: DateTime<FixedOffset>,
     eth_check_nonce_at_block: String,
     eth_min_nonce:            i64,
@@ -192,7 +197,7 @@ pub(crate) struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        AppConfig {
+        Self {
             github_max_creation_time: DateTime::parse_from_rfc3339(
                 constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
             )
@@ -208,7 +213,7 @@ type IdTokenSub = String;
 type CsrfToken = String;
 
 #[derive(Default)]
-pub(crate) struct AppState {
+pub struct AppState {
     // Use can now be in the lobby and only those who are in
     // the lobby can ping to start participating
     lobby: BTreeMap<SessionId, SessionInfo>,
@@ -238,6 +243,9 @@ impl AppState {
         self.participant = None;
     }
 
+    /// # Panics
+    ///
+    /// Panics if the user is not in the lobby.
     pub fn set_current_contributor(&mut self, session_id: SessionId) {
         let session_info = self.lobby.remove(&session_id).unwrap();
 
@@ -245,7 +253,7 @@ impl AppState {
     }
 }
 
-pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
+pub async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
     let max_diff =
         Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
     loop {
@@ -259,11 +267,11 @@ pub(crate) async fn clear_lobby_on_interval(state: SharedState, mut interval: In
         };
 
         let clone = state.clone();
-        clear_lobby(clone, predicate).await
+        clear_lobby(clone, predicate).await;
     }
 }
 
-async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> bool) {
+async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> bool + Send) {
     let mut app_state = state.write().await;
 
     // Iterate top `MAX_LOBBY_SIZE` participants and check if they have
@@ -272,17 +280,16 @@ async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> boo
 
     for participant in participants {
         // Check if they are over their ping deadline
-        match app_state.lobby.get(&participant) {
-            Some(session_info) => {
-                if predicate(session_info) {
-                    sessions_to_kick.push(participant)
-                }
-            }
-            None => {
+        app_state.lobby.get(&participant).map_or_else(
+            ||
                 // This should not be possible
-                tracing::debug!("session id in queue but not a valid session")
-            }
-        }
+                tracing::debug!("session id in queue but not a valid session"),
+            |session_info| {
+                if predicate(session_info) {
+                    sessions_to_kick.push(participant);
+                }
+            },
+        );
     }
     for session_id in sessions_to_kick {
         app_state.lobby.remove(&session_id);
@@ -332,7 +339,7 @@ async fn flush_on_predicate() {
     for id in session_ids {
         let info = state.lobby.get(&id).unwrap();
         // We should just be left with `exp` numbers which are odd
-        assert_eq!(info.token.exp % 2, 1)
+        assert_eq!(info.token.exp % 2, 1);
     }
 }
 

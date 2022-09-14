@@ -29,13 +29,13 @@ impl Receipt {
 // This is the JWT token that the sequencer will hand out to contributors
 // after they have authenticated through oAUTH
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct IdToken {
-    pub(crate) sub: String,
-    pub nickname:   String,
+pub struct IdToken {
+    pub sub:      String,
+    pub nickname: String,
     // The provider whom the client used to login with
     // Example, Google, Ethereum, Facebook
-    pub provider:   String,
-    pub exp:        u64,
+    pub provider: String,
+    pub exp:      u64,
 }
 
 impl IdToken {

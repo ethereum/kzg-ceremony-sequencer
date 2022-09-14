@@ -13,6 +13,7 @@ use small_powers_of_tau::sdk::TranscriptJSON;
 use tokio::time::{Duration, Instant};
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // TODO: Discuss this
 pub enum TryContributeResponse {
     UnknownSessionId,
     RateLimited,
@@ -23,28 +24,28 @@ pub enum TryContributeResponse {
 impl IntoResponse for TryContributeResponse {
     fn into_response(self) -> Response {
         let (status, body) = match self {
-            TryContributeResponse::UnknownSessionId => {
+            Self::UnknownSessionId => {
                 let body = Json(json!({
                     "error": "unknown session id",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
 
-            TryContributeResponse::RateLimited => {
+            Self::RateLimited => {
                 let body = Json(json!({
                     "error": "call came too early. rate limited",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
 
-            TryContributeResponse::AnotherContributionInProgress => {
+            Self::AnotherContributionInProgress => {
                 let body = Json(json!({
                     "message": "another contribution in progress",
                 }));
                 (StatusCode::OK, body)
             }
 
-            TryContributeResponse::Success(transcript) => {
+            Self::Success(transcript) => {
                 let body = Json(json!({
                     "state": transcript,
                 }));
@@ -56,7 +57,7 @@ impl IntoResponse for TryContributeResponse {
     }
 }
 
-pub(crate) async fn try_contribute(
+pub async fn try_contribute(
     session_id: SessionId,
     Extension(store): Extension<SharedState>,
     Extension(storage): Extension<PersistentStorage>,
@@ -111,12 +112,12 @@ pub(crate) async fn try_contribute(
     let transcript = transcript.read().await;
     let transcript_json = TranscriptJSON::from(&*transcript);
 
-    return TryContributeResponse::Success(transcript_json);
+    TryContributeResponse::Success(transcript_json)
 }
 
 // Clears the contribution spot on `COMPUTE_DEADLINE` interval
 // We use the session_id to avoid needing a channel to check if
-pub(crate) async fn remove_participant_on_deadline(
+pub async fn remove_participant_on_deadline(
     state: SharedState,
     storage: PersistentStorage,
     session_id: SessionId,

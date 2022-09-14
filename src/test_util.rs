@@ -2,7 +2,7 @@ use tokio::time::Instant;
 
 use crate::{jwt, sessions::SessionInfo};
 
-pub(crate) fn test_jwt(exp: u64) -> jwt::IdToken {
+pub fn test_jwt(exp: u64) -> jwt::IdToken {
     jwt::IdToken {
         sub: String::from("foo"),
         nickname: String::from("foo"),
@@ -11,7 +11,7 @@ pub(crate) fn test_jwt(exp: u64) -> jwt::IdToken {
     }
 }
 
-pub(crate) fn create_test_session_info(exp: u64) -> SessionInfo {
+pub fn create_test_session_info(exp: u64) -> SessionInfo {
     SessionInfo {
         token:                 test_jwt(exp),
         last_ping_time:        Instant::now(),

@@ -6,9 +6,9 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::str::FromStr;
 
 // Keys needed by the sequencer to attest to JWT claims
-pub(crate) static KEYS: Lazy<Keys> = Lazy::new(|| Keys::new());
+pub static KEYS: Lazy<Keys> = Lazy::new(Keys::new);
 
-pub(crate) struct Keys {
+pub struct Keys {
     encoding: EncodingKey,
     decoding: DecodingKey,
 }
@@ -23,30 +23,27 @@ impl Keys {
         }
     }
 
-    pub(crate) fn encode<T: Serialize>(
-        &self,
-        token: &T,
-    ) -> Result<String, jsonwebtoken::errors::Error> {
-        encode(&Header::new(Keys::alg()), token, &self.encoding)
+    pub fn encode<T: Serialize>(&self, token: &T) -> Result<String, jsonwebtoken::errors::Error> {
+        encode(&Header::new(Self::alg()), token, &self.encoding)
     }
 
     #[allow(unused)]
-    pub(crate) fn decode<T: DeserializeOwned>(
+    pub fn decode<T: DeserializeOwned>(
         &self,
         token: &str,
     ) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
-        decode::<T>(token, &self.decoding, &Validation::new(Keys::alg()))
+        decode::<T>(token, &self.decoding, &Validation::new(Self::alg()))
     }
 
-    pub fn alg_str() -> &'static str {
+    pub const fn alg_str() -> &'static str {
         "PS256"
     }
 
     fn alg() -> Algorithm {
-        Algorithm::from_str(Keys::alg_str()).expect("unknown algorithm")
+        Algorithm::from_str(Self::alg_str()).expect("unknown algorithm")
     }
 
-    pub fn decode_key_to_string(&self) -> String {
+    pub fn decode_key_to_string() -> String {
         include_str!("../publickey.pem").to_owned()
     }
 }
@@ -65,7 +62,7 @@ mod tests {
 
         let t = Token {
             foo: String::from("hello world"),
-            exp: 200000000000,
+            exp: 200_000_000_000,
         };
 
         let keys = Keys::new();
@@ -73,6 +70,6 @@ mod tests {
         let token_data = keys.decode::<Token>(&encoded_token).unwrap();
         let got_token = token_data.claims;
 
-        assert_eq!(got_token, t)
+        assert_eq!(got_token, t);
     }
 }

@@ -16,7 +16,7 @@ use oauth2::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::borrow::Cow;
+use std::{borrow::Cow, ops::Deref};
 use tokio::time::Instant;
 
 // These are the providers that are supported
@@ -27,15 +27,15 @@ pub enum AuthProvider {
 }
 
 impl AuthProvider {
-    pub fn to_string(&self) -> &str {
+    pub const fn to_string(&self) -> &str {
         match self {
-            AuthProvider::Github => "Github",
-            AuthProvider::Ethereum => "Ethereum",
+            Self::Github => "Github",
+            Self::Ethereum => "Ethereum",
         }
     }
 }
 
-pub(crate) enum AuthError {
+pub enum AuthError {
     LobbyIsFull,
     UserAlreadyContributed,
     InvalidCsrf,
@@ -47,12 +47,12 @@ pub(crate) enum AuthError {
     Storage(StorageError),
 }
 
-pub(crate) struct UserVerified {
+pub struct UserVerified {
     id_token:   String,
     session_id: String,
 }
 
-pub(crate) struct AuthUrl {
+pub struct AuthUrl {
     siwe_auth_url:   String,
     github_auth_url: String,
 }
@@ -80,60 +80,60 @@ impl IntoResponse for UserVerified {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, body) = match self {
-            AuthError::InvalidAuthCode => {
+            Self::InvalidAuthCode => {
                 let body = Json(json!({
                     "error": "invalid authorisation code",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            AuthError::FetchUserDataError => {
+            Self::FetchUserDataError => {
                 let body = Json(json!({
                     "error": "could not fetch user data from auth server",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
-            AuthError::CouldNotExtractUserData => {
+            Self::CouldNotExtractUserData => {
                 let body = Json(json!({
                     "error": "could not extract user data from auth server response",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
-            AuthError::Jwt(jwt_err) => return jwt_err.into_response(),
+            Self::Jwt(jwt_err) => return jwt_err.into_response(),
 
-            AuthError::LobbyIsFull => {
+            Self::LobbyIsFull => {
                 let body = Json(json!({
                     "error": "lobby is full",
                 }));
                 (StatusCode::SERVICE_UNAVAILABLE, body)
             }
-            AuthError::InvalidCsrf => {
+            Self::InvalidCsrf => {
                 let body = Json(json!({
                     "error": "invalid csrf token",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            AuthError::UserAlreadyContributed => {
+            Self::UserAlreadyContributed => {
                 let body = Json(json!({ "error": "user has already contributed" }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            AuthError::UserCreatedAfterDeadline => {
+            Self::UserCreatedAfterDeadline => {
                 let body = Json(json!({ "error": "user account was created after the deadline"}));
                 (StatusCode::UNAUTHORIZED, body)
             }
-            AuthError::Storage(storage_error) => return storage_error.into_response(),
+            Self::Storage(storage_error) => return storage_error.into_response(),
         };
         (status, body).into_response()
     }
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct AuthClientLinkQueryParams {
+pub struct AuthClientLinkQueryParams {
     redirect_to: Option<String>,
 }
 
 // Returns the url that the user needs to call
 // in order to get an authorisation code
-pub(crate) async fn auth_client_link(
+pub async fn auth_client_link(
     Query(params): Query<AuthClientLinkQueryParams>,
     Extension(store): Extension<SharedState>,
     Extension(siwe_client): Extension<SiweOAuthClient>,
@@ -182,7 +182,7 @@ pub(crate) async fn auth_client_link(
         .write()
         .await
         .csrf_tokens
-        .insert(csrf_token.secret().to_owned());
+        .insert(csrf_token.secret().clone());
 
     Ok(AuthUrl {
         siwe_auth_url:   auth_url.to_string(),
@@ -196,7 +196,7 @@ pub(crate) async fn auth_client_link(
 // that we need to check that the user did indeed login with
 // an identity provider
 #[derive(Debug, Deserialize)]
-pub(crate) struct AuthPayload {
+pub struct AuthPayload {
     code:  String,
     state: String,
 }
@@ -213,7 +213,7 @@ struct GhUserInfo {
     created_at: String,
 }
 
-pub(crate) async fn github_callback(
+pub async fn github_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
@@ -266,7 +266,7 @@ struct SiweUserInfo {
 // was malicious. What can happen is sequencer can claim that someone
 // participated when they did not. Is this Okay? Maybe that person can then just
 // say they did not
-pub(crate) async fn siwe_callback(
+pub async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
@@ -297,6 +297,7 @@ pub(crate) async fn siwe_callback(
     let address = addr_parts
         .get(2)
         .ok_or(AuthError::CouldNotExtractUserData)?
+        .deref()
         .to_string();
 
     let tx_count = get_tx_count(
@@ -349,10 +350,10 @@ async fn get_tx_count(
 
 async fn verify_csrf(payload: &AuthPayload, store: &SharedState) -> Result<(), AuthError> {
     let app_state = store.read().await;
-    if !app_state.csrf_tokens.contains(&payload.state) {
-        Err(AuthError::InvalidCsrf)
-    } else {
+    if app_state.csrf_tokens.contains(&payload.state) {
         Ok(())
+    } else {
+        Err(AuthError::InvalidCsrf)
     }
 }
 

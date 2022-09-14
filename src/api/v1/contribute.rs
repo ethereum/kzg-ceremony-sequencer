@@ -35,26 +35,26 @@ pub enum ContributeResponse {
 impl IntoResponse for ContributeResponse {
     fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
-            ContributeResponse::ParticipantSpotEmpty => {
+            Self::ParticipantSpotEmpty => {
                 let body = Json(json!({"error" : "the spot to participate is empty"}));
                 (StatusCode::BAD_REQUEST, body)
             }
-            ContributeResponse::NotUsersTurn => {
+            Self::NotUsersTurn => {
                 let body = Json(json!({"error" : "not your turn to participate"}));
                 (StatusCode::BAD_REQUEST, body)
             }
-            ContributeResponse::InvalidContribution => {
+            Self::InvalidContribution => {
                 let body = Json(json!({"error" : "contribution invalid"}));
                 (StatusCode::BAD_REQUEST, body)
             }
-            ContributeResponse::TranscriptDecodeError => {
+            Self::TranscriptDecodeError => {
                 let body = Json(
                     json!({"error" : "contribution was valid, but could not decode transcript "}),
                 );
                 (StatusCode::BAD_REQUEST, body)
             }
-            ContributeResponse::Auth(err) => return err.into_response(),
-            ContributeResponse::Receipt(encoded_receipt_token) => {
+            Self::Auth(err) => return err.into_response(),
+            Self::Receipt(encoded_receipt_token) => {
                 let body = Json(json!({ "receipt": encoded_receipt_token }));
                 (StatusCode::OK, body)
             }
@@ -64,7 +64,7 @@ impl IntoResponse for ContributeResponse {
     }
 }
 
-pub(crate) async fn contribute(
+pub async fn contribute(
     session_id: SessionId,
     Json(payload): Json<ContributePayload>,
     Extension(store): Extension<SharedState>,
@@ -104,17 +104,14 @@ pub(crate) async fn contribute(
     }
 
     let new_transcript: Option<Transcript> = (&payload.state).into();
-    match new_transcript {
-        Some(new_transcript) => {
-            *transcript = new_transcript;
-        }
-        None => {
-            let uid = session_info.token.unique_identifier().to_owned();
-            drop(app_state); // Release AppState lock
-            storage.expire_contribution(&uid).await;
+    if let Some(new_transcript) = new_transcript {
+        *transcript = new_transcript;
+    } else {
+        let uid = session_info.token.unique_identifier().to_owned();
+        drop(app_state); // Release AppState lock
+        storage.expire_contribution(&uid).await;
 
-            return ContributeResponse::TranscriptDecodeError;
-        }
+        return ContributeResponse::TranscriptDecodeError;
     }
 
     // Given that the state transition was correct
@@ -193,15 +190,15 @@ fn random_hex_strs() -> [String; NUM_CEREMONIES] {
         String::default(),
     ];
 
-    for i in 0..NUM_CEREMONIES {
+    for secret in &mut secrets {
         // We use 64 bytes for the secret to reduce bias when reducing
         let mut bytes = [0u8; 64];
         rng.fill(&mut bytes);
 
-        let mut hex_string = hex::encode(&bytes);
+        let mut hex_string = hex::encode(bytes);
         // prepend 0x because this is standard in ethereum
         hex_string.insert_str(0, "0x");
-        secrets[i] = hex_string
+        *secret = hex_string;
     }
 
     secrets
