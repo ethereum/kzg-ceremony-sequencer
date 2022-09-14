@@ -39,7 +39,7 @@ ENV LOG_FORMAT="json"
 ENV LOG_FILTER="info"
 
 # copy private key and public key
-# TODO: 
+# TODO: Mount through volume.
 COPY ./private.key ./private.key
 COPY ./publickey.pem ./publickey.pem
 

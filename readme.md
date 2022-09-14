@@ -9,6 +9,19 @@ This implements [KZG Ceremony Specification](https://github.com/ethereum/kzg-cer
 
 ## Setup
 
+### Generate keypair for signing
+
+```shell
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.key
+openssl rsa -in private.key -pubout -out publickey.pem
+```
+
+### Build, lint, test, run
+
+```shell
+cargo fmt && cargo clippy --all-targets --all-features && cargo build --all-targets --all-features && cargo test --all-targets --all-features && cargo run -- -vvv
+```
+
 ### Database
 
 1. Run `cargo install sqlx-cli`
