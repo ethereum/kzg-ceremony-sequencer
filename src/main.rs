@@ -17,6 +17,9 @@ use axum::{
     Router,
 };
 use chrono::{DateTime, FixedOffset};
+use clap::Parser;
+use cli_batteries::version;
+use eyre::Result as EyreResult;
 use jwt::Receipt;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
@@ -54,8 +57,14 @@ mod test_util;
 pub type SharedTranscript = Arc<RwLock<Transcript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
 
-#[tokio::main]
-async fn main() {
+#[derive(Clone, Debug, PartialEq, Parser)]
+pub struct Options {}
+
+fn main() {
+    cli_batteries::run(version!(crypto, small_powers_of_tau), async_main);
+}
+
+async fn async_main(options: Options) -> EyreResult<()> {
     let transcript = SharedTranscript::default();
     let shared_state = SharedState::default();
 
@@ -88,8 +97,9 @@ async fn main() {
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+
+    Ok(())
 }
 
 #[derive(Clone)]
