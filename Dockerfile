@@ -1,33 +1,50 @@
-FROM rust:1.62 as build
+FROM rust:1.63 as build-env
+WORKDIR /src
 
-# create a new empty shell project
-RUN USER=root cargo new --bin sequencer
-WORKDIR /sequencer
+RUN apt-get update &&\
+    apt-get install -y libssl-dev texinfo libcap2-bin &&\
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ARG BIN=rust-app
+
+# Copy over all releases
+COPY ./target ./target
+
+# Select the binary for currenct architecture
+RUN cp ./target/$(uname -m)-unknown-linux-musl/release/${BIN} ./bin
+
+# Set capabilities
+RUN setcap cap_net_bind_service=+ep ./bin
+
+# Make sure it runs
+RUN ./bin --version
+
+# Fetch latest certificates
+RUN update-ca-certificates --verbose
+
+################################################################################
+# Create minimal docker image for our app
+FROM scratch
+
+# Drop priviliges
+USER 10001:10001
+
+# Configure SSL CA certificates
+COPY --from=build-env --chown=0:10001 --chmod=040 \
+    /etc/ssl/certs/ca-certificates.crt /
+ENV SSL_CERT_FILE="/ca-certificates.crt"
+
+# Configure logging
+ENV LOG_FORMAT="json"
+ENV LOG_FILTER="info"
 
 # copy private key and public key
+# TODO: 
 COPY ./private.key ./private.key
 COPY ./publickey.pem ./publickey.pem
 
-# copy over your manifests
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
-
-# this build step will cache your dependencies
-RUN cargo build --release
-RUN rm src/*.rs
-
-# copy your source tree
-COPY ./src ./src
-
-# build for release
-RUN rm ./target/release/deps/kzg_ceremony_sequencer*
-RUN cargo build --release
-
-# our final base
-FROM debian:buster-slim
-
-# copy the build artifact from the build stage
-COPY --from=build /sequencer/target/release/kzg_ceremony_sequencer .
-
-# set the startup command to run your binary
-ENTRYPOINT ./sequencer
+# Executable
+COPY --from=build-env --chown=0:10001 --chmod=010 /src/bin /bin
+STOPSIGNAL SIGTERM
+HEALTHCHECK NONE
+ENTRYPOINT ["/bin"]
