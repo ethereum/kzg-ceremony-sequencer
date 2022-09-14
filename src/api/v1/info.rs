@@ -1,4 +1,8 @@
-use crate::{constants::HISTORY_RECEIPTS_COUNT, keys::Keys, SharedState, SharedTranscript};
+use crate::{
+    constants::HISTORY_RECEIPTS_COUNT,
+    keys::{Keys, KEYS},
+    SharedState, SharedTranscript,
+};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
@@ -81,7 +85,7 @@ impl IntoResponse for JwtInfoResponse {
 // Returns the relevant JWT information
 #[allow(clippy::unused_async)] // Required for axum function signature
 pub async fn jwt_info() -> JwtInfoResponse {
-    let rsa_public_key_pem_as_string = Keys::decode_key_to_string();
+    let rsa_public_key_pem_as_string = KEYS.get().unwrap().decode_key_to_string();
 
     JwtInfoResponse {
         alg:         Keys::alg_str(),

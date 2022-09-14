@@ -16,12 +16,19 @@ pub struct Receipt {
 
 impl Receipt {
     pub fn encode(&self) -> Result<String, JwtError> {
-        KEYS.encode(self).map_err(|_| JwtError::TokenCreation)
+        KEYS.get()
+            .unwrap()
+            .encode(self)
+            .map_err(|_| JwtError::TokenCreation)
     }
 
     #[allow(unused)]
     pub fn decode(token: &str) -> Result<Self, JwtError> {
-        let token_data = KEYS.decode(token).map_err(|_| JwtError::InvalidToken)?;
+        let token_data = KEYS
+            .get()
+            .unwrap()
+            .decode(token)
+            .map_err(|_| JwtError::InvalidToken)?;
         Ok(token_data.claims)
     }
 }
@@ -48,12 +55,19 @@ impl IdToken {
     }
 
     pub fn encode(&self) -> Result<String, JwtError> {
-        KEYS.encode(self).map_err(|_| JwtError::TokenCreation)
+        KEYS.get()
+            .unwrap()
+            .encode(self)
+            .map_err(|_| JwtError::TokenCreation)
     }
 
     #[allow(unused)]
     pub fn decode(token: &str) -> Result<Self, JwtError> {
-        let token_data = KEYS.decode(token).map_err(|_| JwtError::InvalidToken)?;
+        let token_data = KEYS
+            .get()
+            .unwrap()
+            .decode(token)
+            .map_err(|_| JwtError::InvalidToken)?;
         Ok(token_data.claims)
     }
 }

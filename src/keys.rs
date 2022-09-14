@@ -1,26 +1,46 @@
+use clap::Parser;
+use eyre::Result;
 use jsonwebtoken::{
     decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use serde::{de::DeserializeOwned, Serialize};
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
+use tokio::try_join;
+use tracing::info;
 
-// Keys needed by the sequencer to attest to JWT claims
-pub static KEYS: Lazy<Keys> = Lazy::new(Keys::new);
+// TODO: Make part of app state instead of global
+pub static KEYS: OnceCell<Keys> = OnceCell::new();
+
+#[derive(Clone, Debug, PartialEq, Eq, Parser)]
+pub struct Options {
+    /// Public key file (.pem) to use for JWT verification
+    #[clap(long, env, default_value = "private.key")]
+    pub public_key: PathBuf,
+
+    /// Private key file (.key) to use for JWT verification
+    #[clap(long, env, default_value = "publickey.pem")]
+    pub private_key: PathBuf,
+}
 
 pub struct Keys {
     encoding: EncodingKey,
     decoding: DecodingKey,
+    pubkey:   String,
 }
 
 impl Keys {
-    fn new() -> Self {
-        let private_key = include_bytes!("../private.key");
-        let public_key = include_bytes!("../publickey.pem");
-        Self {
-            encoding: EncodingKey::from_rsa_pem(private_key).unwrap(),
-            decoding: DecodingKey::from_rsa_pem(public_key).unwrap(),
-        }
+    pub async fn new(options: Options) -> Result<Self> {
+        info!(public_key = ?options.public_key, private_key=?options.private_key, "Loading JWT keys");
+        let (private_key, public_key) = try_join!(
+            tokio::fs::read(&options.private_key),
+            tokio::fs::read(&options.public_key)
+        )?;
+        Ok(Self {
+            encoding: EncodingKey::from_rsa_pem(&private_key)?,
+            decoding: DecodingKey::from_rsa_pem(&public_key)?,
+            pubkey:   String::from_utf8(public_key)?,
+        })
     }
 
     pub fn encode<T: Serialize>(&self, token: &T) -> Result<String, jsonwebtoken::errors::Error> {
@@ -43,8 +63,8 @@ impl Keys {
         Algorithm::from_str(Self::alg_str()).expect("unknown algorithm")
     }
 
-    pub fn decode_key_to_string() -> String {
-        include_str!("../publickey.pem").to_owned()
+    pub fn decode_key_to_string(&self) -> String {
+        self.pubkey.clone()
     }
 }
 
@@ -52,8 +72,10 @@ impl Keys {
 mod tests {
     use super::*;
     use serde::Deserialize;
-    #[test]
-    fn encode_decode_pem() {
+
+    #[ignore] // Do not run this test by default due to dependency on files.
+    #[tokio::test]
+    async fn encode_decode_pem() {
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
         pub struct Token {
             foo: String,
@@ -65,7 +87,12 @@ mod tests {
             exp: 200_000_000_000,
         };
 
-        let keys = Keys::new();
+        let keys = Keys::new(Options {
+            public_key:  "../publickey.pem".into(),
+            private_key: "../private.key".into(),
+        })
+        .await
+        .unwrap();
         let encoded_token = keys.encode(&t).unwrap();
         let token_data = keys.decode::<Token>(&encoded_token).unwrap();
         let got_token = token_data.claims;

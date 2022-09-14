@@ -50,6 +50,7 @@ use crate::{
         LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
         SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
     },
+    keys::Keys,
 };
 
 mod api;
@@ -70,6 +71,9 @@ pub struct Options {
     /// API Server url to bind
     #[clap(long, env, default_value = "http://127.0.0.1:8080/")]
     pub server: Url,
+
+    #[clap(flatten)]
+    pub keys: keys::Options,
 }
 
 fn main() {
@@ -77,6 +81,9 @@ fn main() {
 }
 
 async fn async_main(options: Options) -> EyreResult<()> {
+    // Load JWT keys
+    crate::keys::KEYS.set(Keys::new(options.keys).await?);
+
     let transcript = SharedTranscript::default();
     let shared_state = SharedState::default();
 
