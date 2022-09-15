@@ -1314,7 +1314,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kzg_ceremony_sequencer"
+name = "kzg-ceremony-sequencer"
 version = "0.1.0"
 dependencies = [
  "async-session",
