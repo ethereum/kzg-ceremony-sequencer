@@ -82,6 +82,7 @@ jobs:
       # See <https://github.com/rust-lang/cargo/issues/6669>
       # Cargo doc test also doesn't support `--no-run`, so we run it but
       # have it just print `--help`.
+      # Cargo doc test also fails if there are no library targets.
       - name: Build tests
         run: |
           cargo test --locked --all-features --all-targets --no-run

@@ -7,6 +7,10 @@ edition = "2021"
 default = [ ]
 mimalloc = [ "cli-batteries/mimalloc" ]
 
+# Dummy lib target so we can run doc tests
+[lib]
+path =  "src/main.rs"
+
 [dependencies]
 cli-batteries = { version = "0.3.3", features = [ "signals", "prometheus", "metered-allocator", "otlp" ] }
 uuid = { version = "1.1.2", features = ["serde", "v4"] }
