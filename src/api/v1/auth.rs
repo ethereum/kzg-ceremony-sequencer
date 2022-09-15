@@ -1,10 +1,14 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken},
-    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient, storage::{PersistentStorage, StorageError},
+    storage::{PersistentStorage, StorageError},
+    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient,
 };
-use axum::response::Response;
-use axum::{extract::Query, response::IntoResponse, Extension, Json};
+use axum::{
+    extract::Query,
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
 use chrono::DateTime;
 use http::StatusCode;
 use oauth2::{
@@ -12,7 +16,7 @@ use oauth2::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::borrow::Cow;
+use std::{borrow::Cow, ops::Deref};
 use tokio::time::Instant;
 
 // These are the providers that are supported
@@ -23,15 +27,15 @@ pub enum AuthProvider {
 }
 
 impl AuthProvider {
-    pub fn to_string(&self) -> &str {
+    pub const fn to_string(&self) -> &str {
         match self {
-            AuthProvider::Github => "Github",
-            AuthProvider::Ethereum => "Ethereum",
+            Self::Github => "Github",
+            Self::Ethereum => "Ethereum",
         }
     }
 }
 
-pub(crate) enum AuthError {
+pub enum AuthError {
     LobbyIsFull,
     UserAlreadyContributed,
     InvalidCsrf,
@@ -43,13 +47,13 @@ pub(crate) enum AuthError {
     Storage(StorageError),
 }
 
-pub(crate) struct UserVerified {
-    id_token: String,
+pub struct UserVerified {
+    id_token:   String,
     session_id: String,
 }
 
-pub(crate) struct AuthUrl {
-    siwe_auth_url: String,
+pub struct AuthUrl {
+    siwe_auth_url:   String,
     github_auth_url: String,
 }
 
@@ -76,60 +80,60 @@ impl IntoResponse for UserVerified {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, body) = match self {
-            AuthError::InvalidAuthCode => {
+            Self::InvalidAuthCode => {
                 let body = Json(json!({
                     "error": "invalid authorisation code",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            AuthError::FetchUserDataError => {
+            Self::FetchUserDataError => {
                 let body = Json(json!({
                     "error": "could not fetch user data from auth server",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
-            AuthError::CouldNotExtractUserData => {
+            Self::CouldNotExtractUserData => {
                 let body = Json(json!({
                     "error": "could not extract user data from auth server response",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
-            AuthError::Jwt(jwt_err) => return jwt_err.into_response(),
+            Self::Jwt(jwt_err) => return jwt_err.into_response(),
 
-            AuthError::LobbyIsFull => {
+            Self::LobbyIsFull => {
                 let body = Json(json!({
                     "error": "lobby is full",
                 }));
                 (StatusCode::SERVICE_UNAVAILABLE, body)
             }
-            AuthError::InvalidCsrf => {
+            Self::InvalidCsrf => {
                 let body = Json(json!({
                     "error": "invalid csrf token",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            AuthError::UserAlreadyContributed => {
+            Self::UserAlreadyContributed => {
                 let body = Json(json!({ "error": "user has already contributed" }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            AuthError::UserCreatedAfterDeadline => {
+            Self::UserCreatedAfterDeadline => {
                 let body = Json(json!({ "error": "user account was created after the deadline"}));
                 (StatusCode::UNAUTHORIZED, body)
             }
-            AuthError::Storage(storage_error) => return storage_error.into_response()
+            Self::Storage(storage_error) => return storage_error.into_response(),
         };
         (status, body).into_response()
     }
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct AuthClientLinkQueryParams {
+pub struct AuthClientLinkQueryParams {
     redirect_to: Option<String>,
 }
 
 // Returns the url that the user needs to call
 // in order to get an authorisation code
-pub(crate) async fn auth_client_link(
+pub async fn auth_client_link(
     Query(params): Query<AuthClientLinkQueryParams>,
     Extension(store): Extension<SharedState>,
     Extension(siwe_client): Extension<SiweOAuthClient>,
@@ -178,10 +182,10 @@ pub(crate) async fn auth_client_link(
         .write()
         .await
         .csrf_tokens
-        .insert(csrf_token.secret().to_owned());
+        .insert(csrf_token.secret().clone());
 
     Ok(AuthUrl {
-        siwe_auth_url: auth_url.to_string(),
+        siwe_auth_url:   auth_url.to_string(),
         github_auth_url: gh_url.to_string(),
     })
 }
@@ -192,24 +196,24 @@ pub(crate) async fn auth_client_link(
 // that we need to check that the user did indeed login with
 // an identity provider
 #[derive(Debug, Deserialize)]
-pub(crate) struct AuthPayload {
-    code: String,
+pub struct AuthPayload {
+    code:  String,
     state: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthenticatedUser {
-    uid: String,
+    uid:      String,
     nickname: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct GhUserInfo {
-    login: String,
+    login:      String,
     created_at: String,
 }
 
-pub(crate) async fn github_callback(
+pub async fn github_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
@@ -241,7 +245,7 @@ pub(crate) async fn github_callback(
         return Err(AuthError::UserCreatedAfterDeadline);
     }
     let user = AuthenticatedUser {
-        uid: format!("github | {}", gh_user_info.login),
+        uid:      format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
     post_authenticate(store, storage, user, AuthProvider::Github).await
@@ -249,7 +253,7 @@ pub(crate) async fn github_callback(
 
 #[derive(Debug, Deserialize)]
 struct SiweUserInfo {
-    sub: String,
+    sub:                String,
     preferred_username: String,
 }
 
@@ -260,9 +264,9 @@ struct SiweUserInfo {
 //
 // Now this is catchable by the client. They will clearly see that the sequencer
 // was malicious. What can happen is sequencer can claim that someone
-// participated when they did not. Is this Okay? Maybe that person can then just say
-// they did not
-pub(crate) async fn siwe_callback(
+// participated when they did not. Is this Okay? Maybe that person can then just
+// say they did not
+pub async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(store): Extension<SharedState>,
@@ -293,6 +297,7 @@ pub(crate) async fn siwe_callback(
     let address = addr_parts
         .get(2)
         .ok_or(AuthError::CouldNotExtractUserData)?
+        .deref()
         .to_string();
 
     let tx_count = get_tx_count(
@@ -309,7 +314,7 @@ pub(crate) async fn siwe_callback(
     }
 
     let user_data = AuthenticatedUser {
-        uid: format!("eth | {}", address),
+        uid:      format!("eth | {}", address),
         nickname: siwe_user.preferred_username,
     };
 
@@ -345,10 +350,10 @@ async fn get_tx_count(
 
 async fn verify_csrf(payload: &AuthPayload, store: &SharedState) -> Result<(), AuthError> {
     let app_state = store.read().await;
-    if !app_state.csrf_tokens.contains(&payload.state) {
-        Err(AuthError::InvalidCsrf)
-    } else {
+    if app_state.csrf_tokens.contains(&payload.state) {
         Ok(())
+    } else {
+        Err(AuthError::InvalidCsrf)
     }
 }
 
@@ -362,7 +367,7 @@ async fn post_authenticate(
     match storage.has_contributed(&user_data.uid).await {
         Err(error) => return Err(AuthError::Storage(error)),
         Ok(true) => return Err(AuthError::UserAlreadyContributed),
-        Ok(false) => ()
+        Ok(false) => (),
     }
 
     let mut app_state = store.write().await;
@@ -380,25 +385,22 @@ async fn post_authenticate(
     };
 
     let id_token = IdToken {
-        sub: user_data.uid,
+        sub:      user_data.uid,
         provider: auth_provider.to_string().to_owned(),
         nickname: user_data.nickname,
-        exp: u64::MAX,
+        exp:      u64::MAX,
     };
 
     let id_token_encoded = id_token.encode().map_err(AuthError::Jwt)?;
 
-    app_state.lobby.insert(
-        session_id.clone(),
-        SessionInfo {
-            token: id_token,
-            last_ping_time: Instant::now(),
-            is_first_ping_attempt: true,
-        },
-    );
+    app_state.lobby.insert(session_id.clone(), SessionInfo {
+        token:                 id_token,
+        last_ping_time:        Instant::now(),
+        is_first_ping_attempt: true,
+    });
 
     Ok(UserVerified {
-        id_token: id_token_encoded,
+        id_token:   id_token_encoded,
         session_id: session_id.to_string(),
     })
 }

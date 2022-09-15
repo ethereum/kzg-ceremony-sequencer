@@ -1,11 +1,18 @@
 [package]
-name = "kzg_ceremony_sequencer"
+name = "kzg-ceremony-sequencer"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = [ ]
+mimalloc = [ "cli-batteries/mimalloc" ]
+
+# Dummy lib target so we can run doc tests
+[lib]
+path =  "src/main.rs"
 
 [dependencies]
+cli-batteries = { version = "0.3.3", features = [ "signals", "prometheus", "metered-allocator", "otlp" ] }
 uuid = { version = "1.1.2", features = ["serde", "v4"] }
 axum = { version = "0.5.15", features = ["headers"] }
 axum-extra = { version = "0.3.7", features = ["erased-json"] }
@@ -22,17 +29,21 @@ chrono = "0.4"
 http = "0.2"
 async-session = "3.0.0"
 sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
+small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-tau" }
+jsonwebtoken = { version = "8.0", features = ["use_pem"] }
+once_cell = "1.8"
+indexmap = "1.9.1"
+clap = { version = "3.2.21", features = ["derive"] }
+eyre = "0.6.8"
+url = "2.3.1"
 
 # Use Rustls because it makes it easier to cross-compile on CI
 reqwest = { version = "0.11", default-features = false, features = [
     "rustls-tls",
     "json",
 ] }
+hex = "0.4.3"
 
-hex = "*"
-small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-tau" }
 
-jsonwebtoken = { version = "8.0", features = ["use_pem"] }
-once_cell = "1.8"
-
-indexmap = "1.9.1"
+[build-dependencies]
+cli-batteries = "0.3.1"

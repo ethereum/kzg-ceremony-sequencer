@@ -1,14 +1,19 @@
-use crate::{constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC}, SessionId, SharedState, SharedTranscript, storage::PersistentStorage};
+use crate::{
+    constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
+    storage::PersistentStorage,
+    SessionId, SharedState, SharedTranscript,
+};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
 use http::StatusCode;
 use serde_json::json;
-use tokio::time::{Duration, Instant};
 use small_powers_of_tau::sdk::TranscriptJSON;
+use tokio::time::{Duration, Instant};
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // TODO: Discuss this
 pub enum TryContributeResponse {
     UnknownSessionId,
     RateLimited,
@@ -19,28 +24,28 @@ pub enum TryContributeResponse {
 impl IntoResponse for TryContributeResponse {
     fn into_response(self) -> Response {
         let (status, body) = match self {
-            TryContributeResponse::UnknownSessionId => {
+            Self::UnknownSessionId => {
                 let body = Json(json!({
                     "error": "unknown session id",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
 
-            TryContributeResponse::RateLimited => {
+            Self::RateLimited => {
                 let body = Json(json!({
                     "error": "call came too early. rate limited",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
 
-            TryContributeResponse::AnotherContributionInProgress => {
+            Self::AnotherContributionInProgress => {
                 let body = Json(json!({
                     "message": "another contribution in progress",
                 }));
                 (StatusCode::OK, body)
             }
 
-            TryContributeResponse::Success(transcript) => {
+            Self::Success(transcript) => {
                 let body = Json(json!({
                     "state": transcript,
                 }));
@@ -52,7 +57,7 @@ impl IntoResponse for TryContributeResponse {
     }
 }
 
-pub(crate) async fn try_contribute(
+pub async fn try_contribute(
     session_id: SessionId,
     Extension(store): Extension<SharedState>,
     Extension(storage): Extension<PersistentStorage>,
@@ -72,10 +77,8 @@ pub(crate) async fn try_contribute(
             }
         };
 
-        let min_diff = Duration::from_secs(
-            (LOBBY_CHECKIN_FREQUENCY_SEC - LOBBY_CHECKIN_TOLERANCE_SEC) as u64
-        );
-
+        let min_diff =
+            Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC - LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
 
         let now = Instant::now();
         if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
@@ -93,7 +96,8 @@ pub(crate) async fn try_contribute(
         return TryContributeResponse::AnotherContributionInProgress;
     }
 
-    // If this insertion fails, worst case we allow multiple contributions from the same participant
+    // If this insertion fails, worst case we allow multiple contributions from the
+    // same participant
     storage.insert_contributor(&uid).await;
 
     {
@@ -108,12 +112,17 @@ pub(crate) async fn try_contribute(
     let transcript = transcript.read().await;
     let transcript_json = TranscriptJSON::from(&*transcript);
 
-    return TryContributeResponse::Success(transcript_json);
+    TryContributeResponse::Success(transcript_json)
 }
 
 // Clears the contribution spot on `COMPUTE_DEADLINE` interval
 // We use the session_id to avoid needing a channel to check if
-pub(crate) async fn remove_participant_on_deadline(state: SharedState, storage: PersistentStorage, session_id: SessionId, uid: String) {
+pub async fn remove_participant_on_deadline(
+    state: SharedState,
+    storage: PersistentStorage,
+    session_id: SessionId,
+    uid: String,
+) {
     tokio::time::sleep(Duration::from_secs(COMPUTE_DEADLINE as u64)).await;
 
     {
@@ -141,8 +150,7 @@ pub(crate) async fn remove_participant_on_deadline(state: SharedState, storage: 
 
 #[tokio::test]
 async fn lobby_try_contribute_test() {
-    use crate::test_util::create_test_session_info;
-    use crate::storage::test_storage_client;
+    use crate::{storage::test_storage_client, test_util::create_test_session_info};
 
     let shared_state = SharedState::default();
     let transcript = SharedTranscript::default();
@@ -159,15 +167,23 @@ async fn lobby_try_contribute_test() {
         session_id.clone(),
         Extension(shared_state.clone()),
         Extension(db.clone()),
-        Extension(transcript.clone())
-    ).await;
-    assert!(matches!(unknown_session_response, TryContributeResponse::UnknownSessionId));
+        Extension(transcript.clone()),
+    )
+    .await;
+    assert!(matches!(
+        unknown_session_response,
+        TryContributeResponse::UnknownSessionId
+    ));
 
     // add two participants to lobby
     {
         let mut state = shared_state.write().await;
-        state.lobby.insert(session_id.clone(), create_test_session_info(100));
-        state.lobby.insert(other_session_id.clone(), create_test_session_info(100));
+        state
+            .lobby
+            .insert(session_id.clone(), create_test_session_info(100));
+        state
+            .lobby
+            .insert(other_session_id.clone(), create_test_session_info(100));
     }
 
     // "other participant" is contributing
@@ -175,15 +191,20 @@ async fn lobby_try_contribute_test() {
         other_session_id.clone(),
         Extension(shared_state.clone()),
         Extension(db.clone()),
-        Extension(transcript.clone())
-    ).await;
+        Extension(transcript.clone()),
+    )
+    .await;
     let contribution_in_progress_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
         Extension(db.clone()),
-        Extension(transcript.clone())
-    ).await;
-    assert!(matches!(contribution_in_progress_response, TryContributeResponse::AnotherContributionInProgress));
+        Extension(transcript.clone()),
+    )
+    .await;
+    assert!(matches!(
+        contribution_in_progress_response,
+        TryContributeResponse::AnotherContributionInProgress
+    ));
 
     // call the endpoint too soon - rate limited, other participant computing
     tokio::time::advance(Duration::from_secs(5)).await;
@@ -191,9 +212,13 @@ async fn lobby_try_contribute_test() {
         session_id.clone(),
         Extension(shared_state.clone()),
         Extension(db.clone()),
-        Extension(transcript.clone())
-    ).await;
-    assert!(matches!(too_soon_response, TryContributeResponse::RateLimited));
+        Extension(transcript.clone()),
+    )
+    .await;
+    assert!(matches!(
+        too_soon_response,
+        TryContributeResponse::RateLimited
+    ));
 
     // "other participant" finished contributing
     {
@@ -207,17 +232,25 @@ async fn lobby_try_contribute_test() {
         session_id.clone(),
         Extension(shared_state.clone()),
         Extension(db.clone()),
-        Extension(transcript.clone())
-    ).await;
-    assert!(matches!(too_soon_response, TryContributeResponse::RateLimited));
-    
+        Extension(transcript.clone()),
+    )
+    .await;
+    assert!(matches!(
+        too_soon_response,
+        TryContributeResponse::RateLimited
+    ));
+
     // wait enough time to be able to contribute
     tokio::time::advance(Duration::from_secs(19)).await;
     let success_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
         Extension(db.clone()),
-        Extension(transcript.clone())
-    ).await;
-    assert!(matches!(success_response, TryContributeResponse::Success(_)));
+        Extension(transcript.clone()),
+    )
+    .await;
+    assert!(matches!(
+        success_response,
+        TryContributeResponse::Success(_)
+    ));
 }
