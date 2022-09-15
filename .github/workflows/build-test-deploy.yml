@@ -126,6 +126,10 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+      - name: Generate RSA Test Keys
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.key
+          openssl rsa -in private.key -pubout -out publickey.pem
       - name: Build tests with coverage
         run: |
           cargo test --locked --all-features --all-targets --no-fail-fast --no-run
