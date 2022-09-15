@@ -64,7 +64,6 @@ impl PersistentStorage {
 
 pub async fn persistent_storage_client() -> PersistentStorage {
     let url = env::var("DATABASE_URL").expect("Missing DATABASE_URL!");
-    println!("{:?}", url);
     let db_pool = SqlitePoolOptions::new()
         .connect(&url)
         .await
