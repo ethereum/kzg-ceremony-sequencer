@@ -13,13 +13,13 @@ use zeroize::Zeroizing;
 pub struct Transcript {
     pub g1_powers: Vec<G1Affine>,
     pub g2_powers: Vec<G2Affine>,
-    pub products: Vec<G1Affine>,
-    pub pubkeys: Vec<G2Affine>,
+    pub products:  Vec<G1Affine>,
+    pub pubkeys:   Vec<G2Affine>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Contribution {
-    pub pubkey: G2Affine,
+    pub pubkey:    G2Affine,
     pub g1_powers: Vec<G1Affine>,
     pub g2_powers: Vec<G2Affine>,
 }
@@ -36,7 +36,7 @@ pub struct ContributionJson {
     pub num_g1_powers: usize,
     pub num_g2_powers: usize,
     pub powers_of_tau: PowersOfTau,
-    pub pot_pubkey: Option<String>,
+    pub pot_pubkey:    Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -206,8 +206,8 @@ impl Transcript {
     #[must_use]
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
-            pubkeys: vec![G2Affine::prime_subgroup_generator()],
-            products: vec![G1Affine::prime_subgroup_generator()],
+            pubkeys:   vec![G2Affine::prime_subgroup_generator()],
+            products:  vec![G1Affine::prime_subgroup_generator()],
             g1_powers: vec![G1Affine::prime_subgroup_generator(); num_g1],
             g2_powers: vec![G2Affine::prime_subgroup_generator(); num_g2],
         }
@@ -217,7 +217,7 @@ impl Transcript {
 impl Contribution {
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
-            pubkey: G2Affine::prime_subgroup_generator(),
+            pubkey:    G2Affine::prime_subgroup_generator(),
             g1_powers: vec![G1Affine::prime_subgroup_generator(); num_g1],
             g2_powers: vec![G2Affine::prime_subgroup_generator(); num_g2],
         }

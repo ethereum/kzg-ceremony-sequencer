@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use crate::jwt::{errors::JwtError, IdToken};
 use async_session::async_trait;
 use axum::{
@@ -11,27 +13,35 @@ use uuid::Uuid;
 
 #[derive(Debug, Hash, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename = "session_id")]
-pub(crate) struct SessionId(String);
+pub struct SessionId(String);
 
 impl SessionId {
     // Create a random session id
-    pub fn new() -> SessionId {
-        SessionId(Uuid::new_v4().to_string())
+    pub fn new() -> Self {
+        Self(Uuid::new_v4().to_string())
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.0.to_owned()
+impl Default for SessionId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Display for SessionId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SessionInfo {
-    pub(crate) token: IdToken,
+pub struct SessionInfo {
+    pub token:                 IdToken,
     // Specifies the last time the user pinged
-    pub(crate) last_ping_time: Instant,
+    pub last_ping_time:        Instant,
     // Indicates whether an early /lobby/try_contribute call is accepted.
     // (only allowed right after authentication)
-    pub(crate) is_first_ping_attempt: bool,
+    pub is_first_ping_attempt: bool,
 }
 
 #[async_trait]
@@ -48,6 +58,6 @@ where
                 .await
                 .map_err(|_| JwtError::InvalidToken)?;
 
-        Ok(SessionId(bearer.token().to_owned()))
+        Ok(Self(bearer.token().to_owned()))
     }
 }
