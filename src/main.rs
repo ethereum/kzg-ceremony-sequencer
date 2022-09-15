@@ -6,12 +6,12 @@
 #![allow(clippy::multiple_crate_versions)]
 #![allow(clippy::module_name_repetitions)]
 
-use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     ops::Deref,
+    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
@@ -26,10 +26,9 @@ use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
 use eyre::{bail, ensure, eyre, Result as EyreResult};
-use jwt::Receipt;
+use crate::data::transcript::read_trancscript_file;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
-use small_powers_of_tau::sdk::Transcript;
 use storage::persistent_storage_client;
 use tokio::{
     sync::RwLock,
@@ -51,10 +50,10 @@ use crate::{
         LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
         SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
     },
+    data::transcript::{Contribution, Transcript},
     keys::Keys,
+    test_transcript::TestTranscript,
 };
-use crate::data::transcript::{Contribution, Transcript};
-use crate::test_transcript::TestTranscript;
 
 mod api;
 mod constants;
@@ -63,9 +62,9 @@ mod jwt;
 mod keys;
 mod sessions;
 mod storage;
+mod test_transcript;
 #[cfg(test)]
 mod test_util;
-mod test_transcript;
 
 pub type SharedTranscript<T> = Arc<RwLock<T>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
@@ -87,15 +86,15 @@ fn main() {
 
 async fn async_main(options: Options) -> EyreResult<()> {
     // Load JWT keys
-    crate::keys::KEYS
+    keys::KEYS
         .set(Keys::new(options.keys).await?)
         .map_err(|_e| eyre!("KEYS was already set."))?;
 
-    let transcript = SharedTranscript::default();
-
     let shared_state = SharedState::default();
 
-    let transcript = SharedTranscript::<TestTranscript>::default();
+    let transcript1 = read_trancscript_file::<TestTranscript>(PathBuf::from("/")).await;
+
+    let transcript = Arc::new(RwLock::new(transcript1));
 
     let shared_state_clone = shared_state.clone();
 
@@ -110,7 +109,10 @@ async fn async_main(options: Options) -> EyreResult<()> {
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/siwe", get(siwe_callback))
-        .route("/lobby/try_contribute", post(try_contribute))
+        .route(
+            "/lobby/try_contribute",
+            post(try_contribute::<TestTranscript>),
+        )
         .route("/contribute", post(contribute::<TestTranscript>))
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
@@ -208,9 +210,9 @@ async fn hello_world() -> Html<&'static str> {
 pub struct AppConfig {
     github_max_creation_time: DateTime<FixedOffset>,
     eth_check_nonce_at_block: String,
-    eth_min_nonce: i64,
-    eth_rpc_url: String,
-    transcript_file: PathBuf,
+    eth_min_nonce:            i64,
+    eth_rpc_url:              String,
+    transcript_file:          PathBuf,
 }
 
 impl Default for AppConfig {
@@ -223,7 +225,7 @@ impl Default for AppConfig {
             eth_check_nonce_at_block: constants::ETH_CHECK_NONCE_AT_BLOCK.to_string(),
             eth_min_nonce:            constants::ETH_MIN_NONCE,
             eth_rpc_url:              env::var("ETH_RPC_URL").expect("Missing ETH_RPC_URL"),
-            transcript_file: PathBuf::from(
+            transcript_file:          PathBuf::from(
                 env::var("TRANSCRIPT_FILE").unwrap_or_else(|_| "./transcript.json".to_string()),
             ),
         }
@@ -258,7 +260,6 @@ pub struct AppState {
     // This is their `sub`
     // TODO: we also need to save the blacklist of those
     // TODO who went over three minutes
-    //
     finished_contribution: BTreeSet<IdTokenSub>,
 }
 

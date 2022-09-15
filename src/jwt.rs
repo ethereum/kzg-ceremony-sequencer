@@ -20,16 +20,6 @@ impl<T: Serialize> Receipt<T> {
             .encode(self)
             .map_err(|_| JwtError::TokenCreation)
     }
-
-    #[allow(unused)]
-    pub fn decode(token: &str) -> Result<Self, JwtError> {
-        let token_data = KEYS
-            .get()
-            .unwrap()
-            .decode(token)
-            .map_err(|_| JwtError::InvalidToken)?;
-        Ok(token_data.claims)
-    }
 }
 
 // This is the JWT token that the sequencer will hand out to contributors

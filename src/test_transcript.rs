@@ -1,9 +1,7 @@
-use crate::test_transcript::TestContribution::ValidContribution;
-use crate::Transcript;
+use crate::{Contribution, Transcript};
 use serde::{Deserialize, Serialize};
-use crate::data::transcript::Contribution;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum TestContribution {
     ValidContribution(i64),
     InvalidContribution(i64),
@@ -14,22 +12,21 @@ impl Contribution for TestContribution {
 
     fn get_receipt(&self) -> Self::Receipt {
         match self {
-            TestContribution::ValidContribution(i) => *i,
-            TestContribution::InvalidContribution(i) => *i,
+            Self::InvalidContribution(i) | Self::ValidContribution(i) => *i,
         }
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct TestTranscript {
-    initial: TestContribution,
-    contributions: Vec<TestContribution>,
+    pub initial:       TestContribution,
+    pub contributions: Vec<TestContribution>,
 }
 
 impl Default for TestTranscript {
     fn default() -> Self {
-        TestTranscript {
-            initial: ValidContribution(0),
+        Self {
+            initial:       TestContribution::ValidContribution(0),
             contributions: vec![],
         }
     }
@@ -47,10 +44,10 @@ impl Transcript for TestTranscript {
     }
 
     fn update(&self, contribution: &TestContribution) -> Self {
-        let mut new_contributions = self.contributions.to_vec();
+        let mut new_contributions = self.contributions.clone();
         new_contributions.push(contribution.clone());
-        TestTranscript {
-            initial: self.initial.clone(),
+        Self {
+            initial:       self.initial.clone(),
             contributions: new_contributions,
         }
     }
