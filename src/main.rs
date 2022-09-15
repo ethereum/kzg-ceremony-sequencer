@@ -24,7 +24,7 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
-use eyre::{bail, ensure, Result as EyreResult};
+use eyre::{bail, ensure, eyre, Result as EyreResult};
 use jwt::Receipt;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
@@ -82,7 +82,9 @@ fn main() {
 
 async fn async_main(options: Options) -> EyreResult<()> {
     // Load JWT keys
-    crate::keys::KEYS.set(Keys::new(options.keys).await?);
+    crate::keys::KEYS
+        .set(Keys::new(options.keys).await?)
+        .map_err(|_e| eyre!("KEYS was already set."))?;
 
     let transcript = SharedTranscript::default();
     let shared_state = SharedState::default();
