@@ -1472,6 +1472,7 @@ dependencies = [
  "small-powers-of-tau",
  "sqlx",
  "tokio",
+ "tokio-util 0.7.4",
  "tower",
  "tower-http",
  "tracing",

@@ -1,8 +1,3 @@
-use crate::{
-    constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
-    storage::PersistentStorage,
-    SessionId, SharedState, SharedTranscript, TestTranscript, Transcript,
-};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
@@ -10,8 +5,13 @@ use axum::{
 use http::StatusCode;
 use serde::Serialize;
 use serde_json::json;
-use small_powers_of_tau::sdk::TranscriptJSON;
 use tokio::time::{Duration, Instant};
+
+use crate::{
+    constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
+    storage::PersistentStorage,
+    SessionId, SharedState, SharedTranscript, Transcript,
+};
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // TODO: Discuss this
@@ -153,7 +153,10 @@ pub async fn remove_participant_on_deadline(
 
 #[tokio::test]
 async fn lobby_try_contribute_test() {
-    use crate::{storage::test_storage_client, test_util::create_test_session_info};
+    use crate::{
+        storage::test_storage_client, test_transcript::TestContribution,
+        test_util::create_test_session_info, TestTranscript,
+    };
 
     let shared_state = SharedState::default();
     let transcript = SharedTranscript::<TestTranscript>::default();
@@ -253,5 +256,10 @@ async fn lobby_try_contribute_test() {
         Extension(transcript.clone()),
     )
     .await;
-    assert!(matches!(success_response, Ok(_)));
+    assert!(matches!(
+        success_response,
+        Ok(TryContributeResponse {
+            contribution: TestContribution::ValidContribution(0),
+        })
+    ));
 }

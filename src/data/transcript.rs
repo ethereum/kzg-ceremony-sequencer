@@ -1,5 +1,5 @@
 use core::result::Result;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::SharedTranscript;
 use serde::{de::DeserializeOwned, ser::Serialize};
@@ -23,7 +23,7 @@ pub trait Transcript: Serialize + DeserializeOwned {
     fn get_contribution(&self) -> Self::ContributionType;
 }
 
-pub async fn read_trancscript_file<T: DeserializeOwned + Send + 'static>(path: PathBuf) -> T {
+pub async fn read_transcript_file<T: DeserializeOwned + Send + 'static>(path: PathBuf) -> T {
     let handle = tokio::task::spawn_blocking::<_, T>(|| {
         let f = std::fs::File::open(path).expect("can't access transcript file.");
         let reader = std::io::BufReader::new(f);
@@ -33,16 +33,19 @@ pub async fn read_trancscript_file<T: DeserializeOwned + Send + 'static>(path: P
 }
 
 pub async fn write_transcript_file<T: Transcript + Send + Sync + 'static>(
-    path: PathBuf,
+    target_path: PathBuf,
+    work_path: PathBuf,
     transcript: SharedTranscript<T>,
 ) {
     let handle = tokio::task::spawn_blocking(move || {
         let f = std::fs::OpenOptions::new()
             .write(true)
-            .open(path)
+            .create(true)
+            .open(&work_path)
             .expect("Can't access transcript file.");
         let transcript = transcript.blocking_read();
         serde_json::to_writer_pretty(&f, &*transcript).expect("Cannot write transcript");
+        std::fs::rename(&work_path, &target_path).unwrap();
     });
     handle.await.expect("Cannot write transcript");
 }

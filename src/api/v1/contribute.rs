@@ -1,16 +1,16 @@
-use crate::{
-    data::transcript::write_transcript_file,
-    jwt::{errors::JwtError, Receipt},
-    storage::PersistentStorage,
-    AppConfig, Contribution, SessionId, SharedState, SharedTranscript, Transcript,
-};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
 use http::StatusCode;
 use serde_json::json;
-use std::fmt::Debug;
+
+use crate::{
+    data::transcript::write_transcript_file,
+    jwt::{errors::JwtError, Receipt},
+    storage::PersistentStorage,
+    AppConfig, Contribution, SessionId, SharedState, SharedTranscript, Transcript,
+};
 
 pub struct ContributeReceipt {
     encoded_receipt_token: String,
@@ -79,7 +79,7 @@ where
     // 2. Check if the program state transition was correct
     {
         let transcript = shared_transcript.read().await;
-        if T::verify_contribution(&transcript, &contribution).is_err() {
+        if transcript.verify_contribution(&contribution).is_err() {
             let mut app_state = store.write().await;
             app_state.clear_current_contributor();
             return Err(ContributeError::InvalidContribution);
@@ -109,8 +109,12 @@ where
 
     let encoded_receipt_token = receipt.encode().map_err(ContributeError::Auth)?;
 
-    // TODO write to bkp + mv
-    write_transcript_file(config.transcript_file.clone(), shared_transcript).await;
+    write_transcript_file(
+        config.transcript_file,
+        config.transcript_in_progress_file,
+        shared_transcript,
+    )
+    .await;
 
     let mut app_state = store.write().await;
 
@@ -142,37 +146,35 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use axum::{Extension, Json};
+    use chrono::DateTime;
+
     use crate::{
         api::v1::contribute::ContributeError,
-        constants, contribute,
-        jwt::IdToken,
-        keys, read_trancscript_file,
+        constants, contribute, keys, read_transcript_file,
         storage::test_storage_client,
         test_transcript::TestContribution::{InvalidContribution, ValidContribution},
         test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SessionInfo, SharedState, SharedTranscript, TestTranscript,
-    };
-    use axum::{Extension, Json};
-    use chrono::DateTime;
-    use std::{
-        fs::File,
-        path::PathBuf,
-        time::{Instant, SystemTime},
+        AppConfig, Keys, SessionId, SharedState, SharedTranscript, TestTranscript,
     };
 
     fn config() -> AppConfig {
         let mut transcript = std::env::temp_dir();
         transcript.push("transcript.json");
-        File::create(&transcript).unwrap();
+        let mut transcript_work = std::env::temp_dir();
+        transcript_work.push("transcript.json.new");
         AppConfig {
-            eth_check_nonce_at_block: "".to_string(),
-            eth_min_nonce:            0,
-            github_max_creation_time: DateTime::parse_from_rfc3339(
+            eth_check_nonce_at_block:    "".to_string(),
+            eth_min_nonce:               0,
+            github_max_creation_time:    DateTime::parse_from_rfc3339(
                 constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
             )
             .unwrap(),
-            eth_rpc_url:              "".to_string(),
-            transcript_file:          transcript,
+            eth_rpc_url:                 "".to_string(),
+            transcript_file:             transcript,
+            transcript_in_progress_file: transcript_work,
         }
     }
 
@@ -248,7 +250,7 @@ mod tests {
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_trancscript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
         assert_eq!(transcript, TestTranscript {
             initial:       ValidContribution(0),
             contributions: vec![ValidContribution(123)],
@@ -267,7 +269,7 @@ mod tests {
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_trancscript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
         assert_eq!(transcript, TestTranscript {
             initial:       ValidContribution(0),
             contributions: vec![ValidContribution(123), ValidContribution(175)],
