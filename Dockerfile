@@ -38,10 +38,10 @@ ENV SSL_CERT_FILE="/ca-certificates.crt"
 ENV LOG_FORMAT="json"
 ENV LOG_FILTER="info"
 
-# copy private key and public key
-# TODO: Mount through volume.
-COPY ./private.key ./private.key
-COPY ./publickey.pem ./publickey.pem
+# Link in keys through a volume
+VOLUME /jwt-key
+ENV PUBLIC_KEY="/jwt-key/publickey.pem"
+ENV PRIVATE_KEY="/jwt-key/private.key"
 
 # Executable
 COPY --from=build-env --chown=0:10001 --chmod=010 /src/bin /bin
