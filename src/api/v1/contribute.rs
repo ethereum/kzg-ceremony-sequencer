@@ -29,7 +29,7 @@ pub enum ContributeError {
 }
 
 impl IntoResponse for ContributeError {
-    fn into_response(self) -> axum::response::Response {
+    fn into_response(self) -> Response {
         let (status, body) = match self {
             Self::NotUsersTurn => {
                 let body = Json(json!({"error" : "not your turn to participate"}));
@@ -60,17 +60,17 @@ where
     <<T as Transcript>::ContributionType as Contribution>::Receipt: Send,
 {
     // 1. Check if this person should be contributing
-    {
+    let id_token = {
         let app_state = store.read().await;
-        let id = &app_state
+        let (id, session_info) = &app_state
             .participant
             .as_ref()
-            .ok_or(ContributeError::NotUsersTurn)?
-            .0;
+            .ok_or(ContributeError::NotUsersTurn)?;
         if &session_id != id {
             return Err(ContributeError::NotUsersTurn);
         }
-    }
+        session_info.token.clone()
+    };
 
     // We also know that if they were in the lobby
     // then they did not participate already because
@@ -82,6 +82,9 @@ where
         if transcript.verify_contribution(&contribution).is_err() {
             let mut app_state = store.write().await;
             app_state.clear_current_contributor();
+            storage
+                .expire_contribution(id_token.unique_identifier())
+                .await;
             return Err(ContributeError::InvalidContribution);
         }
     }
@@ -92,18 +95,9 @@ where
     }
 
     let receipt = {
-        let app_state = store.read().await;
-        let session_info = &app_state
-            .participant
-            .as_ref()
-            // TODO: Wrong locks architecture? I should be holding this lock,
-            // without blocking the whole app_state
-            .expect("Impossible: participant changed mid-contribution")
-            .1;
-
         Receipt {
-            id_token: session_info.token.clone(),
-            witness:  contribution.get_receipt(),
+            id_token,
+            witness: contribution.get_receipt(),
         }
     };
 
@@ -118,12 +112,6 @@ where
 
     let mut app_state = store.write().await;
 
-    // Log the contributors unique social id
-    // So if they use the same login again, they will
-    // not be able to participate
-    app_state
-        .finished_contribution
-        .insert(receipt.id_token.unique_identifier().to_owned());
     app_state.num_contributions += 1;
 
     let uid = app_state

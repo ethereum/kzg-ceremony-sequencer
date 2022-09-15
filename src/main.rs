@@ -261,13 +261,6 @@ pub struct AppState {
     // This is the Id of the current participant
     // Only they are allowed to call /contribute
     participant: Option<(SessionId, SessionInfo)>,
-
-    // List of all users who have finished contributing, we store them using the
-    // unique id, we attain from the social provider
-    // This is their `sub`
-    // TODO: we also need to save the blacklist of those
-    // TODO who went over three minutes
-    finished_contribution: BTreeSet<IdTokenSub>,
 }
 
 impl AppState {
