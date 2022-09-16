@@ -3,6 +3,7 @@ use axum::{
     Extension, Json,
 };
 use http::StatusCode;
+use kzg_ceremony_crypto::interface::Transcript;
 use serde::Serialize;
 use serde_json::json;
 use tokio::time::{Duration, Instant};
@@ -10,7 +11,7 @@ use tokio::time::{Duration, Instant};
 use crate::{
     constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
     storage::PersistentStorage,
-    SessionId, SharedState, SharedTranscript, Transcript,
+    SessionId, SharedState, SharedTranscript,
 };
 
 #[derive(Debug)]

@@ -3,13 +3,14 @@ use axum::{
     Extension, Json,
 };
 use http::StatusCode;
+use kzg_ceremony_crypto::interface::{Contribution, Transcript};
 use serde_json::json;
 
 use crate::{
-    data::transcript::write_transcript_file,
+    io::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
     storage::PersistentStorage,
-    AppConfig, Contribution, SessionId, SharedState, SharedTranscript, Transcript,
+    AppConfig, SessionId, SharedState, SharedTranscript,
 };
 
 pub struct ContributeReceipt {

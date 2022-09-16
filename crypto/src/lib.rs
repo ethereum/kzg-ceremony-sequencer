@@ -2,11 +2,12 @@
 #![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
 
-mod contribution;
+pub mod contribution;
 mod crypto;
 mod zcash_format;
+pub mod interface;
 
-pub use contribution::{Contribution, CeremonyError, CeremoniesError, Transcript};
+pub use contribution::{SubContribution, CeremonyError, CeremoniesError, SubTranscript};
 pub use crypto::{g1_subgroup_check, g2_subgroup_check};
 pub use zcash_format::{parse_g, ParseError};
 

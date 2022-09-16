@@ -1,4 +1,3 @@
-use std::ops::Neg;
 use ark_bls12_381::Fq;
 use ark_ec::{
     models::{ModelParameters, SWModelParameters},
@@ -6,7 +5,7 @@ use ark_ec::{
 };
 use ark_ff::{
     fields::{Field, FpParameters, PrimeField},
-    BigInteger, QuadExtField, QuadExtParameters, ToConstraintField, Zero,
+    BigInteger, QuadExtField, QuadExtParameters, Zero,
 };
 use hex::FromHexError;
 use thiserror::Error;
