@@ -4,10 +4,10 @@
 
 pub mod contribution;
 mod crypto;
-mod zcash_format;
 pub mod interface;
+mod zcash_format;
 
-pub use contribution::{SubContribution, CeremonyError, CeremoniesError, SubTranscript};
+pub use contribution::{CeremoniesError, CeremonyError, SubContribution, SubTranscript};
 pub use crypto::{g1_subgroup_check, g2_subgroup_check};
 pub use zcash_format::{parse_g, ParseError};
 

@@ -144,9 +144,12 @@ mod tests {
         api::v1::contribute::ContributeError,
         constants, contribute, keys, read_transcript_file,
         storage::test_storage_client,
-        test_transcript::TestContribution::{InvalidContribution, ValidContribution},
+        test_transcript::{
+            TestContribution::{InvalidContribution, ValidContribution},
+            TestTranscript,
+        },
         test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SharedState, SharedTranscript, TestTranscript,
+        AppConfig, Keys, SessionId, SharedState, SharedTranscript,
     };
 
     fn config() -> AppConfig {

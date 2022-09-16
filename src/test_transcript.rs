@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use serde::{Deserialize, Serialize};
 use kzg_ceremony_crypto::interface::{Contribution, Transcript};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum TestContribution {

@@ -155,8 +155,9 @@ pub async fn remove_participant_on_deadline(
 #[tokio::test]
 async fn lobby_try_contribute_test() {
     use crate::{
-        storage::test_storage_client, test_transcript::TestContribution,
-        test_util::create_test_session_info, TestTranscript,
+        storage::test_storage_client,
+        test_transcript::{TestContribution, TestTranscript},
+        test_util::create_test_session_info,
     };
 
     let shared_state = SharedState::default();
