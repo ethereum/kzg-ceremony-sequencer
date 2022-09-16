@@ -1,44 +1,36 @@
+use axum::{
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
+use http::StatusCode;
+use serde_json::json;
+
 use crate::{
+    data::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
     storage::PersistentStorage,
-    SessionId, SharedState, SharedTranscript,
+    AppConfig, Contribution, SessionId, SharedState, SharedTranscript, Transcript,
 };
-use axum::{response::IntoResponse, Extension, Json};
-use http::StatusCode;
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use small_powers_of_tau::{
-    sdk::{transcript_verify_update, Transcript, TranscriptJSON, NUM_CEREMONIES},
-    update_proof::UpdateProof,
-};
-use std::convert::TryInto;
 
-// TODO: Move this into Small Powers of Tau repo
-pub type UpdateProofJson = [String; 2];
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ContributePayload {
-    state:   TranscriptJSON,
-    witness: [UpdateProofJson; NUM_CEREMONIES],
+pub struct ContributeReceipt {
+    encoded_receipt_token: String,
 }
 
-pub enum ContributeResponse {
-    ParticipantSpotEmpty,
+impl IntoResponse for ContributeReceipt {
+    fn into_response(self) -> Response {
+        (StatusCode::OK, self.encoded_receipt_token).into_response()
+    }
+}
+
+pub enum ContributeError {
     NotUsersTurn,
     InvalidContribution,
-    TranscriptDecodeError,
     Auth(JwtError),
-    Receipt(String),
 }
 
-impl IntoResponse for ContributeResponse {
-    fn into_response(self) -> axum::response::Response {
+impl IntoResponse for ContributeError {
+    fn into_response(self) -> Response {
         let (status, body) = match self {
-            Self::ParticipantSpotEmpty => {
-                let body = Json(json!({"error" : "the spot to participate is empty"}));
-                (StatusCode::BAD_REQUEST, body)
-            }
             Self::NotUsersTurn => {
                 let body = Json(json!({"error" : "not your turn to participate"}));
                 (StatusCode::BAD_REQUEST, body)
@@ -47,97 +39,87 @@ impl IntoResponse for ContributeResponse {
                 let body = Json(json!({"error" : "contribution invalid"}));
                 (StatusCode::BAD_REQUEST, body)
             }
-            Self::TranscriptDecodeError => {
-                let body = Json(
-                    json!({"error" : "contribution was valid, but could not decode transcript "}),
-                );
-                (StatusCode::BAD_REQUEST, body)
-            }
             Self::Auth(err) => return err.into_response(),
-            Self::Receipt(encoded_receipt_token) => {
-                let body = Json(json!({ "receipt": encoded_receipt_token }));
-                (StatusCode::OK, body)
-            }
         };
 
         (status, body).into_response()
     }
 }
 
-pub async fn contribute(
+pub async fn contribute<T>(
     session_id: SessionId,
-    Json(payload): Json<ContributePayload>,
+    Json(contribution): Json<T::ContributionType>,
     Extension(store): Extension<SharedState>,
+    Extension(config): Extension<AppConfig>,
+    Extension(shared_transcript): Extension<SharedTranscript<T>>,
     Extension(storage): Extension<PersistentStorage>,
-    Extension(shared_transcript): Extension<SharedTranscript>,
-) -> ContributeResponse {
+) -> Result<ContributeReceipt, ContributeError>
+where
+    T: Transcript + Send + Sync + 'static,
+    T::ContributionType: Send,
+    <<T as Transcript>::ContributionType as Contribution>::Receipt: Send,
+{
     // 1. Check if this person should be contributing
-
-    let mut app_state = store.write().await;
-
-    let (id, session_info) = match &app_state.participant {
-        Some(participant_id) => participant_id,
-        None => {
-            return ContributeResponse::ParticipantSpotEmpty;
+    let id_token = {
+        let app_state = store.read().await;
+        let (id, session_info) = &app_state
+            .participant
+            .as_ref()
+            .ok_or(ContributeError::NotUsersTurn)?;
+        if &session_id != id {
+            return Err(ContributeError::NotUsersTurn);
         }
+        session_info.token.clone()
     };
-
-    if &session_id != id {
-        return ContributeResponse::NotUsersTurn;
-    }
 
     // We also know that if they were in the lobby
     // then they did not participate already because
     // when we auth participants, this is checked
 
     // 2. Check if the program state transition was correct
-    let mut transcript = shared_transcript.write().await;
-
-    if !check_transition(&transcript, &payload.state, payload.witness.clone()) {
-        let uid = session_info.token.unique_identifier().to_owned();
-        app_state.clear_current_contributor();
-
-        drop(app_state); // Release AppState lock
-        storage.expire_contribution(&uid).await;
-
-        return ContributeResponse::InvalidContribution;
+    {
+        let transcript = shared_transcript.read().await;
+        if transcript.verify_contribution(&contribution).is_err() {
+            let mut app_state = store.write().await;
+            app_state.clear_current_contributor();
+            storage
+                .expire_contribution(id_token.unique_identifier())
+                .await;
+            return Err(ContributeError::InvalidContribution);
+        }
     }
 
-    let new_transcript: Option<Transcript> = (&payload.state).into();
-    if let Some(new_transcript) = new_transcript {
-        *transcript = new_transcript;
-    } else {
-        let uid = session_info.token.unique_identifier().to_owned();
-        drop(app_state); // Release AppState lock
-        storage.expire_contribution(&uid).await;
-
-        return ContributeResponse::TranscriptDecodeError;
+    {
+        let mut transcript = shared_transcript.write().await;
+        *transcript = transcript.update(&contribution);
     }
 
-    // Given that the state transition was correct
-    //
-    // record this contribution and clean up the user
-
-    let uid = session_info.token.unique_identifier().to_owned();
-    let receipt = Receipt {
-        id_token: session_info.token.clone(),
-        witness:  payload.witness,
-    };
-    let encoded_receipt_token = match receipt.encode() {
-        Ok(encoded_token) => encoded_token,
-        Err(err) => {
-            let uid = session_info.token.unique_identifier().to_owned();
-            drop(app_state); // Release AppState lock
-            storage.expire_contribution(&uid).await;
-
-            return ContributeResponse::Auth(err);
+    let receipt = {
+        Receipt {
+            id_token,
+            witness: contribution.get_receipt(),
         }
     };
-    // Log the contributors unique social id
-    // So if they use the same login again, they will
-    // not be able to participate
-    app_state.receipts.push(receipt);
+
+    let encoded_receipt_token = receipt.encode().map_err(ContributeError::Auth)?;
+
+    write_transcript_file(
+        config.transcript_file,
+        config.transcript_in_progress_file,
+        shared_transcript,
+    )
+    .await;
+
+    let mut app_state = store.write().await;
+
     app_state.num_contributions += 1;
+
+    let uid = app_state
+        .participant
+        .as_ref()
+        .expect("participant is guaranteed non-empty here")
+        .0
+        .to_string();
 
     // Remove this person from the contribution spot
     app_state.clear_current_contributor();
@@ -145,61 +127,140 @@ pub async fn contribute(
     drop(app_state); // Release AppState lock
     storage.finish_contribution(&uid).await;
 
-    ContributeResponse::Receipt(encoded_receipt_token)
+    Ok(ContributeReceipt {
+        encoded_receipt_token,
+    })
 }
 
-fn check_transition(
-    old_transcript: &Transcript,
-    new_transcript_json: &TranscriptJSON,
-    witness: [UpdateProofJson; NUM_CEREMONIES],
-) -> bool {
-    let mut update_proofs = Vec::new();
-    for proof_json in witness {
-        let update_proof = match UpdateProof::deserialise(proof_json) {
-            Some(proof) => proof,
-            None => return false,
-        };
-        update_proofs.push(update_proof);
-    }
-    let update_proofs: [UpdateProof; NUM_CEREMONIES] = update_proofs.try_into().unwrap();
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
 
-    let new_transcript: Option<Transcript> = new_transcript_json.into();
-    let new_transcript = match new_transcript {
-        Some(transcript) => transcript,
-        None => return false,
+    use axum::{Extension, Json};
+    use chrono::DateTime;
+
+    use crate::{
+        api::v1::contribute::ContributeError,
+        constants, contribute, keys, read_transcript_file,
+        storage::test_storage_client,
+        test_transcript::TestContribution::{InvalidContribution, ValidContribution},
+        test_util::create_test_session_info,
+        AppConfig, Keys, SessionId, SharedState, SharedTranscript, TestTranscript,
     };
 
-    let random_hex_elements = random_hex_strs();
-
-    // TODO: Do this in parallel in small powers of tau repo
-    transcript_verify_update(
-        old_transcript,
-        &new_transcript,
-        &update_proofs,
-        random_hex_elements,
-    )
-}
-
-fn random_hex_strs() -> [String; NUM_CEREMONIES] {
-    let mut rng = rand::thread_rng();
-
-    let mut secrets: [String; NUM_CEREMONIES] = [
-        String::default(),
-        String::default(),
-        String::default(),
-        String::default(),
-    ];
-
-    for secret in &mut secrets {
-        // We use 64 bytes for the secret to reduce bias when reducing
-        let mut bytes = [0u8; 64];
-        rng.fill(&mut bytes);
-
-        let mut hex_string = hex::encode(bytes);
-        // prepend 0x because this is standard in ethereum
-        hex_string.insert_str(0, "0x");
-        *secret = hex_string;
+    fn config() -> AppConfig {
+        let mut transcript = std::env::temp_dir();
+        transcript.push("transcript.json");
+        let mut transcript_work = std::env::temp_dir();
+        transcript_work.push("transcript.json.new");
+        AppConfig {
+            eth_check_nonce_at_block:    "".to_string(),
+            eth_min_nonce:               0,
+            github_max_creation_time:    DateTime::parse_from_rfc3339(
+                constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
+            )
+            .unwrap(),
+            eth_rpc_url:                 "".to_string(),
+            transcript_file:             transcript,
+            transcript_in_progress_file: transcript_work,
+        }
     }
 
-    secrets
+    async fn init_keys() {
+        keys::KEYS
+            .set(
+                Keys::new(keys::Options {
+                    private_key: PathBuf::from("private.key"),
+                    public_key:  PathBuf::from("publickey.pem"),
+                })
+                .await
+                .unwrap(),
+            )
+            .ok();
+    }
+
+    #[tokio::test]
+    async fn rejects_out_of_turn_contribution() {
+        let db = test_storage_client().await;
+        let app_state = SharedState::default();
+        app_state.write().await.participant = None;
+        let result = contribute::<TestTranscript>(
+            SessionId::new(),
+            Json(ValidContribution(123)),
+            Extension(app_state),
+            Extension(config()),
+            Extension(SharedTranscript::default()),
+            Extension(db),
+        )
+        .await;
+        assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_contribution() {
+        init_keys().await;
+        let db = test_storage_client().await;
+        let app_state = SharedState::default();
+        let participant = SessionId::new();
+        app_state.write().await.participant =
+            Some((participant.clone(), create_test_session_info(100)));
+        let result = contribute::<TestTranscript>(
+            participant,
+            Json(InvalidContribution(123)),
+            Extension(app_state),
+            Extension(config()),
+            Extension(SharedTranscript::default()),
+            Extension(db),
+        )
+        .await;
+        assert!(matches!(result, Err(ContributeError::InvalidContribution)));
+    }
+
+    #[tokio::test]
+    async fn accepts_valid_contribution() {
+        init_keys().await;
+        let db = test_storage_client().await;
+        let app_state = SharedState::default();
+        let participant = SessionId::new();
+        let cfg = config();
+        let shared_transcript = SharedTranscript::<TestTranscript>::default();
+
+        app_state.write().await.participant =
+            Some((participant.clone(), create_test_session_info(100)));
+        let result = contribute::<TestTranscript>(
+            participant.clone(),
+            Json(ValidContribution(123)),
+            Extension(app_state.clone()),
+            Extension(cfg.clone()),
+            Extension(shared_transcript.clone()),
+            Extension(db.clone()),
+        )
+        .await;
+
+        assert!(matches!(result, Ok(_)));
+        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        assert_eq!(transcript, TestTranscript {
+            initial:       ValidContribution(0),
+            contributions: vec![ValidContribution(123)],
+        });
+
+        app_state.write().await.participant =
+            Some((participant.clone(), create_test_session_info(100)));
+        let result = contribute::<TestTranscript>(
+            participant.clone(),
+            Json(ValidContribution(175)),
+            Extension(app_state.clone()),
+            Extension(cfg.clone()),
+            Extension(shared_transcript.clone()),
+            Extension(db.clone()),
+        )
+        .await;
+
+        assert!(matches!(result, Ok(_)));
+        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        assert_eq!(transcript, TestTranscript {
+            initial:       ValidContribution(0),
+            contributions: vec![ValidContribution(123), ValidContribution(175)],
+        });
+    }
 }

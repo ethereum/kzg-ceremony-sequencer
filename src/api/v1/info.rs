@@ -1,23 +1,22 @@
 use crate::{
-    constants::HISTORY_RECEIPTS_COUNT,
     keys::{Keys, KEYS},
-    SharedState, SharedTranscript,
+    AppConfig, SharedState,
 };
 use axum::{
+    body::StreamBody,
     response::{IntoResponse, Response},
     Extension, Json,
 };
 use axum_extra::response::ErasedJson;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use small_powers_of_tau::sdk::TranscriptJSON;
+use tokio::fs::File;
+use tokio_util::io::ReaderStream;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct StatusResponse {
     lobby_size:        usize,
     num_contributions: usize,
-    // Receipts are returned in encoded format
-    receipts:          Vec<String>,
 }
 
 impl IntoResponse for StatusResponse {
@@ -33,41 +32,25 @@ pub async fn status(Extension(store): Extension<SharedState>) -> StatusResponse 
     let lobby_size = app_state.lobby.len();
     let num_contributions = app_state.num_contributions;
 
-    let receipts: Vec<_> = app_state
-        .receipts
-        .iter()
-        .rev()
-        .take(HISTORY_RECEIPTS_COUNT)
-        .map(|receipt| receipt.encode().unwrap())
-        .collect();
-
     StatusResponse {
         lobby_size,
         num_contributions,
-        receipts,
     }
 }
 
-pub struct CurrentStateResponse {
-    state: TranscriptJSON,
-}
-
-impl IntoResponse for CurrentStateResponse {
-    fn into_response(self) -> Response {
-        // We use ErasedJson for the case that one wants to view the
-        // transcript in the browser and it needs to be prettified
-        (StatusCode::OK, ErasedJson::pretty(self.state)).into_response()
-    }
-}
-
-pub async fn current_state(
-    Extension(transcript): Extension<SharedTranscript>,
-) -> CurrentStateResponse {
-    let app_state = transcript.read().await;
-    let transcript_json = TranscriptJSON::from(&*app_state);
-    CurrentStateResponse {
-        state: transcript_json,
-    }
+pub async fn current_state(Extension(config): Extension<AppConfig>) -> impl IntoResponse {
+    let f = match File::open(config.transcript_file).await {
+        Ok(file) => file,
+        Err(_) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not open transcript file",
+            ))
+        }
+    };
+    let stream = ReaderStream::new(f);
+    let body = StreamBody::new(stream);
+    Ok((StatusCode::OK, body))
 }
 
 #[derive(Debug, Serialize, Deserialize)]

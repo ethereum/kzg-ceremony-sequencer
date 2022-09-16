@@ -18,10 +18,6 @@ pub const LOBBY_CHECKIN_TOLERANCE_SEC: usize = 2;
 // lobby. Users in the lobby are allowed to ping to contribute
 pub const MAX_LOBBY_SIZE: usize = 1_000;
 
-// The number of receipts to return when the
-// history endpoint is called
-pub const HISTORY_RECEIPTS_COUNT: usize = 20;
-
 // Periodically, we check whether the participants
 // have not pinged the sequencer on time.
 // This constant defines how often we check, In seconds

@@ -1,27 +1,27 @@
-use crate::{
-    constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
-    storage::PersistentStorage,
-    SessionId, SharedState, SharedTranscript,
-};
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
 use http::StatusCode;
+use serde::Serialize;
 use serde_json::json;
-use small_powers_of_tau::sdk::TranscriptJSON;
 use tokio::time::{Duration, Instant};
+
+use crate::{
+    constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
+    storage::PersistentStorage,
+    SessionId, SharedState, SharedTranscript, Transcript,
+};
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // TODO: Discuss this
-pub enum TryContributeResponse {
+pub enum TryContributeError {
     UnknownSessionId,
     RateLimited,
     AnotherContributionInProgress,
-    Success(TranscriptJSON),
 }
 
-impl IntoResponse for TryContributeResponse {
+impl IntoResponse for TryContributeError {
     fn into_response(self) -> Response {
         let (status, body) = match self {
             Self::UnknownSessionId => {
@@ -44,25 +44,29 @@ impl IntoResponse for TryContributeResponse {
                 }));
                 (StatusCode::OK, body)
             }
-
-            Self::Success(transcript) => {
-                let body = Json(json!({
-                    "state": transcript,
-                }));
-                (StatusCode::OK, body)
-            }
         };
 
         (status, body).into_response()
     }
 }
 
-pub async fn try_contribute(
+#[derive(Debug)]
+pub struct TryContributeResponse<C> {
+    contribution: C,
+}
+
+impl<C: Serialize> IntoResponse for TryContributeResponse<C> {
+    fn into_response(self) -> Response {
+        (StatusCode::OK, Json(self.contribution)).into_response()
+    }
+}
+
+pub async fn try_contribute<T: Transcript + Send + Sync>(
     session_id: SessionId,
     Extension(store): Extension<SharedState>,
     Extension(storage): Extension<PersistentStorage>,
-    Extension(transcript): Extension<SharedTranscript>,
-) -> TryContributeResponse {
+    Extension(transcript): Extension<SharedTranscript<T>>,
+) -> Result<TryContributeResponse<T::ContributionType>, TryContributeError> {
     let store_clone = store.clone();
     let app_state = &mut store.write().await;
 
@@ -70,19 +74,17 @@ pub async fn try_contribute(
 
     // 1. Check if this is a valid session. If so, we log the ping time
     {
-        let info = match app_state.lobby.get_mut(&session_id) {
-            Some(info) => info,
-            None => {
-                return TryContributeResponse::UnknownSessionId;
-            }
-        };
+        let info = app_state
+            .lobby
+            .get_mut(&session_id)
+            .ok_or(TryContributeError::UnknownSessionId)?;
 
         let min_diff =
             Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC - LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
 
         let now = Instant::now();
         if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
-            return TryContributeResponse::RateLimited;
+            return Err(TryContributeError::RateLimited);
         }
 
         info.is_first_ping_attempt = false;
@@ -93,7 +95,7 @@ pub async fn try_contribute(
 
     // Check if there is an existing contribution in progress
     if app_state.participant.is_some() {
-        return TryContributeResponse::AnotherContributionInProgress;
+        return Err(TryContributeError::AnotherContributionInProgress);
     }
 
     // If this insertion fails, worst case we allow multiple contributions from the
@@ -110,9 +112,10 @@ pub async fn try_contribute(
     }
 
     let transcript = transcript.read().await;
-    let transcript_json = TranscriptJSON::from(&*transcript);
 
-    TryContributeResponse::Success(transcript_json)
+    Ok(TryContributeResponse {
+        contribution: transcript.get_contribution(),
+    })
 }
 
 // Clears the contribution spot on `COMPUTE_DEADLINE` interval
@@ -150,10 +153,13 @@ pub async fn remove_participant_on_deadline(
 
 #[tokio::test]
 async fn lobby_try_contribute_test() {
-    use crate::{storage::test_storage_client, test_util::create_test_session_info};
+    use crate::{
+        storage::test_storage_client, test_transcript::TestContribution,
+        test_util::create_test_session_info, TestTranscript,
+    };
 
     let shared_state = SharedState::default();
-    let transcript = SharedTranscript::default();
+    let transcript = SharedTranscript::<TestTranscript>::default();
     let db = test_storage_client().await;
 
     let session_id = SessionId::new();
@@ -172,7 +178,7 @@ async fn lobby_try_contribute_test() {
     .await;
     assert!(matches!(
         unknown_session_response,
-        TryContributeResponse::UnknownSessionId
+        Err(TryContributeError::UnknownSessionId)
     ));
 
     // add two participants to lobby
@@ -193,7 +199,8 @@ async fn lobby_try_contribute_test() {
         Extension(db.clone()),
         Extension(transcript.clone()),
     )
-    .await;
+    .await
+    .ok();
     let contribution_in_progress_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
@@ -203,7 +210,7 @@ async fn lobby_try_contribute_test() {
     .await;
     assert!(matches!(
         contribution_in_progress_response,
-        TryContributeResponse::AnotherContributionInProgress
+        Err(TryContributeError::AnotherContributionInProgress)
     ));
 
     // call the endpoint too soon - rate limited, other participant computing
@@ -217,7 +224,7 @@ async fn lobby_try_contribute_test() {
     .await;
     assert!(matches!(
         too_soon_response,
-        TryContributeResponse::RateLimited
+        Err(TryContributeError::RateLimited)
     ));
 
     // "other participant" finished contributing
@@ -237,7 +244,7 @@ async fn lobby_try_contribute_test() {
     .await;
     assert!(matches!(
         too_soon_response,
-        TryContributeResponse::RateLimited
+        Err(TryContributeError::RateLimited)
     ));
 
     // wait enough time to be able to contribute
@@ -251,6 +258,8 @@ async fn lobby_try_contribute_test() {
     .await;
     assert!(matches!(
         success_response,
-        TryContributeResponse::Success(_)
+        Ok(TryContributeResponse {
+            contribution: TestContribution::ValidContribution(0),
+        })
     ));
 }
