@@ -62,6 +62,7 @@ pub struct Contribution {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub struct SubContribution {
     pub pubkey:    G2Affine,
     pub g1_powers: Vec<G1Affine>,
@@ -70,6 +71,7 @@ pub struct SubContribution {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::module_name_repetitions)]
 pub struct ContributionJson {
     pub sub_contributions: Vec<SubContributionJson>,
 }
@@ -159,7 +161,7 @@ where
     items
         .par_iter()
         .enumerate()
-        .map(|(i, str)| parse_g(&str).map_err(|err| wrap_err(i, err)))
+        .map(|(i, str)| parse_g(str).map_err(|err| wrap_err(i, err)))
         .collect()
 }
 
@@ -249,6 +251,7 @@ impl From<SubContribution> for SubContributionJson {
 }
 
 impl ContributionJson {
+    #[must_use]
     pub fn initial() -> Self {
         Self {
             sub_contributions: crate::SIZES
@@ -258,23 +261,9 @@ impl ContributionJson {
         }
     }
 
-    pub fn from_json(json: &str) -> Result<Self, CeremoniesError> {
-        // let json = serde_json::from_str(json)?;
-        // let validation = schema.validate(&initial);
-        // if !validation.is_strictly_valid() {
-        //     for error in validation.errors {
-        //         error!("{}", error);
-        //     }
-        //     for missing in validation.missing {
-        //         error!("Missing {}", missing);
-        //     }
-        //     // TODO bail!("Initial contribution is not valid.");
-        // }
-        // info!("Initial contribution is json-schema valid.");
-        // TODO:
-        todo!()
-    }
-
+    /// # Errors
+    ///
+    /// Errors may be reported when any of the contributions cannot be parsed.
     pub fn parse(&self) -> Result<Vec<SubContribution>, CeremoniesError> {
         if self.sub_contributions.len() != crate::SIZES.len() {
             return Err(CeremoniesError::InvalidCeremoniesCount(
@@ -316,6 +305,7 @@ impl ContributionJson {
 }
 
 impl SubContributionJson {
+    #[must_use]
     pub fn initial(num_g1_powers: usize, num_g2_powers: usize) -> Self {
         Self {
             num_g1_powers,
@@ -325,6 +315,9 @@ impl SubContributionJson {
         }
     }
 
+    /// # Errors
+    ///
+    /// Errors may be reported when the contribution cannot be parsed.
     pub fn parse(&self) -> Result<SubContribution, CeremonyError> {
         if self.powers_of_tau.g1_powers.len() != self.num_g1_powers {
             return Err(CeremonyError::InconsistentNumG1Powers(
@@ -543,10 +536,10 @@ impl crate::interface::Transcript for Transcript {
                     c.g1_powers
                         .get(1)
                         .expect("Impossible, contribution is checked valid")
-                        .to_owned(),
+                        .clone(),
                 );
                 let mut pubkeys = t.pubkeys.clone();
-                pubkeys.push(c.pubkey.clone());
+                pubkeys.push(c.pubkey);
                 SubTranscript {
                     g1_powers,
                     g2_powers,
@@ -566,7 +559,10 @@ impl crate::interface::Transcript for Transcript {
                 .map(|st| SubContribution {
                     g1_powers: st.g1_powers.clone(),
                     g2_powers: st.g2_powers.clone(),
-                    pubkey:    st.pubkeys.last().unwrap().clone(),
+                    pubkey:    *st
+                        .pubkeys
+                        .last()
+                        .expect("Impossible: invalid initial transcript"),
                 })
                 .collect(),
         }
