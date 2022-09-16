@@ -1,7 +1,13 @@
-use crate::{crypto::g1_mul_glv, g1_subgroup_check, g2_subgroup_check, parse_g, ParseError};
+use crate::{
+    crypto::g1_mul_glv, g1_subgroup_check, g2_subgroup_check, parse_g, zcash_format::write_g,
+    ParseError,
+};
 use ark_bls12_381::{g1, g2, Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{One, PrimeField, UniformRand, Zero};
+use ark_ec::{
+    msm::VariableBaseMSM, short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
+    ProjectiveCurve, SWModelParameters,
+};
+use ark_ff::{One, PrimeField, ToConstraintField, UniformRand, Zero};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{cmp::max, iter};
@@ -15,6 +21,42 @@ pub struct Transcript {
     pub g2_powers: Vec<G2Affine>,
     pub products:  Vec<G1Affine>,
     pub pubkeys:   Vec<G2Affine>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptJson {
+    pub num_g1_powers: usize,
+    pub num_g2_powers: usize,
+    pub powers_of_tau: PowersOfTau,
+    pub witness:       WitnessJson,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WitnessJson {
+    pub running_products: Vec<String>,
+    pub pot_pubkeys:      Vec<String>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(into = "TranscriptsJson")]
+#[serde(try_from = "TranscriptsJson")]
+pub struct Transcripts {
+    pub sub_transcripts: Vec<Transcript>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptsJson {
+    pub sub_transcripts: Vec<TranscriptJson>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(into = "ContributionsJson")]
+#[serde(try_from = "ContributionsJson")]
+pub struct Contributions {
+    pub sub_contributions: Vec<Contribution>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -47,15 +89,15 @@ pub struct PowersOfTau {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Error)]
-pub enum ContributionsError {
+pub enum CeremoniesError {
     #[error("Error in contribution {0}: {1}")]
-    InvalidContribution(usize, #[source] ContributionError),
+    InvalidCeremony(usize, #[source] CeremonyError),
     #[error("Unexpected number of contributions: expected {0}, got {1}")]
-    InvalidContributionCount(usize, usize),
+    InvalidCeremoniesCount(usize, usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Error)]
-pub enum ContributionError {
+pub enum CeremonyError {
     #[error("Unexpected number of G1 powers: expected {0}, got {1}")]
     UnexpectedNumG1Powers(usize, usize),
     #[error("Unexpected number of G2 powers: expected {0}, got {1}")]
@@ -70,6 +112,138 @@ pub enum ContributionError {
     InvalidG2Power(usize, #[source] ParseError),
     #[error("Error parsing potPubkey: {0}")]
     InvalidPubKey(#[source] ParseError),
+    #[error("Error parsing running product {0}: {1}")]
+    InvalidWitnessProduct(usize, #[source] ParseError),
+    #[error("Error parsing potPubkey {0}: {1}")]
+    InvalidWitnessPubKey(usize, #[source] ParseError),
+}
+
+impl TryFrom<TranscriptsJson> for Transcripts {
+    type Error = CeremoniesError;
+
+    fn try_from(value: TranscriptsJson) -> Result<Self, Self::Error> {
+        let sub_transcripts: Vec<_> = value
+            .sub_transcripts
+            .into_iter()
+            .enumerate()
+            .map(|(i, trans)| {
+                Transcript::try_from(trans).map_err(|e| CeremoniesError::InvalidCeremony(i, e))
+            })
+            .collect::<Result<Vec<_>, CeremoniesError>>()?;
+        Ok(Self { sub_transcripts })
+    }
+}
+
+impl From<Transcripts> for TranscriptsJson {
+    fn from(transcripts: Transcripts) -> Self {
+        Self {
+            sub_transcripts: transcripts
+                .sub_transcripts
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+fn read_vector_of_points<P, F>(
+    items: &Vec<String>,
+    wrap_err: F,
+) -> Result<Vec<GroupAffine<P>>, CeremonyError>
+where
+    P: SWModelParameters,
+    F: Fn(usize, ParseError) -> CeremonyError + Sync,
+{
+    items
+        .par_iter()
+        .enumerate()
+        .map(|(i, str)| parse_g(&str).map_err(|err| wrap_err(i, err)))
+        .collect()
+}
+
+impl TryFrom<TranscriptJson> for Transcript {
+    type Error = CeremonyError;
+
+    fn try_from(value: TranscriptJson) -> Result<Self, Self::Error> {
+        let g1_powers = read_vector_of_points(
+            &value.powers_of_tau.g1_powers,
+            CeremonyError::InvalidG1Power,
+        )?;
+        let g2_powers = read_vector_of_points(
+            &value.powers_of_tau.g2_powers,
+            CeremonyError::InvalidG2Power,
+        )?;
+        let products = read_vector_of_points(
+            &value.witness.running_products,
+            CeremonyError::InvalidWitnessProduct,
+        )?;
+        let pubkeys = read_vector_of_points(
+            &value.witness.pot_pubkeys,
+            CeremonyError::InvalidWitnessPubKey,
+        )?;
+        Ok(Self {
+            g1_powers,
+            g2_powers,
+            products,
+            pubkeys,
+        })
+    }
+}
+
+impl From<Transcript> for TranscriptJson {
+    fn from(transcript: Transcript) -> Self {
+        let powers_of_tau = PowersOfTau {
+            g1_powers: transcript.g1_powers.par_iter().map(write_g).collect(),
+            g2_powers: transcript.g2_powers.par_iter().map(write_g).collect(),
+        };
+        let witness = WitnessJson {
+            pot_pubkeys:      transcript.pubkeys.par_iter().map(write_g).collect(),
+            running_products: transcript.pubkeys.par_iter().map(write_g).collect(),
+        };
+        Self {
+            num_g1_powers: transcript.g1_powers.len(),
+            num_g2_powers: transcript.g2_powers.len(),
+            powers_of_tau,
+            witness,
+        }
+    }
+}
+
+impl TryFrom<ContributionsJson> for Contributions {
+    type Error = CeremoniesError;
+
+    fn try_from(value: ContributionsJson) -> Result<Self, Self::Error> {
+        value.parse().map(|val| Self {
+            sub_contributions: val,
+        })
+    }
+}
+
+impl From<Contributions> for ContributionsJson {
+    fn from(contributions: Contributions) -> Self {
+        Self {
+            sub_contributions: contributions
+                .sub_contributions
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<Contribution> for ContributionJson {
+    fn from(contribution: Contribution) -> Self {
+        let powers_of_tau = PowersOfTau {
+            g1_powers: contribution.g1_powers.iter().map(write_g).collect(),
+            g2_powers: contribution.g2_powers.iter().map(write_g).collect(),
+        };
+        Self {
+            num_g1_powers: contribution.g1_powers.len(),
+            num_g2_powers: contribution.g2_powers.len(),
+            pot_pubkey: Some(write_g(&contribution.pubkey)),
+            powers_of_tau,
+        }
+    }
 }
 
 impl ContributionsJson {
@@ -82,7 +256,7 @@ impl ContributionsJson {
         }
     }
 
-    pub fn from_json(json: &str) -> Result<Self, ContributionsError> {
+    pub fn from_json(json: &str) -> Result<Self, CeremoniesError> {
         // let json = serde_json::from_str(json)?;
         // let validation = schema.validate(&initial);
         // if !validation.is_strictly_valid() {
@@ -99,9 +273,9 @@ impl ContributionsJson {
         todo!()
     }
 
-    pub fn parse(&self) -> Result<Vec<Contribution>, ContributionsError> {
+    pub fn parse(&self) -> Result<Vec<Contribution>, CeremoniesError> {
         if self.sub_contributions.len() != crate::SIZES.len() {
-            return Err(ContributionsError::InvalidContributionCount(
+            return Err(CeremoniesError::InvalidCeremoniesCount(
                 4,
                 self.sub_contributions.len(),
             ));
@@ -111,13 +285,13 @@ impl ContributionsJson {
             .zip(crate::SIZES.iter())
             .map(|(c, (num_g1, num_g2))| {
                 if c.num_g1_powers != *num_g1 {
-                    return Err(ContributionError::UnexpectedNumG1Powers(
+                    return Err(CeremonyError::UnexpectedNumG1Powers(
                         *num_g1,
                         c.num_g1_powers,
                     ));
                 }
                 if c.num_g2_powers != *num_g2 {
-                    return Err(ContributionError::UnexpectedNumG1Powers(
+                    return Err(CeremonyError::UnexpectedNumG1Powers(
                         *num_g1,
                         c.num_g1_powers,
                     ));
@@ -126,14 +300,14 @@ impl ContributionsJson {
             })
             .enumerate()
             .try_for_each(|(i, result)| {
-                result.map_err(|e| ContributionsError::InvalidContribution(i, e))
+                result.map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             })?;
         self.sub_contributions
             .par_iter()
             .enumerate()
             .map(|(i, c)| {
                 c.parse()
-                    .map_err(|e| ContributionsError::InvalidContribution(i, e))
+                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             })
             .collect::<Result<Vec<_>, _>>()
     }
@@ -149,39 +323,27 @@ impl ContributionJson {
         }
     }
 
-    pub fn parse(&self) -> Result<Contribution, ContributionError> {
+    pub fn parse(&self) -> Result<Contribution, CeremonyError> {
         if self.powers_of_tau.g1_powers.len() != self.num_g1_powers {
-            return Err(ContributionError::InconsistentNumG1Powers(
+            return Err(CeremonyError::InconsistentNumG1Powers(
                 self.num_g1_powers,
                 self.powers_of_tau.g1_powers.len(),
             ));
         }
         if self.powers_of_tau.g2_powers.len() != self.num_g2_powers {
-            return Err(ContributionError::InconsistentNumG2Powers(
+            return Err(CeremonyError::InconsistentNumG2Powers(
                 self.num_g2_powers,
                 self.powers_of_tau.g2_powers.len(),
             ));
         }
-        let g1_powers = self
-            .powers_of_tau
-            .g1_powers
-            .par_iter()
-            .enumerate()
-            .map(|(i, hex)| {
-                parse_g::<g1::Parameters>(hex).map_err(|e| ContributionError::InvalidG1Power(i, e))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let g2_powers = self
-            .powers_of_tau
-            .g2_powers
-            .par_iter()
-            .enumerate()
-            .map(|(i, hex)| {
-                parse_g::<g2::Parameters>(hex).map_err(|e| ContributionError::InvalidG2Power(i, e))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let g1_powers =
+            read_vector_of_points(&self.powers_of_tau.g1_powers, CeremonyError::InvalidG1Power)?;
+
+        let g2_powers =
+            read_vector_of_points(&self.powers_of_tau.g2_powers, CeremonyError::InvalidG2Power)?;
+
         let pubkey = if let Some(pubkey) = &self.pot_pubkey {
-            parse_g::<g2::Parameters>(pubkey).map_err(ContributionError::InvalidPubKey)?
+            parse_g::<g2::Parameters>(pubkey).map_err(CeremonyError::InvalidPubKey)?
         } else {
             G2Affine::zero()
         };
