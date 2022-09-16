@@ -88,13 +88,13 @@ impl IntoResponse for AuthError {
             }
             Self::FetchUserDataError => {
                 let body = Json(json!({
-                    "error": "could not fetch user io from auth server",
+                    "error": "could not fetch user data from auth server",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
             Self::CouldNotExtractUserData => {
                 let body = Json(json!({
-                    "error": "could not extract user io from auth server response",
+                    "error": "could not extract user data from auth server response",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
