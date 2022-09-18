@@ -11,6 +11,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_DEBUG: 0
   IMAGE_ID: ghcr.io/${{ github.repository }}:${{ github.sha }}
+  IMAGE_LATEST: ghcr.io/${{ github.repository }}:latest
   BIN: ${{ github.event.repository.name }}
 
 jobs:
@@ -265,3 +266,8 @@ jobs:
         run: docker manifest inspect $IMAGE_ID
       - name: Push manifest
         run: docker manifest push $IMAGE_ID
+      - name: Push latest tag
+        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+        run: |
+          docker tag $IMAGE_ID $IMAGE_LATEST
+          docker push $IMAGE_LASTEST
