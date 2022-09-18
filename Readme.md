@@ -7,6 +7,12 @@
 
 This implements [KZG Ceremony Specification](https://github.com/ethereum/kzg-ceremony-specs).
 
+The latest build is available as a container on [ghcr.io/ethereum/kzg-ceremony-sequencer](https://github.com/ethereum/kzg-ceremony-sequencer/pkgs/container/kzg-ceremony-sequencer):
+
+```shell
+docker run ghcr.io/ethereum/kzg-ceremony-sequencer:latest
+```
+
 ## Setup
 
 ### Generate keypair for signing

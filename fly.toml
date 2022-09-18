@@ -1,38 +1,44 @@
-# fly.toml file generated for kzg-ceremony-poc on 2022-08-31T11:46:11+01:00
+# See <https://fly.io/docs/reference/configuration>
 
-app = "kzg-ceremony-poc"
+app = "kzg-ceremony-sequencer-dev"
 kill_signal = "SIGINT"
-kill_timeout = 5
+kill_timeout = 30 # Seconds
 processes = []
 
+[build]
+    image = "ghcr.io/ethereum/kzg-ceremony-sequencer:master"
+
 [env]
+    VEBOSE=3
+    SERVER="http://127.0.0.1:8080/"
 
 [experimental]
-allowed_public_ports = []
-auto_rollback = true
+    allowed_public_ports = []
+    auto_rollback = true
 
 [[services]]
-http_checks = []
-internal_port = 3000
-processes = ["app"]
-protocol = "tcp"
-script_checks = []
-[services.concurrency]
-hard_limit = 25
-soft_limit = 20
-type = "connections"
+    http_checks = []
+    internal_port = 8080
+    processes = ["app"]
+    protocol = "tcp"
+    script_checks = []
 
-[[services.ports]]
-force_https = true
-handlers = ["http"]
-port = 80
+    [services.concurrency]
+        hard_limit = 25
+        soft_limit = 20
+        type = "connections"
 
-[[services.ports]]
-handlers = ["tls", "http"]
-port = 443
+    [[services.ports]]
+        force_https = true
+        handlers = ["http"]
+        port = 80
 
-[[services.tcp_checks]]
-grace_period = "1s"
-interval = "15s"
-restart_limit = 0
-timeout = "2s"
+    [[services.ports]]
+        handlers = ["tls", "http"]
+        port = 443
+
+    [[services.tcp_checks]]
+        grace_period = "1s"
+        interval = "15s"
+        restart_limit = 0
+        timeout = "2s"
