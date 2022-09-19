@@ -2,6 +2,7 @@ use crate::zcash_format::ParseError;
 use thiserror::Error;
 
 #[derive(Clone, Copy, PartialEq, Debug, Error)]
+#[allow(clippy::module_name_repetitions)]
 pub enum CeremoniesError {
     #[error("Error in contribution {0}: {1}")]
     InvalidCeremony(usize, #[source] CeremonyError),
@@ -10,6 +11,7 @@ pub enum CeremoniesError {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Error)]
+#[allow(clippy::module_name_repetitions)]
 pub enum CeremonyError {
     #[error("Unexpected number of G1 powers: expected {0}, got {1}")]
     UnexpectedNumG1Powers(usize, usize),

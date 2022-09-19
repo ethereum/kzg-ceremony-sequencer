@@ -1,24 +1,14 @@
 use super::{
     utils::read_vector_of_points, CeremoniesError, CeremonyError, Contribution, SubContribution,
 };
-use crate::{
-    crypto::g1_mul_glv, g1_subgroup_check, g2_subgroup_check, parse_g, zcash_format::write_g,
-    ParseError,
-};
-use ark_bls12_381::{g2, Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{
-    msm::VariableBaseMSM, short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
-    ProjectiveCurve, SWModelParameters,
-};
-use ark_ff::{One, PrimeField, UniformRand, Zero};
+use crate::zcash_format::write_g;
+use ark_bls12_381::{G1Affine, G2Affine};
+use ark_ec::AffineCurve;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{cmp::max, iter};
-use thiserror::Error;
-use tracing::{error, instrument};
-use zeroize::Zeroizing;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub struct SubTranscript {
     pub g1_powers: Vec<G1Affine>,
     pub g2_powers: Vec<G2Affine>,
@@ -50,6 +40,7 @@ pub struct Transcript {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[allow(clippy::module_name_repetitions)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptJson {
     pub sub_transcripts: Vec<SubTranscriptJson>,
@@ -191,10 +182,9 @@ impl crate::interface::Transcript for Transcript {
                 let g2_powers = c.g2_powers.clone();
                 let mut products = t.products.clone();
                 products.push(
-                    c.g1_powers
+                    *c.g1_powers
                         .get(1)
-                        .expect("Impossible, contribution is checked valid")
-                        .clone(),
+                        .expect("Impossible, contribution is checked valid"),
                 );
                 let mut pubkeys = t.pubkeys.clone();
                 pubkeys.push(c.pubkey);

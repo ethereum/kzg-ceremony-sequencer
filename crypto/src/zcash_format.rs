@@ -107,6 +107,15 @@ where
 /// Deserialize a ZCash spec encoded group element.
 ///
 /// See <https://github.com/zcash/librustzcash/blob/6e0364cd42a2b3d2b958a54771ef51a8db79dd29/pairing/src/bls12_381/README.md#serialization>
+///
+/// # Errors
+///
+/// Returns a [`ParseError`] if the input is not a valid ZCash encoding. See
+/// [`ParseError`] for details.
+///
+/// # Panics
+///
+/// Panics if the extension degree exceeds `usize::MAX`.
 pub fn parse_g<P: SWModelParameters>(hex: &str) -> Result<GroupAffine<P>, ParseError> {
     // Create some type aliases for the base extension, field and int types.
     type Extension<P> = <P as ModelParameters>::BaseField;
@@ -142,11 +151,12 @@ pub fn parse_g<P: SWModelParameters>(hex: &str) -> Result<GroupAffine<P>, ParseE
         .enumerate()
         .map(|(i, chunk)| {
             chunk.reverse();
+            #[allow(clippy::redundant_slicing)]
             let mut reader = &chunk[..];
             let mut x = Int::<P>::default();
             x.read_le(&mut reader)
                 .map_err(|_| ParseError::BigIntError)?;
-            if reader.len() != 0 {
+            if !reader.is_empty() {
                 return Err(ParseError::BigIntError);
             }
             if x >= modulus {

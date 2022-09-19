@@ -1,7 +1,19 @@
 [package]
 name = "kzg-ceremony-sequencer"
 version = "0.1.0"
+description = "Implementation of the Ethereum KZG Ceremony specification sequencer"
+authors = [
+    "Remco Bloemen <remco@wicked.ventures>",
+    "Kevaundray Wedderburn <kev@the.dev>",
+    "Marcin Kostrzewa <marcin@reilabs.io>",
+    "Grzegorz Świrski <greg@reilabs.io>",
+]
+homepage = "https://github.com/ethereum/kzg-ceremony-sequencer"
+repository = "https://github.com/ethereum/kzg-ceremony-sequencer"
 edition = "2021"
+license-file = "./mit-license.md"
+keywords = ["cryptography"]
+categories = ["cryptography::cryptocurrencies"]
 
 [features]
 default = []

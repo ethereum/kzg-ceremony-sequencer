@@ -158,13 +158,13 @@ mod tests {
         let mut transcript_work = std::env::temp_dir();
         transcript_work.push("transcript.json.new");
         AppConfig {
-            eth_check_nonce_at_block:    "".to_string(),
+            eth_check_nonce_at_block:    String::new(),
             eth_min_nonce:               0,
             github_max_creation_time:    DateTime::parse_from_rfc3339(
                 constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
             )
             .unwrap(),
-            eth_rpc_url:                 "".to_string(),
+            eth_rpc_url:                 String::new(),
             transcript_file:             transcript,
             transcript_in_progress_file: transcript_work,
         }

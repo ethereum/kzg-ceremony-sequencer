@@ -4,19 +4,14 @@ use super::{
 };
 use crate::{
     crypto::g1_mul_glv, g1_subgroup_check, g2_subgroup_check, parse_g, zcash_format::write_g,
-    ParseError,
 };
 use ark_bls12_381::{g2, Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{
-    msm::VariableBaseMSM, short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
-    ProjectiveCurve, SWModelParameters,
-};
-use ark_ff::{One, PrimeField, UniformRand, Zero};
+use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ff::{One, Zero};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{cmp::max, iter};
-use thiserror::Error;
-use tracing::{error, instrument};
+use std::cmp::max;
+use tracing::instrument;
 use zeroize::Zeroizing;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -204,6 +199,7 @@ impl PowersOfTau {
 }
 
 impl SubContribution {
+    #[must_use]
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
             pubkey:    G2Affine::prime_subgroup_generator(),
@@ -222,7 +218,7 @@ impl SubContribution {
     #[instrument(level = "info", skip_all)]
     pub fn add_tau(&mut self, tau: &Fr) {
         let n_tau = max(self.g1_powers.len(), self.g2_powers.len());
-        let powers = Self::pow_table(&tau, n_tau);
+        let powers = Self::pow_table(tau, n_tau);
         self.mul_g1(&powers[0..self.g1_powers.len()]);
         self.mul_g2(&powers[0..self.g2_powers.len()]);
         self.pubkey = self.pubkey.mul(*tau).into_affine();
