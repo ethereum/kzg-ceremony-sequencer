@@ -14,16 +14,18 @@ use std::{
 };
 
 use crate::{
+    api::v1::{
+        auth::{auth_client_link, github_callback, siwe_callback},
+        contribute::contribute,
+        info::{current_state, jwt_info, status},
+        lobby::try_contribute,
+    },
+    constants::LOBBY_FLUSH_INTERVAL,
     io::transcript::read_transcript_file,
+    keys::Keys,
     lobby::{clear_lobby_on_interval, SharedContributorState},
     oauth::{github_oauth_client, siwe_oauth_client, SharedAuthState},
     util::parse_url,
-    api::v1::{
-        auth::{auth_client_link, github_callback, siwe_callback},
-        info::{current_state, jwt_info, status}, lobby::try_contribute, contribute::contribute,
-    },
-    constants::LOBBY_FLUSH_INTERVAL,
-    keys::Keys,
 };
 use axum::{
     extract::Extension,
@@ -42,7 +44,6 @@ use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 use url::Url;
-
 
 mod api;
 mod constants;

@@ -13,7 +13,7 @@ use crate::{
     jwt::{errors::JwtError, Receipt},
     lobby::{clear_current_contributor, SharedContributorState},
     storage::PersistentStorage,
-    AppConfig, SessionId, SharedTranscript, SharedCeremonyStatus,
+    AppConfig, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 
 pub struct ContributeReceipt {
