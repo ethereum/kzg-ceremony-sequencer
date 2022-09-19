@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use crate::data::transcript::read_transcript_file;
+use crate::{data::transcript::read_transcript_file, lobby::clear_lobby_on_interval};
 use axum::{
     extract::Extension,
     response::Html,
@@ -30,10 +30,7 @@ use eyre::{bail, ensure, eyre, Result as EyreResult};
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
 use storage::persistent_storage_client;
-use tokio::{
-    sync::RwLock,
-    time::{Instant, Interval},
-};
+use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 use url::{Host, Url};
@@ -47,7 +44,7 @@ use crate::{
     },
     constants::{
         GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL,
-        LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
+        LOBBY_FLUSH_INTERVAL,
         SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
     },
     data::transcript::{Contribution, Transcript},
@@ -60,6 +57,7 @@ mod constants;
 mod data;
 mod jwt;
 mod keys;
+mod lobby;
 mod sessions;
 mod storage;
 mod test_transcript;
@@ -278,96 +276,6 @@ impl AppState {
         let session_info = self.lobby.remove(&session_id).unwrap();
 
         self.participant = Some((session_id, session_info));
-    }
-}
-
-pub async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
-    let max_diff =
-        Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
-    loop {
-        interval.tick().await;
-
-        let now = Instant::now();
-        // Predicate that returns true whenever users go over the ping deadline
-        let predicate = |session_info: &SessionInfo| -> bool {
-            let time_diff = now - session_info.last_ping_time;
-            time_diff > max_diff
-        };
-
-        let clone = state.clone();
-        clear_lobby(clone, predicate).await;
-    }
-}
-
-async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> bool + Send) {
-    let mut app_state = state.write().await;
-
-    // Iterate top `MAX_LOBBY_SIZE` participants and check if they have
-    let participants = app_state.lobby.keys().cloned();
-    let mut sessions_to_kick = Vec::new();
-
-    for participant in participants {
-        // Check if they are over their ping deadline
-        app_state.lobby.get(&participant).map_or_else(
-            ||
-                // This should not be possible
-                tracing::debug!("session id in queue but not a valid session"),
-            |session_info| {
-                if predicate(session_info) {
-                    sessions_to_kick.push(participant);
-                }
-            },
-        );
-    }
-    for session_id in sessions_to_kick {
-        app_state.lobby.remove(&session_id);
-    }
-}
-
-#[tokio::test]
-async fn flush_on_predicate() {
-    use crate::test_util::create_test_session_info;
-
-    // We want to test that the clear_lobby_on_interval function works as expected.
-    //
-    // It uses time which can get a bit messy to test correctly
-    // However, the clear_lobby function which is a sub procedure takes
-    // in a predicate function
-    //
-    // We can test this instead to ensure that if the predicate fails
-    // users get kicked. We will use the predicate on the `exp` field
-    // instead of the ping-time
-
-    let to_add = 100;
-
-    let arc_state = SharedState::default();
-
-    {
-        let mut state = arc_state.write().await;
-
-        for i in 0..to_add {
-            let id = SessionId::new();
-            let session_info = create_test_session_info(i as u64);
-            state.lobby.insert(id, session_info);
-        }
-    }
-
-    // Now we are going to kick all of the participants whom have an
-    // expiry which is an even number
-    let predicate = |session_info: &SessionInfo| -> bool { session_info.token.exp % 2 == 0 };
-
-    clear_lobby(arc_state.clone(), predicate).await;
-
-    // Now we expect that half of the lobby should be
-    // kicked
-    let state = arc_state.write().await;
-    assert_eq!(state.lobby.len(), to_add / 2);
-
-    let session_ids = state.lobby.keys().cloned();
-    for id in session_ids {
-        let info = state.lobby.get(&id).unwrap();
-        // We should just be left with `exp` numbers which are odd
-        assert_eq!(info.token.exp % 2, 1);
     }
 }
 
