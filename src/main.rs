@@ -8,13 +8,12 @@
 
 use std::{
     env,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     sync::Arc,
     time::Duration,
 };
 
-use crate::{data::transcript::read_transcript_file, lobby::{clear_lobby_on_interval, LobbyState}, oauth::{siwe_oauth_client, github_oauth_client}};
+use crate::{data::transcript::read_transcript_file, lobby::{clear_lobby_on_interval, LobbyState}, oauth::{siwe_oauth_client, github_oauth_client}, util::parse_url};
 use axum::{
     extract::Extension,
     response::Html,
@@ -24,14 +23,14 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
-use eyre::{bail, ensure, eyre, Result as EyreResult};
+use eyre::{eyre, Result as EyreResult};
 use lobby::SharedLobby;
 use sessions::{SessionId, SessionInfo};
 use storage::persistent_storage_client;
 use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use tracing::info;
-use url::{Host, Url};
+use url::Url;
 
 use crate::{
     api::v1::{
@@ -56,6 +55,7 @@ mod lobby;
 mod sessions;
 mod storage;
 mod test_transcript;
+mod util;
 #[cfg(test)]
 mod test_util;
 
@@ -95,8 +95,6 @@ where
     let config = AppConfig::default();
     let transcript_data = read_transcript_file::<T>(config.transcript_file.clone()).await;
     let transcript = Arc::new(RwLock::new(transcript_data));
-
-    let shared_state_clone = shared_state.clone();
 
     let lobby_state = Arc::new(RwLock::new(LobbyState::default()));
 
@@ -197,22 +195,4 @@ impl AppState {
 
         self.participant = Some((session_id, session_info));
     }
-}
-
-fn parse_url(url: &Url) -> EyreResult<(SocketAddr, &str)> {
-    ensure!(
-        url.scheme() == "http",
-        "Only http:// is supported in {}",
-        url
-    );
-    let prefix = url.path();
-    let ip: IpAddr = match url.host() {
-        Some(Host::Ipv4(ip)) => ip.into(),
-        Some(Host::Ipv6(ip)) => ip.into(),
-        Some(_) => bail!("Cannot bind {}", url),
-        None => Ipv4Addr::LOCALHOST.into(),
-    };
-    let port = url.port().unwrap_or(8080);
-    let addr = SocketAddr::new(ip, port);
-    Ok((addr, prefix))
 }
