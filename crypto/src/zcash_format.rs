@@ -1,10 +1,11 @@
+use ark_bls12_381::Fq;
 use ark_ec::{
     models::{ModelParameters, SWModelParameters},
     short_weierstrass_jacobian::GroupAffine,
 };
 use ark_ff::{
     fields::{Field, FpParameters, PrimeField},
-    BigInteger, Zero,
+    BigInteger, QuadExtField, QuadExtParameters, Zero,
 };
 use hex::FromHexError;
 use thiserror::Error;
@@ -33,6 +34,38 @@ pub enum ParseError {
     InvalidSubgroup,
 }
 
+pub trait ToBasePrimeFieldIterator
+where
+    Self: Field,
+{
+    fn base_field_iterator<'a>(
+        &'a self,
+    ) -> Box<dyn DoubleEndedIterator<Item = &Self::BasePrimeField> + 'a>;
+}
+
+impl ToBasePrimeFieldIterator for Fq {
+    fn base_field_iterator<'a>(
+        &'a self,
+    ) -> Box<dyn DoubleEndedIterator<Item = &Self::BasePrimeField> + 'a> {
+        Box::new(std::iter::once(self))
+    }
+}
+
+impl<P: QuadExtParameters> ToBasePrimeFieldIterator for QuadExtField<P>
+where
+    P::BaseField: ToBasePrimeFieldIterator,
+{
+    fn base_field_iterator<'a>(
+        &'a self,
+    ) -> Box<dyn DoubleEndedIterator<Item = &Self::BasePrimeField> + 'a> {
+        Box::new(
+            self.c0
+                .base_field_iterator()
+                .chain(self.c1.base_field_iterator()),
+        )
+    }
+}
+
 pub fn parse_hex(hex: &str, out: &mut [u8]) -> Result<(), ParseError> {
     let expected_len = 2 + 2 * out.len();
     if hex.len() != expected_len {
@@ -43,6 +76,32 @@ pub fn parse_hex(hex: &str, out: &mut [u8]) -> Result<(), ParseError> {
     }
     hex::decode_to_slice(&hex[2..], out)?;
     Ok(())
+}
+
+/// Serialize a group element into ZCash format.
+pub fn write_g<P: SWModelParameters>(point: &GroupAffine<P>) -> String
+where
+    <P as ModelParameters>::BaseField: ToBasePrimeFieldIterator,
+{
+    type FieldOf<P> = <P as ModelParameters>::BaseField;
+    let ext_degree: usize = FieldOf::<P>::extension_degree().try_into().unwrap();
+    let element_size = <<FieldOf<P> as Field>::BasePrimeField as PrimeField>::BigInt::NUM_LIMBS * 8;
+    let mut buf = vec![0u8; element_size * ext_degree];
+    buf.chunks_exact_mut(element_size)
+        .zip(point.x.base_field_iterator().rev())
+        .for_each(|(chunk, element)| {
+            let repr = element.into_repr();
+            let mut writer = &mut chunk[..];
+            repr.write_le(&mut writer).unwrap();
+            chunk.reverse();
+        });
+    buf[0] |= 0x80; // compressed
+    if point.infinity {
+        buf[0] |= 0x40;
+    } else if point.y > -point.y {
+        buf[0] |= 0x20;
+    }
+    format!("0x{}", hex::encode(buf))
 }
 
 /// Deserialize a ZCash spec encoded group element.
@@ -137,6 +196,18 @@ pub mod test {
     fn test_parse_g2() {
         assert_eq!(parse_g("0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap(), G2Affine::zero());
         assert_eq!(parse_g("0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8").unwrap(), G2Affine::prime_subgroup_generator());
+    }
+
+    #[test]
+    fn test_write_g1() {
+        assert_eq!(write_g(&G1Affine::zero()), "0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        assert_eq!(write_g(&G1Affine::prime_subgroup_generator()), "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb");
+    }
+
+    #[test]
+    fn test_write_g2() {
+        assert_eq!(write_g(&G2Affine::zero()), "0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        assert_eq!(write_g(&G2Affine::prime_subgroup_generator()), "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8");
     }
 }
 

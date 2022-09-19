@@ -1,4 +1,6 @@
-use crate::{Contribution, Transcript};
+#![cfg(test)]
+
+use kzg_ceremony_crypto::interface::{Contribution, Transcript};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]

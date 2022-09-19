@@ -1,27 +1,8 @@
-use core::result::Result;
 use std::path::PathBuf;
 
+use serde::de::DeserializeOwned;
+
 use crate::SharedTranscript;
-use serde::{de::DeserializeOwned, ser::Serialize};
-
-pub trait Contribution: Serialize + DeserializeOwned {
-    type Receipt: Serialize;
-    fn get_receipt(&self) -> Self::Receipt;
-}
-
-pub trait Transcript: Serialize + DeserializeOwned {
-    type ContributionType: Contribution;
-    type ValidationError: Serialize;
-
-    fn verify_contribution(
-        &self,
-        contribution: &Self::ContributionType,
-    ) -> Result<(), Self::ValidationError>;
-
-    fn update(&self, contribution: &Self::ContributionType) -> Self;
-
-    fn get_contribution(&self) -> Self::ContributionType;
-}
 
 pub async fn read_transcript_file<T: DeserializeOwned + Send + 'static>(path: PathBuf) -> T {
     let handle = tokio::task::spawn_blocking::<_, T>(|| {
@@ -32,7 +13,9 @@ pub async fn read_transcript_file<T: DeserializeOwned + Send + 'static>(path: Pa
     handle.await.expect("can't read transcript")
 }
 
-pub async fn write_transcript_file<T: Transcript + Send + Sync + 'static>(
+pub async fn write_transcript_file<
+    T: kzg_ceremony_crypto::interface::Transcript + Send + Sync + 'static,
+>(
     target_path: PathBuf,
     work_path: PathBuf,
     transcript: SharedTranscript<T>,

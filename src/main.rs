@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use crate::data::transcript::read_transcript_file;
+use crate::io::transcript::read_transcript_file;
 use axum::{
     extract::Extension,
     response::Html,
@@ -50,14 +50,12 @@ use crate::{
         LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
         SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
     },
-    data::transcript::{Contribution, Transcript},
     keys::Keys,
-    test_transcript::TestTranscript,
 };
 
 mod api;
 mod constants;
-mod data;
+mod io;
 mod jwt;
 mod keys;
 mod sessions;
@@ -83,15 +81,16 @@ pub struct Options {
 fn main() {
     cli_batteries::run(
         version!(crypto, small_powers_of_tau),
-        async_main::<TestTranscript>,
+        async_main::<kzg_ceremony_crypto::contribution::Transcript>,
     );
 }
 
 async fn async_main<T>(options: Options) -> EyreResult<()>
 where
-    T: Transcript + Send + Sync + 'static,
+    T: kzg_ceremony_crypto::interface::Transcript + Send + Sync + 'static,
     T::ContributionType: Send,
-    <<T as Transcript>::ContributionType as Contribution>::Receipt: Send,
+    <<T as kzg_ceremony_crypto::interface::Transcript>::ContributionType as kzg_ceremony_crypto::interface::Contribution>::Receipt:
+        Send,
 {
     // Load JWT keys
     keys::KEYS

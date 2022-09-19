@@ -3,13 +3,14 @@ use axum::{
     Extension, Json,
 };
 use http::StatusCode;
+use kzg_ceremony_crypto::interface::{Contribution, Transcript};
 use serde_json::json;
 
 use crate::{
-    data::transcript::write_transcript_file,
+    io::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
     storage::PersistentStorage,
-    AppConfig, Contribution, SessionId, SharedState, SharedTranscript, Transcript,
+    AppConfig, SessionId, SharedState, SharedTranscript,
 };
 
 pub struct ContributeReceipt {
@@ -143,9 +144,12 @@ mod tests {
         api::v1::contribute::ContributeError,
         constants, contribute, keys, read_transcript_file,
         storage::test_storage_client,
-        test_transcript::TestContribution::{InvalidContribution, ValidContribution},
+        test_transcript::{
+            TestContribution::{InvalidContribution, ValidContribution},
+            TestTranscript,
+        },
         test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SharedState, SharedTranscript, TestTranscript,
+        AppConfig, Keys, SessionId, SharedState, SharedTranscript,
     };
 
     fn config() -> AppConfig {
