@@ -1463,6 +1463,7 @@ dependencies = [
  "http",
  "indexmap",
  "jsonwebtoken",
+ "kzg-ceremony-crypto",
  "oauth2",
  "once_cell",
  "rand",

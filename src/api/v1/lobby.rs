@@ -3,6 +3,7 @@ use axum::{
     Extension, Json,
 };
 use http::StatusCode;
+use kzg_ceremony_crypto::interface::Transcript;
 use serde::Serialize;
 use serde_json::json;
 use tokio::time::{Duration, Instant};
@@ -14,7 +15,7 @@ use crate::{
         SharedLobbyState,
     },
     storage::PersistentStorage,
-    SessionId, SharedTranscript, Transcript,
+    SessionId, SharedTranscript,
 };
 
 #[derive(Debug)]
@@ -157,8 +158,9 @@ pub async fn remove_participant_on_deadline(
 #[tokio::test]
 async fn lobby_try_contribute_test() {
     use crate::{
-        storage::test_storage_client, test_transcript::TestContribution,
-        test_util::create_test_session_info, TestTranscript,
+        storage::test_storage_client,
+        test_transcript::{TestContribution, TestTranscript},
+        test_util::create_test_session_info,
     };
 
     let contributor_state = SharedContributorState::default();

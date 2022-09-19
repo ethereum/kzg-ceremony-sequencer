@@ -14,10 +14,16 @@ use std::{
 };
 
 use crate::{
-    data::transcript::read_transcript_file,
+    io::transcript::read_transcript_file,
     lobby::{clear_lobby_on_interval, SharedContributorState},
     oauth::{github_oauth_client, siwe_oauth_client, SharedAuthState},
     util::parse_url,
+    api::v1::{
+        auth::{auth_client_link, github_callback, siwe_callback},
+        info::{current_state, jwt_info, status}, lobby::try_contribute, contribute::contribute,
+    },
+    constants::LOBBY_FLUSH_INTERVAL,
+    keys::Keys,
 };
 use axum::{
     extract::Extension,
@@ -37,22 +43,10 @@ use tower_http::trace::TraceLayer;
 use tracing::info;
 use url::Url;
 
-use crate::{
-    api::v1::{
-        auth::{auth_client_link, github_callback, siwe_callback},
-        contribute::contribute,
-        info::{current_state, jwt_info, status},
-        lobby::try_contribute,
-    },
-    constants::LOBBY_FLUSH_INTERVAL,
-    data::transcript::{Contribution, Transcript},
-    keys::Keys,
-    test_transcript::TestTranscript,
-};
 
 mod api;
 mod constants;
-mod data;
+mod io;
 mod jwt;
 mod keys;
 mod lobby;
@@ -81,15 +75,16 @@ pub struct Options {
 fn main() {
     cli_batteries::run(
         version!(crypto, small_powers_of_tau),
-        async_main::<TestTranscript>,
+        async_main::<kzg_ceremony_crypto::contribution::Transcript>,
     );
 }
 
 async fn async_main<T>(options: Options) -> EyreResult<()>
 where
-    T: Transcript + Send + Sync + 'static,
+    T: kzg_ceremony_crypto::interface::Transcript + Send + Sync + 'static,
     T::ContributionType: Send,
-    <<T as Transcript>::ContributionType as Contribution>::Receipt: Send,
+    <<T as kzg_ceremony_crypto::interface::Transcript>::ContributionType as kzg_ceremony_crypto::interface::Contribution>::Receipt:
+        Send,
 {
     // Load JWT keys
     keys::KEYS
@@ -101,6 +96,8 @@ where
     let transcript = Arc::new(RwLock::new(transcript_data));
 
     let active_contributor_state = SharedContributorState::default();
+
+    // TODO: figure it out from the transcript
     let ceremony_status = Arc::new(AtomicUsize::new(0));
     let lobby_state = SharedLobbyState::default();
     let auth_state = SharedAuthState::default();
