@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{data::transcript::read_transcript_file, lobby::{clear_lobby_on_interval, LobbyState}, oauth::{siwe_oauth_client, github_oauth_client}, util::parse_url};
+use crate::{data::transcript::read_transcript_file, lobby::{clear_lobby_on_interval, SharedContributorState}, oauth::{siwe_oauth_client, github_oauth_client, SharedAuthState}, util::parse_url};
 use axum::{
     extract::Extension,
     response::Html,
@@ -24,7 +24,7 @@ use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
 use eyre::{eyre, Result as EyreResult};
-use lobby::SharedLobby;
+use lobby::SharedLobbyState;
 use sessions::{SessionId, SessionInfo};
 use storage::persistent_storage_client;
 use tokio::sync::RwLock;
@@ -60,7 +60,6 @@ mod util;
 mod test_util;
 
 pub type SharedTranscript<T> = Arc<RwLock<T>>;
-pub(crate) type SharedState = Arc<RwLock<AppState>>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -91,12 +90,13 @@ where
         .set(Keys::new(options.keys).await?)
         .map_err(|_e| eyre!("KEYS was already set."))?;
 
-    let shared_state = SharedState::default();
     let config = AppConfig::default();
     let transcript_data = read_transcript_file::<T>(config.transcript_file.clone()).await;
     let transcript = Arc::new(RwLock::new(transcript_data));
 
-    let lobby_state = Arc::new(RwLock::new(LobbyState::default()));
+    let active_contributor_state = SharedContributorState::default();
+    let lobby_state = SharedLobbyState::default();
+    let auth_state = SharedAuthState::default();
 
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not
     // pinged in a considerable amount of time
@@ -113,8 +113,9 @@ where
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
-        .layer(Extension(shared_state))
+        .layer(Extension(active_contributor_state))
         .layer(Extension(lobby_state))
+        .layer(Extension(auth_state))
         .layer(Extension(siwe_oauth_client()))
         .layer(Extension(github_oauth_client()))
         .layer(Extension(reqwest::Client::new()))
@@ -164,35 +165,5 @@ impl Default for AppConfig {
             transcript_file:             PathBuf::from(transcript),
             transcript_in_progress_file: PathBuf::from(transcript_progress),
         }
-    }
-}
-
-#[derive(Default)]
-pub struct AppState {
-    num_contributions: usize,
-
-    // This is the Id of the current participant
-    // Only they are allowed to call /contribute
-    participant: Option<(SessionId, SessionInfo)>,
-}
-
-impl AppState {
-    pub fn clear_current_contributor(&mut self) {
-        // Note: when reserving a contribution spot
-        // we remove the user from the lobby
-        // So simply setting this to None, will forget them
-        self.participant = None;
-    }
-
-    /// # Panics
-    ///
-    /// Panics if the user is not in the lobby.
-    pub async fn set_current_contributor(&mut self, lobby_state: SharedLobby, session_id: SessionId) {
-        let session_info = {
-            let mut lobby = lobby_state.write().await;
-            lobby.participants.remove(&session_id).unwrap()
-        };
-
-        self.participant = Some((session_id, session_info));
     }
 }

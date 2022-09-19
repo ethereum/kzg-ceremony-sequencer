@@ -9,7 +9,7 @@ use crate::{
     data::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
     storage::PersistentStorage,
-    AppConfig, Contribution, SessionId, SharedState, SharedTranscript, Transcript,
+    AppConfig, Contribution, SessionId, SharedTranscript, Transcript, lobby::{SharedContributorState, clear_current_contributor},
 };
 
 pub struct ContributeReceipt {
@@ -49,7 +49,7 @@ impl IntoResponse for ContributeError {
 pub async fn contribute<T>(
     session_id: SessionId,
     Json(contribution): Json<T::ContributionType>,
-    Extension(store): Extension<SharedState>,
+    Extension(contributor_state): Extension<SharedContributorState>,
     Extension(config): Extension<AppConfig>,
     Extension(shared_transcript): Extension<SharedTranscript<T>>,
     Extension(storage): Extension<PersistentStorage>,
@@ -61,9 +61,8 @@ where
 {
     // 1. Check if this person should be contributing
     let id_token = {
-        let app_state = store.read().await;
-        let (id, session_info) = &app_state
-            .participant
+        let active_contributor = contributor_state.read().await;
+        let (id, session_info) = active_contributor
             .as_ref()
             .ok_or(ContributeError::NotUsersTurn)?;
         if &session_id != id {
@@ -80,8 +79,7 @@ where
     {
         let transcript = shared_transcript.read().await;
         if transcript.verify_contribution(&contribution).is_err() {
-            let mut app_state = store.write().await;
-            app_state.clear_current_contributor();
+            clear_current_contributor(contributor_state).await;
             storage
                 .expire_contribution(id_token.unique_identifier())
                 .await;
@@ -110,21 +108,15 @@ where
     )
     .await;
 
-    let mut app_state = store.write().await;
-
-    app_state.num_contributions += 1;
-
-    let uid = app_state
-        .participant
+    let uid = contributor_state.read().await
         .as_ref()
         .expect("participant is guaranteed non-empty here")
         .0
         .to_string();
 
     // Remove this person from the contribution spot
-    app_state.clear_current_contributor();
+    clear_current_contributor(contributor_state).await;
 
-    drop(app_state); // Release AppState lock
     storage.finish_contribution(&uid).await;
 
     Ok(ContributeReceipt {
@@ -145,7 +137,7 @@ mod tests {
         storage::test_storage_client,
         test_transcript::TestContribution::{InvalidContribution, ValidContribution},
         test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SharedState, SharedTranscript, TestTranscript,
+        AppConfig, Keys, SessionId, SharedTranscript, TestTranscript, lobby::SharedContributorState,
     };
 
     fn config() -> AppConfig {
@@ -182,12 +174,11 @@ mod tests {
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
         let db = test_storage_client().await;
-        let app_state = SharedState::default();
-        app_state.write().await.participant = None;
+        let contributor_state = SharedContributorState::default();
         let result = contribute::<TestTranscript>(
             SessionId::new(),
             Json(ValidContribution(123)),
-            Extension(app_state),
+            Extension(contributor_state),
             Extension(config()),
             Extension(SharedTranscript::default()),
             Extension(db),
@@ -200,14 +191,14 @@ mod tests {
     async fn rejects_invalid_contribution() {
         init_keys().await;
         let db = test_storage_client().await;
-        let app_state = SharedState::default();
+        let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
-        app_state.write().await.participant =
+        *contributor_state.write().await =
             Some((participant.clone(), create_test_session_info(100)));
         let result = contribute::<TestTranscript>(
             participant,
             Json(InvalidContribution(123)),
-            Extension(app_state),
+            Extension(contributor_state),
             Extension(config()),
             Extension(SharedTranscript::default()),
             Extension(db),
@@ -220,17 +211,17 @@ mod tests {
     async fn accepts_valid_contribution() {
         init_keys().await;
         let db = test_storage_client().await;
-        let app_state = SharedState::default();
+        let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         let cfg = config();
         let shared_transcript = SharedTranscript::<TestTranscript>::default();
 
-        app_state.write().await.participant =
+        *contributor_state.write().await =
             Some((participant.clone(), create_test_session_info(100)));
         let result = contribute::<TestTranscript>(
             participant.clone(),
             Json(ValidContribution(123)),
-            Extension(app_state.clone()),
+            Extension(contributor_state.clone()),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
@@ -244,12 +235,12 @@ mod tests {
             contributions: vec![ValidContribution(123)],
         });
 
-        app_state.write().await.participant =
+        *contributor_state.write().await =
             Some((participant.clone(), create_test_session_info(100)));
         let result = contribute::<TestTranscript>(
             participant.clone(),
             Json(ValidContribution(175)),
-            Extension(app_state.clone()),
+            Extension(contributor_state.clone()),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),

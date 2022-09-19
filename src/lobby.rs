@@ -11,9 +11,12 @@ pub struct LobbyState {
     pub participants: BTreeMap<SessionId, SessionInfo>,
 }
 
-pub type SharedLobby = Arc<RwLock<LobbyState>>;
+pub type ActiveContributor = Option<(SessionId, SessionInfo)>;
 
-pub async fn clear_lobby_on_interval(state: SharedLobby, interval: Duration) {
+pub type SharedLobbyState = Arc<RwLock<LobbyState>>;
+pub type SharedContributorState = Arc<RwLock<ActiveContributor>>;
+
+pub async fn clear_lobby_on_interval(state: SharedLobbyState, interval: Duration) {
     let max_diff =
         Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
 
@@ -34,7 +37,7 @@ pub async fn clear_lobby_on_interval(state: SharedLobby, interval: Duration) {
     }
 }
 
-async fn clear_lobby(state: SharedLobby, predicate: impl Fn(&SessionInfo) -> bool + Send) {
+async fn clear_lobby(state: SharedLobbyState, predicate: impl Fn(&SessionInfo) -> bool + Send) {
     let mut lobby_state = state.write().await;
 
     // Iterate top `MAX_LOBBY_SIZE` participants and check if they have
@@ -59,6 +62,25 @@ async fn clear_lobby(state: SharedLobby, predicate: impl Fn(&SessionInfo) -> boo
     }
 }
 
+pub async fn clear_current_contributor(contributor: SharedContributorState) {
+    let mut active_contributor = contributor.write().await;
+    *active_contributor = None;
+}
+
+/// # Panics
+///
+/// Panics if the user is not in the lobby.
+pub async fn set_current_contributor(contributor: SharedContributorState, lobby_state: SharedLobbyState, session_id: SessionId) {
+    let session_info = {
+        let mut lobby = lobby_state.write().await;
+        lobby.participants.remove(&session_id).unwrap()
+    };
+
+    let mut active_contributor = contributor.write().await;
+    *active_contributor = Some((session_id, session_info));
+}
+
+
 #[tokio::test]
 async fn flush_on_predicate() {
     use crate::test_util::create_test_session_info;
@@ -76,7 +98,7 @@ async fn flush_on_predicate() {
 
     let to_add = 100;
 
-    let arc_state = SharedLobby::default();
+    let arc_state = SharedLobbyState::default();
 
     {
         let mut state = arc_state.write().await;

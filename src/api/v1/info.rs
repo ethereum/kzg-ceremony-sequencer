@@ -1,6 +1,6 @@
 use crate::{
     keys::{Keys, KEYS},
-    AppConfig, SharedState, lobby::SharedLobby,
+    AppConfig, lobby::SharedLobbyState,
 };
 use axum::{
     body::StreamBody,
@@ -27,16 +27,16 @@ impl IntoResponse for StatusResponse {
 }
 
 pub async fn status(
-    Extension(store): Extension<SharedState>,
-    Extension(lobby_state): Extension<SharedLobby>,
+    Extension(lobby_state): Extension<SharedLobbyState>,
 ) -> StatusResponse {
     let lobby_size = {
         let state = lobby_state.read().await;
         state.participants.len()
     };
     let num_contributions = {
-        let app_state = store.read().await;
-        app_state.num_contributions
+        // let app_state = store.read().await;
+        // app_state.num_contributions
+        0
     };
 
     StatusResponse {

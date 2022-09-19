@@ -3,7 +3,7 @@ use crate::{
     oauth::{GithubOAuthClient, SiweOAuthClient, SharedAuthState},
     jwt::{errors::JwtError, IdToken},
     storage::{PersistentStorage, StorageError},
-    AppConfig, SessionId, SessionInfo, lobby::SharedLobby,
+    AppConfig, SessionId, SessionInfo, lobby::SharedLobbyState,
 };
 use axum::{
     extract::Query,
@@ -137,7 +137,7 @@ pub struct AuthClientLinkQueryParams {
 pub async fn auth_client_link(
     Query(params): Query<AuthClientLinkQueryParams>,
     Extension(auth_state): Extension<SharedAuthState>,
-    Extension(lobby_state): Extension<SharedLobby>,
+    Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(siwe_client): Extension<SiweOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
 ) -> Result<AuthUrl, AuthError> {
@@ -219,7 +219,7 @@ pub async fn github_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(auth_state): Extension<SharedAuthState>,
-    Extension(lobby_state): Extension<SharedLobby>,
+    Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
@@ -273,7 +273,7 @@ pub async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
     Extension(config): Extension<AppConfig>,
     Extension(auth_state): Extension<SharedAuthState>,
-    Extension(lobby_state): Extension<SharedLobby>,
+    Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(oauth_client): Extension<SiweOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
@@ -363,7 +363,7 @@ async fn verify_csrf(payload: &AuthPayload, store: &SharedAuthState) -> Result<(
 
 async fn post_authenticate(
     auth_state: SharedAuthState,
-    lobby_state: SharedLobby,
+    lobby_state: SharedLobbyState,
     storage: PersistentStorage,
     user_data: AuthenticatedUser,
     auth_provider: AuthProvider,
