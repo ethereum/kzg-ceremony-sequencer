@@ -1,8 +1,19 @@
-use std::{env, ops::Deref, collections::{BTreeSet, BTreeMap}, sync::Arc};
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    env,
+    ops::Deref,
+    sync::Arc,
+};
 use tokio::sync::RwLock;
 
-use crate::{constants::{SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_TOKEN_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_TOKEN_URL}, sessions::SessionId};
+use crate::{
+    constants::{
+        GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL,
+        SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
+    },
+    sessions::SessionId,
+};
 
 #[derive(Default)]
 pub struct AuthState {
@@ -16,7 +27,6 @@ pub struct AuthState {
 }
 
 pub type SharedAuthState = Arc<RwLock<AuthState>>;
-
 
 #[derive(Clone)]
 pub struct SiweOAuthClient {

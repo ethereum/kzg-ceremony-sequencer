@@ -9,8 +9,12 @@ use tokio::time::{Duration, Instant};
 
 use crate::{
     constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
+    lobby::{
+        clear_current_contributor, set_current_contributor, SharedContributorState,
+        SharedLobbyState,
+    },
     storage::PersistentStorage,
-    SessionId, SharedTranscript, Transcript, lobby::{SharedLobbyState, SharedContributorState, set_current_contributor, clear_current_contributor},
+    SessionId, SharedTranscript, Transcript,
 };
 
 #[derive(Debug)]
@@ -103,7 +107,7 @@ pub async fn try_contribute<T: Transcript + Send + Sync>(
     // same participant
     storage.insert_contributor(&uid).await;
     set_current_contributor(contributor_state.clone(), lobby_state, session_id.clone()).await;
-    
+
     // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
     tokio::spawn(async move {
         remove_participant_on_deadline(contributor_state, storage.clone(), session_id, uid).await;

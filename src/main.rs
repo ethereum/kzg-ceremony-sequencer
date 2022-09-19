@@ -9,15 +9,15 @@
 use std::{
     env,
     path::PathBuf,
-    sync::{Arc, atomic::AtomicUsize},
+    sync::{atomic::AtomicUsize, Arc},
     time::Duration,
 };
 
 use crate::{
     data::transcript::read_transcript_file,
     lobby::{clear_lobby_on_interval, SharedContributorState},
-    oauth::{siwe_oauth_client, github_oauth_client, SharedAuthState},
-    util::parse_url
+    oauth::{github_oauth_client, siwe_oauth_client, SharedAuthState},
+    util::parse_url,
 };
 use axum::{
     extract::Extension,
@@ -55,14 +55,14 @@ mod constants;
 mod data;
 mod jwt;
 mod keys;
-mod oauth;
 mod lobby;
+mod oauth;
 mod sessions;
 mod storage;
 mod test_transcript;
-mod util;
 #[cfg(test)]
 mod test_util;
+mod util;
 
 pub type SharedTranscript<T> = Arc<RwLock<T>>;
 pub type SharedCeremonyStatus = Arc<AtomicUsize>;
@@ -107,7 +107,10 @@ where
 
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not
     // pinged in a considerable amount of time
-    tokio::spawn(clear_lobby_on_interval(lobby_state.clone(), Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64)));
+    tokio::spawn(clear_lobby_on_interval(
+        lobby_state.clone(),
+        Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64),
+    ));
 
     let app = Router::new()
         .layer(TraceLayer::new_for_http())
@@ -140,7 +143,6 @@ where
 
     Ok(())
 }
-
 
 #[allow(clippy::unused_async)] // Required for axum function signature
 async fn hello_world() -> Html<&'static str> {

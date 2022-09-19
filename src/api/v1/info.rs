@@ -2,7 +2,8 @@ use std::sync::atomic::Ordering;
 
 use crate::{
     keys::{Keys, KEYS},
-    AppConfig, lobby::SharedLobbyState, SharedCeremonyStatus,
+    lobby::SharedLobbyState,
+    AppConfig, SharedCeremonyStatus,
 };
 use axum::{
     body::StreamBody,

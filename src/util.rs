@@ -1,7 +1,5 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-};
-use eyre::{Result as EyreResult, ensure, bail};
+use eyre::{bail, ensure, Result as EyreResult};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use url::{Host, Url};
 
 pub fn parse_url(url: &Url) -> EyreResult<(SocketAddr, &str)> {

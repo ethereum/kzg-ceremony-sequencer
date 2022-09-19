@@ -1,9 +1,10 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
-    oauth::{GithubOAuthClient, SiweOAuthClient, SharedAuthState},
     jwt::{errors::JwtError, IdToken},
+    lobby::SharedLobbyState,
+    oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
     storage::{PersistentStorage, StorageError},
-    AppConfig, SessionId, SessionInfo, lobby::SharedLobbyState,
+    AppConfig, SessionId, SessionInfo,
 };
 use axum::{
     extract::Query,
@@ -322,7 +323,14 @@ pub async fn siwe_callback(
         nickname: siwe_user.preferred_username,
     };
 
-    post_authenticate(auth_state, lobby_state, storage, user_data, AuthProvider::Ethereum).await
+    post_authenticate(
+        auth_state,
+        lobby_state,
+        storage,
+        user_data,
+        AuthProvider::Ethereum,
+    )
+    .await
 }
 
 async fn get_tx_count(
@@ -406,7 +414,7 @@ async fn post_authenticate(
             token:                 id_token,
             last_ping_time:        Instant::now(),
             is_first_ping_attempt: true,
-        });    
+        });
     }
 
     Ok(UserVerified {

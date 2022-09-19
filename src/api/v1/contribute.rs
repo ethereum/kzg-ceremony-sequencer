@@ -10,9 +10,9 @@ use serde_json::json;
 use crate::{
     data::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
+    lobby::{clear_current_contributor, SharedContributorState},
     storage::PersistentStorage,
-    lobby::{SharedContributorState, clear_current_contributor},
-    AppConfig, Contribution, SessionId, SharedTranscript, Transcript, SharedCeremonyStatus,
+    AppConfig, Contribution, SessionId, SharedCeremonyStatus, SharedTranscript, Transcript,
 };
 
 pub struct ContributeReceipt {
@@ -56,7 +56,7 @@ pub async fn contribute<T>(
     Extension(config): Extension<AppConfig>,
     Extension(shared_transcript): Extension<SharedTranscript<T>>,
     Extension(storage): Extension<PersistentStorage>,
-    Extension(num_contributions): Extension<SharedCeremonyStatus>
+    Extension(num_contributions): Extension<SharedCeremonyStatus>,
 ) -> Result<ContributeReceipt, ContributeError>
 where
     T: Transcript + Send + Sync + 'static,
@@ -112,7 +112,9 @@ where
     )
     .await;
 
-    let uid = contributor_state.read().await
+    let uid = contributor_state
+        .read()
+        .await
         .as_ref()
         .expect("participant is guaranteed non-empty here")
         .0
@@ -129,18 +131,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, sync::{atomic::AtomicUsize, Arc}};
+    use std::{
+        path::PathBuf,
+        sync::{atomic::AtomicUsize, Arc},
+    };
 
     use axum::{Extension, Json};
     use chrono::DateTime;
 
     use crate::{
         api::v1::contribute::ContributeError,
-        constants, contribute, keys, read_transcript_file,
+        constants, contribute, keys,
+        lobby::SharedContributorState,
+        read_transcript_file,
         storage::test_storage_client,
         test_transcript::TestContribution::{InvalidContribution, ValidContribution},
         test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SharedTranscript, TestTranscript, lobby::SharedContributorState,
+        AppConfig, Keys, SessionId, SharedTranscript, TestTranscript,
     };
 
     fn config() -> AppConfig {
@@ -185,7 +192,7 @@ mod tests {
             Extension(config()),
             Extension(SharedTranscript::default()),
             Extension(db),
-            Extension(Arc::new(AtomicUsize::new(0)))
+            Extension(Arc::new(AtomicUsize::new(0))),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
@@ -206,7 +213,7 @@ mod tests {
             Extension(config()),
             Extension(SharedTranscript::default()),
             Extension(db),
-            Extension(Arc::new(AtomicUsize::new(0)))
+            Extension(Arc::new(AtomicUsize::new(0))),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::InvalidContribution)));
@@ -230,7 +237,7 @@ mod tests {
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
-            Extension(Arc::new(AtomicUsize::new(0)))
+            Extension(Arc::new(AtomicUsize::new(0))),
         )
         .await;
 
@@ -250,7 +257,7 @@ mod tests {
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
-            Extension(Arc::new(AtomicUsize::new(0)))
+            Extension(Arc::new(AtomicUsize::new(0))),
         )
         .await;
 

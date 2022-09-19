@@ -1,9 +1,9 @@
-use std::{time::Duration, collections::BTreeMap, sync::Arc};
-use tokio::{time::Instant, sync::RwLock};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use tokio::{sync::RwLock, time::Instant};
 
 use crate::{
     constants::{LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
-    sessions::{SessionInfo, SessionId}
+    sessions::{SessionId, SessionInfo},
 };
 
 #[derive(Default)]
@@ -70,7 +70,11 @@ pub async fn clear_current_contributor(contributor: SharedContributorState) {
 /// # Panics
 ///
 /// Panics if the user is not in the lobby.
-pub async fn set_current_contributor(contributor: SharedContributorState, lobby_state: SharedLobbyState, session_id: SessionId) {
+pub async fn set_current_contributor(
+    contributor: SharedContributorState,
+    lobby_state: SharedLobbyState,
+    session_id: SessionId,
+) {
     let session_info = {
         let mut lobby = lobby_state.write().await;
         lobby.participants.remove(&session_id).unwrap()
@@ -80,11 +84,9 @@ pub async fn set_current_contributor(contributor: SharedContributorState, lobby_
     *active_contributor = Some((session_id, session_info));
 }
 
-
 #[tokio::test]
 async fn flush_on_predicate() {
-    use crate::test_util::create_test_session_info;
-    use crate::sessions::SessionId;
+    use crate::{sessions::SessionId, test_util::create_test_session_info};
 
     // We want to test that the clear_lobby_on_interval function works as expected.
     //
