@@ -1,5 +1,11 @@
-use std::{cmp::max, iter};
-
+use super::{
+    utils::{random_factors, read_vector_of_points},
+    CeremoniesError, CeremonyError, SubTranscript,
+};
+use crate::{
+    crypto::g1_mul_glv, g1_subgroup_check, g2_subgroup_check, parse_g, zcash_format::write_g,
+    ParseError,
+};
 use ark_bls12_381::{g2, Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::{
     msm::VariableBaseMSM, short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
@@ -8,51 +14,10 @@ use ark_ec::{
 use ark_ff::{One, PrimeField, UniformRand, Zero};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::{cmp::max, iter};
 use thiserror::Error;
 use tracing::{error, instrument};
 use zeroize::Zeroizing;
-
-use crate::{
-    crypto::g1_mul_glv, g1_subgroup_check, g2_subgroup_check, parse_g, zcash_format::write_g,
-    ParseError,
-};
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct SubTranscript {
-    pub g1_powers: Vec<G1Affine>,
-    pub g2_powers: Vec<G2Affine>,
-    pub products:  Vec<G1Affine>,
-    pub pubkeys:   Vec<G2Affine>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubTranscriptJson {
-    pub num_g1_powers: usize,
-    pub num_g2_powers: usize,
-    pub powers_of_tau: PowersOfTau,
-    pub witness:       WitnessJson,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WitnessJson {
-    pub running_products: Vec<String>,
-    pub pot_pubkeys:      Vec<String>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(into = "TranscriptJson")]
-#[serde(try_from = "TranscriptJson")]
-pub struct Transcript {
-    pub sub_transcripts: Vec<SubTranscript>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TranscriptJson {
-    pub sub_transcripts: Vec<SubTranscriptJson>,
-}
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(into = "ContributionJson")]
@@ -90,127 +55,6 @@ pub struct SubContributionJson {
 pub struct PowersOfTau {
     pub g1_powers: Vec<String>,
     pub g2_powers: Vec<String>,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug, Error)]
-pub enum CeremoniesError {
-    #[error("Error in contribution {0}: {1}")]
-    InvalidCeremony(usize, #[source] CeremonyError),
-    #[error("Unexpected number of contributions: expected {0}, got {1}")]
-    InvalidCeremoniesCount(usize, usize),
-}
-
-#[derive(Clone, Copy, PartialEq, Debug, Error)]
-pub enum CeremonyError {
-    #[error("Unexpected number of G1 powers: expected {0}, got {1}")]
-    UnexpectedNumG1Powers(usize, usize),
-    #[error("Unexpected number of G2 powers: expected {0}, got {1}")]
-    UnexpectedNumG2Powers(usize, usize),
-    #[error("Inconsistent number of G1 powers: numG1Powers = {0}, len = {1}")]
-    InconsistentNumG1Powers(usize, usize),
-    #[error("Inconsistent number of G2 powers: numG2Powers = {0}, len = {1}")]
-    InconsistentNumG2Powers(usize, usize),
-    #[error("Error parsing G1 power {0}: {1}")]
-    InvalidG1Power(usize, #[source] ParseError),
-    #[error("Error parsing G2 power {0}: {1}")]
-    InvalidG2Power(usize, #[source] ParseError),
-    #[error("Error parsing potPubkey: {0}")]
-    InvalidPubKey(#[source] ParseError),
-    #[error("Error parsing running product {0}: {1}")]
-    InvalidWitnessProduct(usize, #[source] ParseError),
-    #[error("Error parsing potPubkey {0}: {1}")]
-    InvalidWitnessPubKey(usize, #[source] ParseError),
-}
-
-impl TryFrom<TranscriptJson> for Transcript {
-    type Error = CeremoniesError;
-
-    fn try_from(value: TranscriptJson) -> Result<Self, Self::Error> {
-        let sub_transcripts: Vec<_> = value
-            .sub_transcripts
-            .into_iter()
-            .enumerate()
-            .map(|(i, trans)| {
-                SubTranscript::try_from(trans).map_err(|e| CeremoniesError::InvalidCeremony(i, e))
-            })
-            .collect::<Result<Vec<_>, CeremoniesError>>()?;
-        Ok(Self { sub_transcripts })
-    }
-}
-
-impl From<Transcript> for TranscriptJson {
-    fn from(transcripts: Transcript) -> Self {
-        Self {
-            sub_transcripts: transcripts
-                .sub_transcripts
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-        }
-    }
-}
-
-fn read_vector_of_points<P, F>(
-    items: &Vec<String>,
-    wrap_err: F,
-) -> Result<Vec<GroupAffine<P>>, CeremonyError>
-where
-    P: SWModelParameters,
-    F: Fn(usize, ParseError) -> CeremonyError + Sync,
-{
-    items
-        .par_iter()
-        .enumerate()
-        .map(|(i, str)| parse_g(str).map_err(|err| wrap_err(i, err)))
-        .collect()
-}
-
-impl TryFrom<SubTranscriptJson> for SubTranscript {
-    type Error = CeremonyError;
-
-    fn try_from(value: SubTranscriptJson) -> Result<Self, Self::Error> {
-        let g1_powers = read_vector_of_points(
-            &value.powers_of_tau.g1_powers,
-            CeremonyError::InvalidG1Power,
-        )?;
-        let g2_powers = read_vector_of_points(
-            &value.powers_of_tau.g2_powers,
-            CeremonyError::InvalidG2Power,
-        )?;
-        let products = read_vector_of_points(
-            &value.witness.running_products,
-            CeremonyError::InvalidWitnessProduct,
-        )?;
-        let pubkeys = read_vector_of_points(
-            &value.witness.pot_pubkeys,
-            CeremonyError::InvalidWitnessPubKey,
-        )?;
-        Ok(Self {
-            g1_powers,
-            g2_powers,
-            products,
-            pubkeys,
-        })
-    }
-}
-
-impl From<SubTranscript> for SubTranscriptJson {
-    fn from(transcript: SubTranscript) -> Self {
-        let powers_of_tau = PowersOfTau {
-            g1_powers: transcript.g1_powers.par_iter().map(write_g).collect(),
-            g2_powers: transcript.g2_powers.par_iter().map(write_g).collect(),
-        };
-        let witness = WitnessJson {
-            pot_pubkeys:      transcript.pubkeys.par_iter().map(write_g).collect(),
-            running_products: transcript.pubkeys.par_iter().map(write_g).collect(),
-        };
-        Self {
-            num_g1_powers: transcript.g1_powers.len(),
-            num_g2_powers: transcript.g2_powers.len(),
-            powers_of_tau,
-            witness,
-        }
-    }
 }
 
 impl TryFrom<ContributionJson> for Contribution {
@@ -359,18 +203,6 @@ impl PowersOfTau {
     }
 }
 
-impl SubTranscript {
-    #[must_use]
-    pub fn new(num_g1: usize, num_g2: usize) -> Self {
-        Self {
-            pubkeys:   vec![G2Affine::prime_subgroup_generator()],
-            products:  vec![G1Affine::prime_subgroup_generator()],
-            g1_powers: vec![G1Affine::prime_subgroup_generator(); num_g1],
-            g2_powers: vec![G2Affine::prime_subgroup_generator(); num_g2],
-        }
-    }
-}
-
 impl SubContribution {
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
@@ -468,19 +300,6 @@ impl SubContribution {
     }
 }
 
-fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
-    let mut rng = rand::thread_rng();
-    let mut sum = Fr::zero();
-    let factors = iter::from_fn(|| {
-        let r = Fr::rand(&mut rng);
-        sum += r;
-        Some(r.0)
-    })
-    .take(n)
-    .collect::<Vec<_>>();
-    (factors, sum)
-}
-
 impl crate::interface::Contribution for Contribution {
     type Receipt = Vec<String>;
 
@@ -489,83 +308,6 @@ impl crate::interface::Contribution for Contribution {
             .iter()
             .map(|c| write_g(&c.pubkey))
             .collect()
-    }
-}
-
-impl crate::interface::Transcript for Transcript {
-    type ContributionType = Contribution;
-    type ValidationError = ();
-
-    fn verify_contribution(
-        &self,
-        contribution: &Self::ContributionType,
-    ) -> Result<(), Self::ValidationError> {
-        if contribution.sub_contributions.len() != self.sub_transcripts.len() {
-            return Err(());
-        }
-
-        let any_subgroup_check_failed = contribution
-            .sub_contributions
-            .iter()
-            .any(|c| !SubContribution::subgroup_check(c));
-        if any_subgroup_check_failed {
-            return Err(());
-        }
-
-        let any_verification_failed = contribution
-            .sub_contributions
-            .iter()
-            .zip(self.sub_transcripts.iter())
-            .any(|(contrib, transcript)| !contrib.verify(transcript));
-        if any_verification_failed {
-            return Err(());
-        }
-        Ok(())
-    }
-
-    fn update(&self, contribution: &Self::ContributionType) -> Self {
-        let sub_transcripts = self
-            .sub_transcripts
-            .iter()
-            .zip(contribution.sub_contributions.iter())
-            .map(|(t, c)| {
-                let g1_powers = c.g1_powers.clone();
-                let g2_powers = c.g2_powers.clone();
-                let mut products = t.products.clone();
-                products.push(
-                    c.g1_powers
-                        .get(1)
-                        .expect("Impossible, contribution is checked valid")
-                        .clone(),
-                );
-                let mut pubkeys = t.pubkeys.clone();
-                pubkeys.push(c.pubkey);
-                SubTranscript {
-                    g1_powers,
-                    g2_powers,
-                    products,
-                    pubkeys,
-                }
-            })
-            .collect();
-        Self { sub_transcripts }
-    }
-
-    fn get_contribution(&self) -> Self::ContributionType {
-        Contribution {
-            sub_contributions: self
-                .sub_transcripts
-                .iter()
-                .map(|st| SubContribution {
-                    g1_powers: st.g1_powers.clone(),
-                    g2_powers: st.g2_powers.clone(),
-                    pubkey:    *st
-                        .pubkeys
-                        .last()
-                        .expect("Impossible: invalid initial transcript"),
-                })
-                .collect(),
-        }
     }
 }
 

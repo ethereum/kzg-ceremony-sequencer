@@ -6,37 +6,16 @@
 #![allow(clippy::multiple_crate_versions)]
 #![allow(clippy::module_name_repetitions)]
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    env,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    ops::Deref,
-    path::PathBuf,
-    sync::Arc,
-    time::Duration,
-};
-
-use crate::io::transcript::read_transcript_file;
-use axum::{
-    extract::Extension,
-    response::Html,
-    routing::{get, post},
-    Router, Server,
-};
-use chrono::{DateTime, FixedOffset};
-use clap::Parser;
-use cli_batteries::{await_shutdown, version};
-use eyre::{bail, ensure, eyre, Result as EyreResult};
-use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
-use sessions::{SessionId, SessionInfo};
-use storage::persistent_storage_client;
-use tokio::{
-    sync::RwLock,
-    time::{Instant, Interval},
-};
-use tower_http::trace::TraceLayer;
-use tracing::info;
-use url::{Host, Url};
+mod api;
+mod constants;
+mod io;
+mod jwt;
+mod keys;
+mod sessions;
+mod storage;
+mod test_transcript;
+#[cfg(test)]
+mod test_util;
 
 use crate::{
     api::v1::{
@@ -50,19 +29,39 @@ use crate::{
         LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
         SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
     },
+    io::transcript::read_transcript_file,
     keys::Keys,
 };
-
-mod api;
-mod constants;
-mod io;
-mod jwt;
-mod keys;
-mod sessions;
-mod storage;
-mod test_transcript;
-#[cfg(test)]
-mod test_util;
+use axum::{
+    extract::Extension,
+    response::Html,
+    routing::{get, post},
+    Router, Server,
+};
+use chrono::{DateTime, FixedOffset};
+use clap::Parser;
+use cli_batteries::{await_shutdown, version};
+use eyre::{bail, ensure, eyre, Result as EyreResult};
+use kzg_ceremony_crypto::types::Transcript;
+use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use sessions::{SessionId, SessionInfo};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    env,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    ops::Deref,
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
+use storage::persistent_storage_client;
+use tokio::{
+    sync::RwLock,
+    time::{Instant, Interval},
+};
+use tower_http::trace::TraceLayer;
+use tracing::info;
+use url::{Host, Url};
 
 pub type SharedTranscript<T> = Arc<RwLock<T>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
@@ -81,7 +80,7 @@ pub struct Options {
 fn main() {
     cli_batteries::run(
         version!(crypto, small_powers_of_tau),
-        async_main::<kzg_ceremony_crypto::contribution::Transcript>,
+        async_main::<Transcript>,
     );
 }
 

@@ -2,14 +2,16 @@
 #![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
 
-pub mod contribution;
 mod crypto;
 pub mod interface;
+pub mod types;
 mod zcash_format;
 
-pub use contribution::{CeremoniesError, CeremonyError, SubContribution, SubTranscript};
-pub use crypto::{g1_subgroup_check, g2_subgroup_check};
-pub use zcash_format::{parse_g, ParseError};
+pub use crate::{
+    crypto::{g1_subgroup_check, g2_subgroup_check},
+    types::{CeremoniesError, CeremonyError, SubContribution, SubTranscript},
+    zcash_format::{parse_g, ParseError},
+};
 
 pub const SIZES: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
 
