@@ -9,11 +9,16 @@
 use std::{
     env,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, atomic::AtomicUsize},
     time::Duration,
 };
 
-use crate::{data::transcript::read_transcript_file, lobby::{clear_lobby_on_interval, SharedContributorState}, oauth::{siwe_oauth_client, github_oauth_client, SharedAuthState}, util::parse_url};
+use crate::{
+    data::transcript::read_transcript_file,
+    lobby::{clear_lobby_on_interval, SharedContributorState},
+    oauth::{siwe_oauth_client, github_oauth_client, SharedAuthState},
+    util::parse_url
+};
 use axum::{
     extract::Extension,
     response::Html,
@@ -60,6 +65,7 @@ mod util;
 mod test_util;
 
 pub type SharedTranscript<T> = Arc<RwLock<T>>;
+pub type SharedCeremonyStatus = Arc<AtomicUsize>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -95,6 +101,7 @@ where
     let transcript = Arc::new(RwLock::new(transcript_data));
 
     let active_contributor_state = SharedContributorState::default();
+    let ceremony_status = Arc::new(AtomicUsize::new(0));
     let lobby_state = SharedLobbyState::default();
     let auth_state = SharedAuthState::default();
 
@@ -116,6 +123,7 @@ where
         .layer(Extension(active_contributor_state))
         .layer(Extension(lobby_state))
         .layer(Extension(auth_state))
+        .layer(Extension(ceremony_status))
         .layer(Extension(siwe_oauth_client()))
         .layer(Extension(github_oauth_client()))
         .layer(Extension(reqwest::Client::new()))

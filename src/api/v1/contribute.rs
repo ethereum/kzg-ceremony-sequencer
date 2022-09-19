@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
@@ -9,7 +11,8 @@ use crate::{
     data::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
     storage::PersistentStorage,
-    AppConfig, Contribution, SessionId, SharedTranscript, Transcript, lobby::{SharedContributorState, clear_current_contributor},
+    lobby::{SharedContributorState, clear_current_contributor},
+    AppConfig, Contribution, SessionId, SharedTranscript, Transcript, SharedCeremonyStatus,
 };
 
 pub struct ContributeReceipt {
@@ -53,6 +56,7 @@ pub async fn contribute<T>(
     Extension(config): Extension<AppConfig>,
     Extension(shared_transcript): Extension<SharedTranscript<T>>,
     Extension(storage): Extension<PersistentStorage>,
+    Extension(num_contributions): Extension<SharedCeremonyStatus>
 ) -> Result<ContributeReceipt, ContributeError>
 where
     T: Transcript + Send + Sync + 'static,
@@ -114,10 +118,9 @@ where
         .0
         .to_string();
 
-    // Remove this person from the contribution spot
     clear_current_contributor(contributor_state).await;
-
     storage.finish_contribution(&uid).await;
+    num_contributions.fetch_add(1, Ordering::Relaxed);
 
     Ok(ContributeReceipt {
         encoded_receipt_token,
@@ -126,7 +129,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{path::PathBuf, sync::{atomic::AtomicUsize, Arc}};
 
     use axum::{Extension, Json};
     use chrono::DateTime;
@@ -182,6 +185,7 @@ mod tests {
             Extension(config()),
             Extension(SharedTranscript::default()),
             Extension(db),
+            Extension(Arc::new(AtomicUsize::new(0)))
         )
         .await;
         assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
@@ -202,6 +206,7 @@ mod tests {
             Extension(config()),
             Extension(SharedTranscript::default()),
             Extension(db),
+            Extension(Arc::new(AtomicUsize::new(0)))
         )
         .await;
         assert!(matches!(result, Err(ContributeError::InvalidContribution)));
@@ -225,6 +230,7 @@ mod tests {
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
+            Extension(Arc::new(AtomicUsize::new(0)))
         )
         .await;
 
@@ -244,6 +250,7 @@ mod tests {
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
+            Extension(Arc::new(AtomicUsize::new(0)))
         )
         .await;
 
