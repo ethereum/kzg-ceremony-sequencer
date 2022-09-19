@@ -15,11 +15,11 @@ pub static KEYS: OnceCell<Keys> = OnceCell::new();
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
     /// Public key file (.pem) to use for JWT verification
-    #[clap(long, env, default_value = "private.key")]
+    #[clap(long, env, default_value = "publickey.pem")]
     pub public_key: PathBuf,
 
     /// Private key file (.key) to use for JWT verification
-    #[clap(long, env, default_value = "publickey.pem")]
+    #[clap(long, env, default_value = "private.key")]
     pub private_key: PathBuf,
 }
 

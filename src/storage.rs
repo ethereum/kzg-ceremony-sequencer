@@ -29,7 +29,7 @@ pub struct PersistentStorage(Pool<Sqlite>);
 
 impl PersistentStorage {
     pub async fn has_contributed(&self, uid: &str) -> Result<bool, StorageError> {
-        let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1";
+        let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1)";
         self.0
             .fetch_one(sqlx::query(sql).bind(uid))
             .await
