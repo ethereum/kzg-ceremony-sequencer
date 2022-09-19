@@ -1,7 +1,22 @@
-use std::{env, ops::Deref};
+use std::{env, ops::Deref, collections::{BTreeSet, BTreeMap}, sync::Arc};
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use tokio::sync::RwLock;
 
-use crate::constants::{SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_TOKEN_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_TOKEN_URL};
+use crate::{constants::{SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_TOKEN_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_TOKEN_URL}, sessions::SessionId};
+
+#[derive(Default)]
+pub struct AuthState {
+    // CSRF tokens for oAUTH
+    pub csrf_tokens: BTreeSet<CsrfToken>,
+
+    // A map between a users unique social id
+    // and their session.
+    // We use this to check if a user has already entered the lobby
+    pub unique_id_session: BTreeMap<IdTokenSub, SessionId>,
+}
+
+pub type SharedAuthState = Arc<RwLock<AuthState>>;
+
 
 #[derive(Clone)]
 pub struct SiweOAuthClient {

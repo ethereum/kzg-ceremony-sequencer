@@ -7,7 +7,6 @@
 #![allow(clippy::module_name_repetitions)]
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
     env,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
@@ -15,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{data::transcript::read_transcript_file, lobby::clear_lobby_on_interval, oauth::{siwe_oauth_client, github_oauth_client}};
+use crate::{data::transcript::read_transcript_file, lobby::{clear_lobby_on_interval, LobbyState}, oauth::{siwe_oauth_client, github_oauth_client}};
 use axum::{
     extract::Extension,
     response::Html,
@@ -26,7 +25,7 @@ use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
 use eyre::{bail, ensure, eyre, Result as EyreResult};
-use oauth::{CsrfToken, IdTokenSub};
+use lobby::SharedLobby;
 use sessions::{SessionId, SessionInfo};
 use storage::persistent_storage_client;
 use tokio::sync::RwLock;
@@ -99,10 +98,11 @@ where
 
     let shared_state_clone = shared_state.clone();
 
+    let lobby_state = Arc::new(RwLock::new(LobbyState::default()));
+
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not
     // pinged in a considerable amount of time
-    let interval = tokio::time::interval(Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64));
-    tokio::spawn(clear_lobby_on_interval(shared_state_clone, interval));
+    tokio::spawn(clear_lobby_on_interval(lobby_state.clone(), Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64)));
 
     let app = Router::new()
         .layer(TraceLayer::new_for_http())
@@ -116,6 +116,7 @@ where
         .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
         .layer(Extension(shared_state))
+        .layer(Extension(lobby_state))
         .layer(Extension(siwe_oauth_client()))
         .layer(Extension(github_oauth_client()))
         .layer(Extension(reqwest::Client::new()))
@@ -170,18 +171,6 @@ impl Default for AppConfig {
 
 #[derive(Default)]
 pub struct AppState {
-    // Use can now be in the lobby and only those who are in
-    // the lobby can ping to start participating
-    lobby: BTreeMap<SessionId, SessionInfo>,
-
-    // CSRF tokens for oAUTH
-    csrf_tokens: BTreeSet<CsrfToken>,
-
-    // A map between a users unique social id
-    // and their session.
-    // We use this to check if a user has already entered the lobby
-    unique_id_session: BTreeMap<IdTokenSub, SessionId>,
-
     num_contributions: usize,
 
     // This is the Id of the current participant
@@ -200,8 +189,11 @@ impl AppState {
     /// # Panics
     ///
     /// Panics if the user is not in the lobby.
-    pub fn set_current_contributor(&mut self, session_id: SessionId) {
-        let session_info = self.lobby.remove(&session_id).unwrap();
+    pub async fn set_current_contributor(&mut self, lobby_state: SharedLobby, session_id: SessionId) {
+        let session_info = {
+            let mut lobby = lobby_state.write().await;
+            lobby.participants.remove(&session_id).unwrap()
+        };
 
         self.participant = Some((session_id, session_info));
     }

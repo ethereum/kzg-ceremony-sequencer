@@ -1,12 +1,24 @@
-use std::time::Duration;
+use std::{time::Duration, collections::BTreeMap, sync::Arc};
+use tokio::{time::Instant, sync::RwLock};
 
-use tokio::time::{Interval, Instant};
+use crate::{
+    constants::{LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
+    sessions::{SessionInfo, SessionId}
+};
 
-use crate::{SharedState, constants::{LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC}, sessions::SessionInfo};
+#[derive(Default)]
+pub struct LobbyState {
+    pub participants: BTreeMap<SessionId, SessionInfo>,
+}
 
-pub async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
+pub type SharedLobby = Arc<RwLock<LobbyState>>;
+
+pub async fn clear_lobby_on_interval(state: SharedLobby, interval: Duration) {
     let max_diff =
         Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
+
+    let mut interval = tokio::time::interval(interval);
+
     loop {
         interval.tick().await;
 
@@ -22,16 +34,16 @@ pub async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval)
     }
 }
 
-async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> bool + Send) {
-    let mut app_state = state.write().await;
+async fn clear_lobby(state: SharedLobby, predicate: impl Fn(&SessionInfo) -> bool + Send) {
+    let mut lobby_state = state.write().await;
 
     // Iterate top `MAX_LOBBY_SIZE` participants and check if they have
-    let participants = app_state.lobby.keys().cloned();
+    let participants = lobby_state.participants.keys().cloned();
     let mut sessions_to_kick = Vec::new();
 
     for participant in participants {
         // Check if they are over their ping deadline
-        app_state.lobby.get(&participant).map_or_else(
+        lobby_state.participants.get(&participant).map_or_else(
             ||
                 // This should not be possible
                 tracing::debug!("session id in queue but not a valid session"),
@@ -43,7 +55,7 @@ async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> boo
         );
     }
     for session_id in sessions_to_kick {
-        app_state.lobby.remove(&session_id);
+        lobby_state.participants.remove(&session_id);
     }
 }
 
@@ -64,7 +76,7 @@ async fn flush_on_predicate() {
 
     let to_add = 100;
 
-    let arc_state = SharedState::default();
+    let arc_state = SharedLobby::default();
 
     {
         let mut state = arc_state.write().await;
@@ -72,7 +84,7 @@ async fn flush_on_predicate() {
         for i in 0..to_add {
             let id = SessionId::new();
             let session_info = create_test_session_info(i as u64);
-            state.lobby.insert(id, session_info);
+            state.participants.insert(id, session_info);
         }
     }
 
@@ -85,11 +97,11 @@ async fn flush_on_predicate() {
     // Now we expect that half of the lobby should be
     // kicked
     let state = arc_state.write().await;
-    assert_eq!(state.lobby.len(), to_add / 2);
+    assert_eq!(state.participants.len(), to_add / 2);
 
-    let session_ids = state.lobby.keys().cloned();
+    let session_ids = state.participants.keys().cloned();
     for id in session_ids {
-        let info = state.lobby.get(&id).unwrap();
+        let info = state.participants.get(&id).unwrap();
         // We should just be left with `exp` numbers which are odd
         assert_eq!(info.token.exp % 2, 1);
     }

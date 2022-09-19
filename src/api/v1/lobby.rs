@@ -10,11 +10,10 @@ use tokio::time::{Duration, Instant};
 use crate::{
     constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
     storage::PersistentStorage,
-    SessionId, SharedState, SharedTranscript, Transcript,
+    SessionId, SharedState, SharedTranscript, Transcript, lobby::SharedLobby,
 };
 
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)] // TODO: Discuss this
 pub enum TryContributeError {
     UnknownSessionId,
     RateLimited,
@@ -63,19 +62,18 @@ impl<C: Serialize> IntoResponse for TryContributeResponse<C> {
 
 pub async fn try_contribute<T: Transcript + Send + Sync>(
     session_id: SessionId,
-    Extension(store): Extension<SharedState>,
+    Extension(app_state): Extension<SharedState>,
+    Extension(lobby_state): Extension<SharedLobby>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(transcript): Extension<SharedTranscript<T>>,
 ) -> Result<TryContributeResponse<T::ContributionType>, TryContributeError> {
-    let store_clone = store.clone();
-    let app_state = &mut store.write().await;
-
     let uid: String;
 
     // 1. Check if this is a valid session. If so, we log the ping time
     {
-        let info = app_state
-            .lobby
+        let mut lobby = lobby_state.write().await;
+        let info = lobby
+            .participants
             .get_mut(&session_id)
             .ok_or(TryContributeError::UnknownSessionId)?;
 
@@ -93,9 +91,12 @@ pub async fn try_contribute<T: Transcript + Send + Sync>(
         uid = info.token.unique_identifier().to_owned();
     }
 
-    // Check if there is an existing contribution in progress
-    if app_state.participant.is_some() {
-        return Err(TryContributeError::AnotherContributionInProgress);
+    {
+        // Check if there is an existing contribution in progress
+        let state = app_state.read().await;
+        if state.participant.is_some() {
+            return Err(TryContributeError::AnotherContributionInProgress);
+        }
     }
 
     // If this insertion fails, worst case we allow multiple contributions from the
@@ -103,13 +104,16 @@ pub async fn try_contribute<T: Transcript + Send + Sync>(
     storage.insert_contributor(&uid).await;
 
     {
+        let mut state = app_state.write().await;
+
         // This user now reserves this spot. This also removes them from the lobby
-        app_state.set_current_contributor(session_id.clone());
-        // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
-        tokio::spawn(async move {
-            remove_participant_on_deadline(store_clone, storage.clone(), session_id, uid).await;
-        });
+        state.set_current_contributor(lobby_state, session_id.clone()).await;
     }
+    
+    // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
+    tokio::spawn(async move {
+        remove_participant_on_deadline(app_state, storage.clone(), session_id, uid).await;
+    });
 
     let transcript = transcript.read().await;
 
@@ -159,6 +163,7 @@ async fn lobby_try_contribute_test() {
     };
 
     let shared_state = SharedState::default();
+    let lobby_state = SharedLobby::default();
     let transcript = SharedTranscript::<TestTranscript>::default();
     let db = test_storage_client().await;
 
@@ -172,6 +177,7 @@ async fn lobby_try_contribute_test() {
     let unknown_session_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
+        Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
     )
@@ -183,12 +189,12 @@ async fn lobby_try_contribute_test() {
 
     // add two participants to lobby
     {
-        let mut state = shared_state.write().await;
+        let mut state = lobby_state.write().await;
         state
-            .lobby
+            .participants
             .insert(session_id.clone(), create_test_session_info(100));
         state
-            .lobby
+            .participants
             .insert(other_session_id.clone(), create_test_session_info(100));
     }
 
@@ -196,6 +202,7 @@ async fn lobby_try_contribute_test() {
     try_contribute(
         other_session_id.clone(),
         Extension(shared_state.clone()),
+        Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
     )
@@ -204,6 +211,7 @@ async fn lobby_try_contribute_test() {
     let contribution_in_progress_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
+        Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
     )
@@ -218,6 +226,7 @@ async fn lobby_try_contribute_test() {
     let too_soon_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
+        Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
     )
@@ -238,6 +247,7 @@ async fn lobby_try_contribute_test() {
     let too_soon_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
+        Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
     )
@@ -252,6 +262,7 @@ async fn lobby_try_contribute_test() {
     let success_response = try_contribute(
         session_id.clone(),
         Extension(shared_state.clone()),
+        Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
     )
