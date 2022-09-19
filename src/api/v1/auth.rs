@@ -1,8 +1,9 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
+    oauth::{GithubOAuthClient, SiweOAuthClient},
     jwt::{errors::JwtError, IdToken},
     storage::{PersistentStorage, StorageError},
-    AppConfig, GithubOAuthClient, SessionId, SessionInfo, SharedState, SiweOAuthClient,
+    AppConfig, SessionId, SessionInfo, SharedState,
 };
 use axum::{
     extract::Query,
