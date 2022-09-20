@@ -21,7 +21,7 @@ pub struct SignedReceipt {
 
 impl<T: Serialize> Receipt<T> {
     pub async fn sign(&self) -> Result<SignedReceipt, JwtError> {
-        let receipt_message = serde_json::to_string(&self).unwrap();
+        let receipt_message = serde_json::to_string(self).unwrap();
         KEYS.get()
             .unwrap()
             .sign(&receipt_message)

@@ -76,10 +76,10 @@ impl IntoResponse for JwtInfoResponse {
 // Returns the relevant JWT information
 #[allow(clippy::unused_async)] // Required for axum function signature
 pub async fn jwt_info() -> JwtInfoResponse {
-    let rsa_public_key_pem_as_string = KEYS.get().unwrap().decode_key_to_string();
+    let address = KEYS.get().unwrap().address();
 
     JwtInfoResponse {
         alg:         "eth",
-        rsa_pem_key: rsa_public_key_pem_as_string,
+        rsa_pem_key: address,
     }
 }

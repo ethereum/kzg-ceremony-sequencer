@@ -41,8 +41,9 @@ impl Keys {
         false
     }
 
-    pub fn decode_key_to_string(&self) -> String {
-        String::from("a")
+    pub fn address(&self) -> String {
+        let adr = self.wallet.address();
+        hex::encode(adr)
     }
 }
 

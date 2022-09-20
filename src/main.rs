@@ -85,7 +85,7 @@ where
     T: kzg_ceremony_crypto::interface::Transcript + Send + Sync + 'static,
     T::ContributionType: Send,
     <<T as kzg_ceremony_crypto::interface::Transcript>::ContributionType as kzg_ceremony_crypto::interface::Contribution>::Receipt:
-        Send,
+        Send + Sync,
 {
     // Load JWT keys
     keys::KEYS
@@ -131,7 +131,7 @@ where
         .layer(Extension(persistent_storage_client().await))
         .layer(Extension(config))
         .layer(Extension(transcript));
- 
+
     // Run the server
     let (addr, prefix) = parse_url(&options.server)?;
     let app = Router::new().nest(prefix, app);
