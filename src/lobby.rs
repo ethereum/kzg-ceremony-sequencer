@@ -21,7 +21,7 @@ pub struct Options {
     #[clap(long, env, value_parser=duration_from_str, default_value="5")]
     pub lobby_flush_interval: Duration,
 
-    #[clap(long, env, default_value="1000")]
+    #[clap(long, env, default_value = "1000")]
     pub max_lobby_size: usize,
 }
 

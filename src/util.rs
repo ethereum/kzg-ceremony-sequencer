@@ -1,10 +1,10 @@
 use eyre::{bail, ensure, Result as EyreResult};
 use std::{
+    convert::Infallible,
     fmt,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str,
 };
-use std::convert::Infallible;
 use url::{Host, Url};
 
 pub fn parse_url(url: &Url) -> EyreResult<(SocketAddr, &str)> {
