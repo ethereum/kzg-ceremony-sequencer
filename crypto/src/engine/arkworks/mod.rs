@@ -1,11 +1,14 @@
 mod endomorphism;
 mod zcash_format;
 
+use std::iter;
+
 use self::endomorphism::{g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
 use crate::types::{CeremonyError, ParseError, G1, G2};
-use ark_bls12_381::{Bls12_381, G1Affine, G2Affine};
-use ark_ec::{AffineCurve, PairingEngine};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
+use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine};
+use ark_ff::{PrimeField, UniformRand, Zero};
 use rayon::prelude::*;
 use tracing::instrument;
 
@@ -42,9 +45,9 @@ impl Engine for Arkworks {
 
     #[instrument(level = "info", skip_all)]
     fn verify_pubkey(tau: G1, previous: G1, pubkey: G2) -> Result<(), CeremonyError> {
-        let tau: G1Affine = tau.try_into()?;
-        let previous: G1Affine = previous.try_into()?;
-        let pubkey: G2Affine = pubkey.try_into()?;
+        let tau = G1Affine::try_from(tau)?;
+        let previous = G1Affine::try_from(previous)?;
+        let pubkey = G2Affine::try_from(pubkey)?;
         if Bls12_381::pairing(tau, G2Affine::prime_subgroup_generator())
             != Bls12_381::pairing(previous, pubkey)
         {
@@ -55,11 +58,65 @@ impl Engine for Arkworks {
 
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
     fn verify_g1(powers: &[G1], tau: G2) -> Result<(), CeremonyError> {
-        todo!()
+        // Parse ZCash format
+        let powers = powers
+            .into_par_iter()
+            .map(|p| G1Affine::try_from(*p))
+            .collect::<Result<Vec<_>, _>>()?;
+        let tau = G2Affine::try_from(tau)?;
+
+        // Compute random linear combination
+        let (factors, sum) = random_factors(powers.len() - 1);
+        let lhs_g1 = VariableBaseMSM::multi_scalar_mul(&powers[1..], &factors[..]);
+        let lhs_g2 = G2Affine::prime_subgroup_generator().mul(sum);
+        let rhs_g1 = VariableBaseMSM::multi_scalar_mul(&powers[..factors.len()], &factors[..]);
+        let rhs_g2 = tau.mul(sum);
+
+        // Check pairing
+        if Bls12_381::pairing(lhs_g1, lhs_g2) != Bls12_381::pairing(rhs_g1, rhs_g2) {
+            return Err(CeremonyError::G1PairingFailed);
+        }
+        Ok(())
     }
 
     #[instrument(level = "info", skip_all, fields(n1=g1.len(), n2=g2.len()))]
     fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError> {
-        todo!()
+        assert!(g1.len() == g2.len());
+
+        // Parse ZCash format
+        let g1 = g1
+            .into_par_iter()
+            .map(|p| G1Affine::try_from(*p))
+            .collect::<Result<Vec<_>, _>>()?;
+        let g2 = g2
+            .into_par_iter()
+            .map(|p| G2Affine::try_from(*p))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Compute random linear combination
+        let (factors, sum) = random_factors(g2.len());
+        let lhs_g1 = VariableBaseMSM::multi_scalar_mul(&g1, &factors[..]);
+        let lhs_g2 = G2Affine::prime_subgroup_generator().mul(sum);
+        let rhs_g1 = G1Affine::prime_subgroup_generator().mul(sum);
+        let rhs_g2 = VariableBaseMSM::multi_scalar_mul(&g2, &factors[..]);
+
+        // Check pairing
+        if Bls12_381::pairing(lhs_g1, lhs_g2) != Bls12_381::pairing(rhs_g1, rhs_g2) {
+            return Err(CeremonyError::G2PairingFailed);
+        }
+        Ok(())
     }
+}
+
+fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
+    let mut rng = rand::thread_rng();
+    let mut sum = Fr::zero();
+    let factors = iter::from_fn(|| {
+        let r = Fr::rand(&mut rng);
+        sum += r;
+        Some(r.0)
+    })
+    .take(n)
+    .collect::<Vec<_>>();
+    (factors, sum)
 }

@@ -34,6 +34,10 @@ pub enum CeremonyError {
     InvalidWitnessPubKey(usize, #[source] ParseError),
     #[error("Pubkey pairing check failed")]
     PubKeyPairingFailed,
+    #[error("G1 pairing check failed")]
+    G1PairingFailed,
+    #[error("G2 pairing check failed")]
+    G2PairingFailed,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Error)]

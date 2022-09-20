@@ -25,6 +25,7 @@ impl Transcript {
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         assert!(num_g1 >= 2);
         assert!(num_g2 >= 2);
+        assert!(num_g1 >= num_g2);
         Self {
             powers:  Powers::new(num_g1, num_g2),
             witness: Witness::default(),
@@ -45,6 +46,7 @@ impl Transcript {
     pub fn verify<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
         assert!(self.powers.g1.len() >= 2);
         assert!(self.powers.g2.len() >= 2);
+        assert!(self.powers.g1.len() >= self.powers.g2.len());
 
         // Compatibility checks
         if self.powers.g1.len() != contribution.powers.g1.len() {
@@ -79,7 +81,10 @@ impl Transcript {
             contribution.pubkey,
         )?;
         E::verify_g1(&contribution.powers.g1, contribution.powers.g2[1])?;
-        E::verify_g2(&contribution.powers.g1, &contribution.powers.g2)?;
+        E::verify_g2(
+            &contribution.powers.g1[..contribution.powers.g2.len()],
+            &contribution.powers.g2,
+        )?;
 
         // Accept
         Ok(())
