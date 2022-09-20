@@ -14,8 +14,9 @@ use std::cmp::max;
 use tracing::instrument;
 use zeroize::Zeroizing;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[allow(clippy::module_name_repetitions)]
+#[serde(try_from = "ContributionJson", into = "ContributionJson")]
 pub struct Contribution {
     pub pubkey:    G2Affine,
     pub g1_powers: Vec<G1Affine>,
@@ -24,7 +25,7 @@ pub struct Contribution {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SubContributionJson {
+pub struct ContributionJson {
     pub num_g1_powers: usize,
     pub num_g2_powers: usize,
     pub powers_of_tau: PowersOfTau,
@@ -38,19 +39,7 @@ pub struct PowersOfTau {
     pub g2_powers: Vec<String>,
 }
 
-impl From<BatchContribution> for ContributionJson {
-    fn from(contributions: BatchContribution) -> Self {
-        Self {
-            sub_contributions: contributions
-                .sub_contributions
-                .into_iter()
-                .map(std::convert::Into::into)
-                .collect(),
-        }
-    }
-}
-
-impl From<Contribution> for SubContributionJson {
+impl From<Contribution> for ContributionJson {
     fn from(contribution: Contribution) -> Self {
         let powers_of_tau = PowersOfTau {
             g1_powers: contribution.g1_powers.iter().map(write_g).collect(),
@@ -65,61 +54,15 @@ impl From<Contribution> for SubContributionJson {
     }
 }
 
-impl ContributionJson {
-    #[must_use]
-    pub fn initial() -> Self {
-        Self {
-            sub_contributions: crate::SIZES
-                .iter()
-                .map(|(num_g1, num_g2)| SubContributionJson::initial(*num_g1, *num_g2))
-                .collect(),
-        }
-    }
+impl TryFrom<ContributionJson> for Contribution {
+    type Error = CeremonyError;
 
-    /// # Errors
-    ///
-    /// Errors may be reported when any of the contributions cannot be parsed.
-    pub fn parse(&self) -> Result<Vec<Contribution>, CeremoniesError> {
-        if self.sub_contributions.len() != crate::SIZES.len() {
-            return Err(CeremoniesError::InvalidCeremoniesCount(
-                4,
-                self.sub_contributions.len(),
-            ));
-        }
-        self.sub_contributions
-            .iter()
-            .zip(crate::SIZES.iter())
-            .map(|(c, (num_g1, num_g2))| {
-                if c.num_g1_powers != *num_g1 {
-                    return Err(CeremonyError::UnexpectedNumG1Powers(
-                        *num_g1,
-                        c.num_g1_powers,
-                    ));
-                }
-                if c.num_g2_powers != *num_g2 {
-                    return Err(CeremonyError::UnexpectedNumG1Powers(
-                        *num_g1,
-                        c.num_g1_powers,
-                    ));
-                }
-                Ok(())
-            })
-            .enumerate()
-            .try_for_each(|(i, result)| {
-                result.map_err(|e| CeremoniesError::InvalidCeremony(i, e))
-            })?;
-        self.sub_contributions
-            .par_iter()
-            .enumerate()
-            .map(|(i, c)| {
-                c.parse()
-                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
-            })
-            .collect::<Result<Vec<_>, _>>()
+    fn try_from(value: ContributionJson) -> Result<Self, Self::Error> {
+        value.parse()
     }
 }
 
-impl SubContributionJson {
+impl ContributionJson {
     #[must_use]
     pub fn initial(num_g1_powers: usize, num_g2_powers: usize) -> Self {
         Self {
@@ -269,17 +212,6 @@ impl Contribution {
         let rhs_g1 = G1Affine::prime_subgroup_generator().mul(sum);
         let rhs_g2 = VariableBaseMSM::multi_scalar_mul(&self.g2_powers[..], &factors[..]);
         Bls12_381::pairing(lhs_g1, lhs_g2) == Bls12_381::pairing(rhs_g1, rhs_g2)
-    }
-}
-
-impl crate::interface::Contribution for BatchContribution {
-    type Receipt = Vec<String>;
-
-    fn get_receipt(&self) -> Self::Receipt {
-        self.sub_contributions
-            .iter()
-            .map(|c| write_g(&c.pubkey))
-            .collect()
     }
 }
 
