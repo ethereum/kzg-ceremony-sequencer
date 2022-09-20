@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
@@ -9,8 +11,10 @@ use serde_json::json;
 use crate::{
     io::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
+    keys::SharedKeys,
+    lobby::{clear_current_contributor, SharedContributorState},
     storage::PersistentStorage,
-    AppConfig, SessionId, SharedState, SharedTranscript,
+    Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 
 pub struct ContributeReceipt {
@@ -47,13 +51,16 @@ impl IntoResponse for ContributeError {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn contribute<T>(
     session_id: SessionId,
     Json(contribution): Json<T::ContributionType>,
-    Extension(store): Extension<SharedState>,
-    Extension(config): Extension<AppConfig>,
+    Extension(contributor_state): Extension<SharedContributorState>,
+    Extension(options): Extension<Options>,
     Extension(shared_transcript): Extension<SharedTranscript<T>>,
     Extension(storage): Extension<PersistentStorage>,
+    Extension(num_contributions): Extension<SharedCeremonyStatus>,
+    Extension(keys): Extension<SharedKeys>,
 ) -> Result<ContributeReceipt, ContributeError>
 where
     T: Transcript + Send + Sync + 'static,
@@ -62,9 +69,8 @@ where
 {
     // 1. Check if this person should be contributing
     let id_token = {
-        let app_state = store.read().await;
-        let (id, session_info) = &app_state
-            .participant
+        let active_contributor = contributor_state.read().await;
+        let (id, session_info) = active_contributor
             .as_ref()
             .ok_or(ContributeError::NotUsersTurn)?;
         if &session_id != id {
@@ -81,8 +87,7 @@ where
     {
         let transcript = shared_transcript.read().await;
         if transcript.verify_contribution(&contribution).is_err() {
-            let mut app_state = store.write().await;
-            app_state.clear_current_contributor();
+            clear_current_contributor(contributor_state).await;
             storage
                 .expire_contribution(id_token.unique_identifier())
                 .await;
@@ -102,31 +107,21 @@ where
         }
     };
 
-    let encoded_receipt_token = receipt.encode().map_err(ContributeError::Auth)?;
+    let encoded_receipt_token = receipt.encode(&keys).map_err(ContributeError::Auth)?;
 
-    write_transcript_file(
-        config.transcript_file,
-        config.transcript_in_progress_file,
-        shared_transcript,
-    )
-    .await;
+    write_transcript_file(options.transcript, shared_transcript).await;
 
-    let mut app_state = store.write().await;
-
-    app_state.num_contributions += 1;
-
-    let uid = app_state
-        .participant
+    let uid = contributor_state
+        .read()
+        .await
         .as_ref()
         .expect("participant is guaranteed non-empty here")
         .0
         .to_string();
 
-    // Remove this person from the contribution spot
-    app_state.clear_current_contributor();
-
-    drop(app_state); // Release AppState lock
+    clear_current_contributor(contributor_state).await;
     storage.finish_contribution(&uid).await;
+    num_contributions.fetch_add(1, Ordering::Relaxed);
 
     Ok(ContributeReceipt {
         encoded_receipt_token,
@@ -135,66 +130,53 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{
+        path::PathBuf,
+        sync::{atomic::AtomicUsize, Arc},
+    };
 
     use axum::{Extension, Json};
-    use chrono::DateTime;
 
     use crate::{
         api::v1::contribute::ContributeError,
-        constants, contribute, keys, read_transcript_file,
-        storage::test_storage_client,
+        contribute, keys,
+        keys::SharedKeys,
+        lobby::SharedContributorState,
+        read_transcript_file,
+        storage::storage_client,
         test_transcript::{
             TestContribution::{InvalidContribution, ValidContribution},
             TestTranscript,
         },
-        test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SharedState, SharedTranscript,
+        test_util::{create_test_session_info, test_options},
+        Keys, SessionId, SharedTranscript,
     };
 
-    fn config() -> AppConfig {
-        let mut transcript = std::env::temp_dir();
-        transcript.push("transcript.json");
-        let mut transcript_work = std::env::temp_dir();
-        transcript_work.push("transcript.json.new");
-        AppConfig {
-            eth_check_nonce_at_block:    String::new(),
-            eth_min_nonce:               0,
-            github_max_creation_time:    DateTime::parse_from_rfc3339(
-                constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
-            )
+    async fn shared_keys() -> SharedKeys {
+        Arc::new(
+            Keys::new(&keys::Options {
+                private_key: PathBuf::from("private.key"),
+                public_key:  PathBuf::from("publickey.pem"),
+            })
+            .await
             .unwrap(),
-            eth_rpc_url:                 String::new(),
-            transcript_file:             transcript,
-            transcript_in_progress_file: transcript_work,
-        }
-    }
-
-    async fn init_keys() {
-        keys::KEYS
-            .set(
-                Keys::new(keys::Options {
-                    private_key: PathBuf::from("private.key"),
-                    public_key:  PathBuf::from("publickey.pem"),
-                })
-                .await
-                .unwrap(),
-            )
-            .ok();
+        )
     }
 
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
-        let db = test_storage_client().await;
-        let app_state = SharedState::default();
-        app_state.write().await.participant = None;
+        let opts = test_options();
+        let db = storage_client(&opts.storage).await;
+        let contributor_state = SharedContributorState::default();
         let result = contribute::<TestTranscript>(
             SessionId::new(),
             Json(ValidContribution(123)),
-            Extension(app_state),
-            Extension(config()),
+            Extension(contributor_state),
+            Extension(opts),
             Extension(SharedTranscript::default()),
             Extension(db),
+            Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(shared_keys().await),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
@@ -202,19 +184,21 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_contribution() {
-        init_keys().await;
-        let db = test_storage_client().await;
-        let app_state = SharedState::default();
+        let opts = test_options();
+        let db = storage_client(&opts.storage).await;
+        let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
-        app_state.write().await.participant =
+        *contributor_state.write().await =
             Some((participant.clone(), create_test_session_info(100)));
         let result = contribute::<TestTranscript>(
             participant,
             Json(InvalidContribution(123)),
-            Extension(app_state),
-            Extension(config()),
+            Extension(contributor_state),
+            Extension(opts),
             Extension(SharedTranscript::default()),
             Extension(db),
+            Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(shared_keys().await),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::InvalidContribution)));
@@ -222,46 +206,52 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
-        init_keys().await;
-        let db = test_storage_client().await;
-        let app_state = SharedState::default();
+        let keys = shared_keys().await;
+        let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
-        let cfg = config();
+        let cfg = test_options();
+        let db = storage_client(&cfg.storage).await;
         let shared_transcript = SharedTranscript::<TestTranscript>::default();
 
-        app_state.write().await.participant =
+        *contributor_state.write().await =
             Some((participant.clone(), create_test_session_info(100)));
         let result = contribute::<TestTranscript>(
             participant.clone(),
             Json(ValidContribution(123)),
-            Extension(app_state.clone()),
+            Extension(contributor_state.clone()),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
+            Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(keys.clone()),
         )
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        let transcript =
+            read_transcript_file::<TestTranscript>(cfg.transcript.transcript_file.clone()).await;
         assert_eq!(transcript, TestTranscript {
             initial:       ValidContribution(0),
             contributions: vec![ValidContribution(123)],
         });
 
-        app_state.write().await.participant =
+        *contributor_state.write().await =
             Some((participant.clone(), create_test_session_info(100)));
         let result = contribute::<TestTranscript>(
             participant.clone(),
             Json(ValidContribution(175)),
-            Extension(app_state.clone()),
+            Extension(contributor_state.clone()),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
+            Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(keys.clone()),
         )
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        let transcript =
+            read_transcript_file::<TestTranscript>(cfg.transcript.transcript_file.clone()).await;
         assert_eq!(transcript, TestTranscript {
             initial:       ValidContribution(0),
             contributions: vec![ValidContribution(123), ValidContribution(175)],
