@@ -11,9 +11,10 @@ use serde_json::json;
 use crate::{
     io::transcript::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
+    keys::SharedKeys,
     lobby::{clear_current_contributor, SharedContributorState},
     storage::PersistentStorage,
-    AppConfig, SessionId, SharedCeremonyStatus, SharedTranscript,
+    Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 
 pub struct ContributeReceipt {
@@ -50,14 +51,16 @@ impl IntoResponse for ContributeError {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn contribute<T>(
     session_id: SessionId,
     Json(contribution): Json<T::ContributionType>,
     Extension(contributor_state): Extension<SharedContributorState>,
-    Extension(config): Extension<AppConfig>,
+    Extension(options): Extension<Options>,
     Extension(shared_transcript): Extension<SharedTranscript<T>>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
+    Extension(keys): Extension<SharedKeys>,
 ) -> Result<ContributeReceipt, ContributeError>
 where
     T: Transcript + Send + Sync + 'static,
@@ -104,14 +107,9 @@ where
         }
     };
 
-    let encoded_receipt_token = receipt.encode().map_err(ContributeError::Auth)?;
+    let encoded_receipt_token = receipt.encode(&*keys).map_err(ContributeError::Auth)?;
 
-    write_transcript_file(
-        config.transcript_file,
-        config.transcript_in_progress_file,
-        shared_transcript,
-    )
-    .await;
+    write_transcript_file(options.transcript, shared_transcript).await;
 
     let uid = contributor_state
         .read()
@@ -138,11 +136,11 @@ mod tests {
     };
 
     use axum::{Extension, Json};
-    use chrono::DateTime;
 
     use crate::{
         api::v1::contribute::ContributeError,
-        constants, contribute, keys,
+        contribute, keys,
+        keys::SharedKeys,
         lobby::SharedContributorState,
         read_transcript_file,
         storage::test_storage_client,
@@ -150,39 +148,19 @@ mod tests {
             TestContribution::{InvalidContribution, ValidContribution},
             TestTranscript,
         },
-        test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SharedTranscript,
+        test_util::{create_test_session_info, test_options},
+        Keys, SessionId, SharedTranscript,
     };
 
-    fn config() -> AppConfig {
-        let mut transcript = std::env::temp_dir();
-        transcript.push("transcript.json");
-        let mut transcript_work = std::env::temp_dir();
-        transcript_work.push("transcript.json.new");
-        AppConfig {
-            eth_check_nonce_at_block:    "".to_string(),
-            eth_min_nonce:               0,
-            github_max_creation_time:    DateTime::parse_from_rfc3339(
-                constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
-            )
+    async fn shared_keys() -> SharedKeys {
+        Arc::new(
+            Keys::new(keys::Options {
+                private_key: PathBuf::from("private.key"),
+                public_key:  PathBuf::from("publickey.pem"),
+            })
+            .await
             .unwrap(),
-            eth_rpc_url:                 "".to_string(),
-            transcript_file:             transcript,
-            transcript_in_progress_file: transcript_work,
-        }
-    }
-
-    async fn init_keys() {
-        keys::KEYS
-            .set(
-                Keys::new(keys::Options {
-                    private_key: PathBuf::from("private.key"),
-                    public_key:  PathBuf::from("publickey.pem"),
-                })
-                .await
-                .unwrap(),
-            )
-            .ok();
+        )
     }
 
     #[tokio::test]
@@ -193,10 +171,11 @@ mod tests {
             SessionId::new(),
             Json(ValidContribution(123)),
             Extension(contributor_state),
-            Extension(config()),
+            Extension(test_options()),
             Extension(SharedTranscript::default()),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(shared_keys().await),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
@@ -204,7 +183,6 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_contribution() {
-        init_keys().await;
         let db = test_storage_client().await;
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
@@ -214,10 +192,11 @@ mod tests {
             participant,
             Json(InvalidContribution(123)),
             Extension(contributor_state),
-            Extension(config()),
+            Extension(test_options()),
             Extension(SharedTranscript::default()),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(shared_keys().await),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::InvalidContribution)));
@@ -225,11 +204,11 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
-        init_keys().await;
+        let keys = shared_keys().await;
         let db = test_storage_client().await;
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
-        let cfg = config();
+        let cfg = test_options();
         let shared_transcript = SharedTranscript::<TestTranscript>::default();
 
         *contributor_state.write().await =
@@ -242,11 +221,13 @@ mod tests {
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
             Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(keys.clone()),
         )
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        let transcript =
+            read_transcript_file::<TestTranscript>(cfg.transcript.transcript_file.clone()).await;
         assert_eq!(transcript, TestTranscript {
             initial:       ValidContribution(0),
             contributions: vec![ValidContribution(123)],
@@ -262,11 +243,13 @@ mod tests {
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
             Extension(Arc::new(AtomicUsize::new(0))),
+            Extension(keys.clone()),
         )
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
+        let transcript =
+            read_transcript_file::<TestTranscript>(cfg.transcript.transcript_file.clone()).await;
         assert_eq!(transcript, TestTranscript {
             initial:       ValidContribution(0),
             contributions: vec![ValidContribution(123), ValidContribution(175)],

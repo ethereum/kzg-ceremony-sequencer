@@ -8,10 +8,26 @@
 
 use std::{
     env,
-    path::PathBuf,
     sync::{atomic::AtomicUsize, Arc},
-    time::Duration,
 };
+
+use axum::{
+    extract::Extension,
+    response::Html,
+    routing::{get, post},
+    Router, Server,
+};
+use clap::Parser;
+use cli_batteries::{await_shutdown, version};
+use eyre::Result as EyreResult;
+use tokio::sync::RwLock;
+use tower_http::trace::TraceLayer;
+use tracing::info;
+use url::Url;
+
+use lobby::SharedLobbyState;
+use sessions::{SessionId, SessionInfo};
+use storage::persistent_storage_client;
 
 use crate::{
     api::v1::{
@@ -20,33 +36,16 @@ use crate::{
         info::{current_state, jwt_info, status},
         lobby::try_contribute,
     },
-    constants::LOBBY_FLUSH_INTERVAL,
-    io::transcript::read_transcript_file,
+    io::{transcript, transcript::read_transcript_file},
     keys::Keys,
     lobby::{clear_lobby_on_interval, SharedContributorState},
-    oauth::{github_oauth_client, siwe_oauth_client, SharedAuthState},
+    oauth::{
+        github_oauth_client, siwe_oauth_client, EthAuthOptions, GithubAuthOptions, SharedAuthState,
+    },
     util::parse_url,
 };
-use axum::{
-    extract::Extension,
-    response::Html,
-    routing::{get, post},
-    Router, Server,
-};
-use chrono::{DateTime, FixedOffset};
-use clap::Parser;
-use cli_batteries::{await_shutdown, version};
-use eyre::{eyre, Result as EyreResult};
-use lobby::SharedLobbyState;
-use sessions::{SessionId, SessionInfo};
-use storage::persistent_storage_client;
-use tokio::sync::RwLock;
-use tower_http::trace::TraceLayer;
-use tracing::info;
-use url::Url;
 
 mod api;
-mod constants;
 mod io;
 mod jwt;
 mod keys;
@@ -70,6 +69,18 @@ pub struct Options {
 
     #[clap(flatten)]
     pub keys: keys::Options,
+
+    #[clap(flatten)]
+    pub github: GithubAuthOptions,
+
+    #[clap(flatten)]
+    pub ethereum: EthAuthOptions,
+
+    #[clap(flatten)]
+    pub transcript: transcript::Options,
+
+    #[clap(flatten)]
+    pub lobby: lobby::Options,
 }
 
 #[allow(dead_code)] // Entry point
@@ -87,13 +98,10 @@ where
     <<T as kzg_ceremony_crypto::interface::Transcript>::ContributionType as kzg_ceremony_crypto::interface::Contribution>::Receipt:
         Send,
 {
-    // Load JWT keys
-    keys::KEYS
-        .set(Keys::new(options.keys).await?)
-        .map_err(|_e| eyre!("KEYS was already set."))?;
+    let keys = Arc::new(Keys::new(options.keys).await?);
 
-    let config = AppConfig::default();
-    let transcript_data = read_transcript_file::<T>(config.transcript_file.clone()).await;
+    let transcript_data =
+        read_transcript_file::<T>(options.transcript.transcript_file.clone()).await;
     let transcript = Arc::new(RwLock::new(transcript_data));
 
     let active_contributor_state = SharedContributorState::default();
@@ -105,10 +113,7 @@ where
 
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not
     // pinged in a considerable amount of time
-    tokio::spawn(clear_lobby_on_interval(
-        lobby_state.clone(),
-        Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64),
-    ));
+    tokio::spawn(clear_lobby_on_interval(lobby_state.clone(), options.lobby));
 
     let app = Router::new()
         .layer(TraceLayer::new_for_http())
@@ -125,11 +130,11 @@ where
         .layer(Extension(lobby_state))
         .layer(Extension(auth_state))
         .layer(Extension(ceremony_status))
-        .layer(Extension(siwe_oauth_client()))
-        .layer(Extension(github_oauth_client()))
+        .layer(Extension(keys))
+        .layer(Extension(siwe_oauth_client(&options.ethereum)))
+        .layer(Extension(github_oauth_client(&options.github)))
         .layer(Extension(reqwest::Client::new()))
         .layer(Extension(persistent_storage_client().await))
-        .layer(Extension(config))
         .layer(Extension(transcript));
 
     // Run the server
@@ -145,33 +150,4 @@ where
 #[allow(clippy::unused_async)] // Required for axum function signature
 async fn hello_world() -> Html<&'static str> {
     Html("<h1>Server is Running</h1>")
-}
-
-#[derive(Clone)]
-pub struct AppConfig {
-    github_max_creation_time:    DateTime<FixedOffset>,
-    eth_check_nonce_at_block:    String,
-    eth_min_nonce:               i64,
-    eth_rpc_url:                 String,
-    transcript_file:             PathBuf,
-    transcript_in_progress_file: PathBuf,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        let transcript =
-            env::var("TRANSCRIPT_FILE").unwrap_or_else(|_| "./transcript.json".to_string());
-        let transcript_progress = format!("{}.new", transcript);
-        Self {
-            github_max_creation_time:    DateTime::parse_from_rfc3339(
-                constants::GITHUB_ACCOUNT_CREATION_DEADLINE,
-            )
-            .unwrap(),
-            eth_check_nonce_at_block:    constants::ETH_CHECK_NONCE_AT_BLOCK.to_string(),
-            eth_min_nonce:               constants::ETH_MIN_NONCE,
-            eth_rpc_url:                 env::var("ETH_RPC_URL").expect("Missing ETH_RPC_URL"),
-            transcript_file:             PathBuf::from(transcript),
-            transcript_in_progress_file: PathBuf::from(transcript_progress),
-        }
-    }
 }

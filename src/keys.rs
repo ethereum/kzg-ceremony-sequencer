@@ -3,14 +3,10 @@ use eyre::Result;
 use jsonwebtoken::{
     decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
-use once_cell::sync::OnceCell;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tokio::try_join;
 use tracing::info;
-
-// TODO: Make part of app state instead of global
-pub static KEYS: OnceCell<Keys> = OnceCell::new();
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -28,6 +24,8 @@ pub struct Keys {
     decoding: DecodingKey,
     pubkey:   String,
 }
+
+pub type SharedKeys = Arc<Keys>;
 
 impl Keys {
     pub async fn new(options: Options) -> Result<Self> {
