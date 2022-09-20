@@ -42,7 +42,7 @@ use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
 use eyre::{bail, ensure, eyre, Result as EyreResult};
-use kzg_ceremony_crypto::types::Transcript;
+use kzg_ceremony_crypto::types::BatchTranscript;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
 use std::{
@@ -80,7 +80,7 @@ pub struct Options {
 fn main() {
     cli_batteries::run(
         version!(crypto, small_powers_of_tau),
-        async_main::<Transcript>,
+        async_main::<BatchTranscript>,
     );
 }
 

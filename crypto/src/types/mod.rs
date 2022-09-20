@@ -4,9 +4,9 @@ mod transcript;
 mod utils;
 
 pub use self::{
-    contribution::{Contribution, SubContribution},
+    contribution::{BatchContribution, Contribution},
     error::{CeremoniesError, CeremonyError},
-    transcript::{SubTranscript, Transcript},
+    transcript::{BatchTranscript, Transcript},
 };
 
 #[cfg(test)]
@@ -17,8 +17,8 @@ pub mod test {
 
     #[test]
     fn verify() {
-        let transcript = SubTranscript::new(32768, 65);
-        let mut contrib = SubContribution::new(32768, 65);
+        let transcript = Transcript::new(32768, 65);
+        let mut contrib = Contribution::new(32768, 65);
         assert!(contrib.verify(&transcript));
         let mut rng = rand::thread_rng();
         contrib.add_tau(&Fr::rand(&mut rng));

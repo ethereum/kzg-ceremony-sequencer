@@ -10,7 +10,7 @@ mod zcash_format;
 
 pub use crate::{
     crypto::{g1_subgroup_check, g2_subgroup_check},
-    types::{CeremoniesError, CeremonyError, SubContribution, SubTranscript},
+    types::{CeremoniesError, CeremonyError, Contribution, Transcript},
     zcash_format::{parse_g, ParseError},
 };
 

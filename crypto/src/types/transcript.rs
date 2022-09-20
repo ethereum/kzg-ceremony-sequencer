@@ -1,5 +1,5 @@
 use super::{
-    utils::read_vector_of_points, CeremoniesError, CeremonyError, Contribution, SubContribution,
+    utils::read_vector_of_points, BatchContribution, CeremoniesError, CeremonyError, Contribution,
 };
 use crate::zcash_format::write_g;
 use ark_bls12_381::{G1Affine, G2Affine};
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[allow(clippy::module_name_repetitions)]
-pub struct SubTranscript {
+pub struct Transcript {
     pub g1_powers: Vec<G1Affine>,
     pub g2_powers: Vec<G2Affine>,
     pub products:  Vec<G1Affine>,
@@ -35,8 +35,8 @@ pub struct WitnessJson {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(into = "TranscriptJson")]
 #[serde(try_from = "TranscriptJson")]
-pub struct Transcript {
-    pub sub_transcripts: Vec<SubTranscript>,
+pub struct BatchTranscript {
+    pub sub_transcripts: Vec<Transcript>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ pub struct PowersOfTau {
     pub g2_powers: Vec<String>,
 }
 
-impl TryFrom<TranscriptJson> for Transcript {
+impl TryFrom<TranscriptJson> for BatchTranscript {
     type Error = CeremoniesError;
 
     fn try_from(value: TranscriptJson) -> Result<Self, Self::Error> {
@@ -62,15 +62,15 @@ impl TryFrom<TranscriptJson> for Transcript {
             .into_iter()
             .enumerate()
             .map(|(i, trans)| {
-                SubTranscript::try_from(trans).map_err(|e| CeremoniesError::InvalidCeremony(i, e))
+                Transcript::try_from(trans).map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             })
             .collect::<Result<Vec<_>, CeremoniesError>>()?;
         Ok(Self { sub_transcripts })
     }
 }
 
-impl From<Transcript> for TranscriptJson {
-    fn from(transcripts: Transcript) -> Self {
+impl From<BatchTranscript> for TranscriptJson {
+    fn from(transcripts: BatchTranscript) -> Self {
         Self {
             sub_transcripts: transcripts
                 .sub_transcripts
@@ -81,8 +81,8 @@ impl From<Transcript> for TranscriptJson {
     }
 }
 
-impl From<SubTranscript> for SubTranscriptJson {
-    fn from(transcript: SubTranscript) -> Self {
+impl From<Transcript> for SubTranscriptJson {
+    fn from(transcript: Transcript) -> Self {
         let powers_of_tau = PowersOfTau {
             g1_powers: transcript.g1_powers.par_iter().map(write_g).collect(),
             g2_powers: transcript.g2_powers.par_iter().map(write_g).collect(),
@@ -100,7 +100,7 @@ impl From<SubTranscript> for SubTranscriptJson {
     }
 }
 
-impl TryFrom<SubTranscriptJson> for SubTranscript {
+impl TryFrom<SubTranscriptJson> for Transcript {
     type Error = CeremonyError;
 
     fn try_from(value: SubTranscriptJson) -> Result<Self, Self::Error> {
@@ -129,7 +129,7 @@ impl TryFrom<SubTranscriptJson> for SubTranscript {
     }
 }
 
-impl SubTranscript {
+impl Transcript {
     #[must_use]
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
@@ -141,8 +141,8 @@ impl SubTranscript {
     }
 }
 
-impl crate::interface::Transcript for Transcript {
-    type ContributionType = Contribution;
+impl crate::interface::Transcript for BatchTranscript {
+    type ContributionType = BatchContribution;
     type ValidationError = ();
 
     fn verify_contribution(
@@ -156,7 +156,7 @@ impl crate::interface::Transcript for Transcript {
         let any_subgroup_check_failed = contribution
             .sub_contributions
             .iter()
-            .any(|c| !SubContribution::subgroup_check(c));
+            .any(|c| !Contribution::subgroup_check(c));
         if any_subgroup_check_failed {
             return Err(());
         }
@@ -188,7 +188,7 @@ impl crate::interface::Transcript for Transcript {
                 );
                 let mut pubkeys = t.pubkeys.clone();
                 pubkeys.push(c.pubkey);
-                SubTranscript {
+                Transcript {
                     g1_powers,
                     g2_powers,
                     products,
@@ -200,11 +200,11 @@ impl crate::interface::Transcript for Transcript {
     }
 
     fn get_contribution(&self) -> Self::ContributionType {
-        Contribution {
+        BatchContribution {
             sub_contributions: self
                 .sub_transcripts
                 .iter()
-                .map(|st| SubContribution {
+                .map(|st| Contribution {
                     g1_powers: st.g1_powers.clone(),
                     g2_powers: st.g2_powers.clone(),
                     pubkey:    *st
@@ -225,8 +225,8 @@ pub mod test {
 
     #[test]
     fn verify() {
-        let transcript = SubTranscript::new(32768, 65);
-        let mut contrib = SubContribution::new(32768, 65);
+        let transcript = Transcript::new(32768, 65);
+        let mut contrib = Contribution::new(32768, 65);
         assert!(contrib.verify(&transcript));
         let mut rng = rand::thread_rng();
         contrib.add_tau(&Fr::rand(&mut rng));

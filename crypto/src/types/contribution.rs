@@ -1,6 +1,6 @@
 use super::{
     utils::{random_factors, read_vector_of_points},
-    CeremoniesError, CeremonyError, SubTranscript,
+    CeremoniesError, CeremonyError, Transcript,
 };
 use crate::{
     crypto::g1_mul_glv, g1_subgroup_check, g2_subgroup_check, parse_g, zcash_format::write_g,
@@ -17,13 +17,13 @@ use zeroize::Zeroizing;
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(into = "ContributionJson")]
 #[serde(try_from = "ContributionJson")]
-pub struct Contribution {
-    pub sub_contributions: Vec<SubContribution>,
+pub struct BatchContribution {
+    pub sub_contributions: Vec<Contribution>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[allow(clippy::module_name_repetitions)]
-pub struct SubContribution {
+pub struct Contribution {
     pub pubkey:    G2Affine,
     pub g1_powers: Vec<G1Affine>,
     pub g2_powers: Vec<G2Affine>,
@@ -52,7 +52,7 @@ pub struct PowersOfTau {
     pub g2_powers: Vec<String>,
 }
 
-impl TryFrom<ContributionJson> for Contribution {
+impl TryFrom<ContributionJson> for BatchContribution {
     type Error = CeremoniesError;
 
     fn try_from(value: ContributionJson) -> Result<Self, Self::Error> {
@@ -62,8 +62,8 @@ impl TryFrom<ContributionJson> for Contribution {
     }
 }
 
-impl From<Contribution> for ContributionJson {
-    fn from(contributions: Contribution) -> Self {
+impl From<BatchContribution> for ContributionJson {
+    fn from(contributions: BatchContribution) -> Self {
         Self {
             sub_contributions: contributions
                 .sub_contributions
@@ -74,8 +74,8 @@ impl From<Contribution> for ContributionJson {
     }
 }
 
-impl From<SubContribution> for SubContributionJson {
-    fn from(contribution: SubContribution) -> Self {
+impl From<Contribution> for SubContributionJson {
+    fn from(contribution: Contribution) -> Self {
         let powers_of_tau = PowersOfTau {
             g1_powers: contribution.g1_powers.iter().map(write_g).collect(),
             g2_powers: contribution.g2_powers.iter().map(write_g).collect(),
@@ -103,7 +103,7 @@ impl ContributionJson {
     /// # Errors
     ///
     /// Errors may be reported when any of the contributions cannot be parsed.
-    pub fn parse(&self) -> Result<Vec<SubContribution>, CeremoniesError> {
+    pub fn parse(&self) -> Result<Vec<Contribution>, CeremoniesError> {
         if self.sub_contributions.len() != crate::SIZES.len() {
             return Err(CeremoniesError::InvalidCeremoniesCount(
                 4,
@@ -157,7 +157,7 @@ impl SubContributionJson {
     /// # Errors
     ///
     /// Errors may be reported when the contribution cannot be parsed.
-    pub fn parse(&self) -> Result<SubContribution, CeremonyError> {
+    pub fn parse(&self) -> Result<Contribution, CeremonyError> {
         if self.powers_of_tau.g1_powers.len() != self.num_g1_powers {
             return Err(CeremonyError::InconsistentNumG1Powers(
                 self.num_g1_powers,
@@ -181,7 +181,7 @@ impl SubContributionJson {
         } else {
             G2Affine::zero()
         };
-        Ok(SubContribution {
+        Ok(Contribution {
             pubkey,
             g1_powers,
             g2_powers,
@@ -198,7 +198,7 @@ impl PowersOfTau {
     }
 }
 
-impl SubContribution {
+impl Contribution {
     #[must_use]
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
@@ -259,7 +259,7 @@ impl SubContribution {
     }
 
     #[instrument(level = "info", skip_all)]
-    pub fn verify(&self, transcript: &SubTranscript) -> bool {
+    pub fn verify(&self, transcript: &Transcript) -> bool {
         self.g1_powers.len() == transcript.g1_powers.len()
             && self.g2_powers.len() == transcript.g2_powers.len()
             && self.verify_pubkey(transcript.products.last().unwrap())
@@ -296,7 +296,7 @@ impl SubContribution {
     }
 }
 
-impl crate::interface::Contribution for Contribution {
+impl crate::interface::Contribution for BatchContribution {
     type Receipt = Vec<String>;
 
     fn get_receipt(&self) -> Self::Receipt {
@@ -314,8 +314,8 @@ pub mod test {
 
     #[test]
     fn verify() {
-        let transcript = SubTranscript::new(32768, 65);
-        let mut contrib = SubContribution::new(32768, 65);
+        let transcript = Transcript::new(32768, 65);
+        let mut contrib = Contribution::new(32768, 65);
         assert!(contrib.verify(&transcript));
         let mut rng = rand::thread_rng();
         contrib.add_tau(&Fr::rand(&mut rng));
@@ -341,7 +341,7 @@ pub mod bench {
         criterion.bench_function("contribution/pow_tau", move |bencher| {
             let mut rng = rand::thread_rng();
             let tau = Zeroizing::new(Fr::rand(&mut rng));
-            bencher.iter(|| black_box(SubContribution::pow_table(black_box(&tau), 32768)));
+            bencher.iter(|| black_box(Contribution::pow_table(black_box(&tau), 32768)));
         });
     }
 
@@ -351,7 +351,7 @@ pub mod bench {
                 BenchmarkId::new("contribution/add_tau", format!("{:?}", size)),
                 &size,
                 move |bencher, (n1, n2)| {
-                    let mut contrib = SubContribution::new(*n1, *n2);
+                    let mut contrib = Contribution::new(*n1, *n2);
                     bencher.iter_batched(
                         rand_fr,
                         |tau| contrib.add_tau(&tau),
@@ -368,8 +368,8 @@ pub mod bench {
                 BenchmarkId::new("contribution/verify", format!("{:?}", size)),
                 &size,
                 move |bencher, (n1, n2)| {
-                    let transcript = SubTranscript::new(*n1, *n2);
-                    let mut contrib = SubContribution::new(*n1, *n2);
+                    let transcript = Transcript::new(*n1, *n2);
+                    let mut contrib = Contribution::new(*n1, *n2);
                     contrib.add_tau(&rand_fr());
                     bencher.iter(|| black_box(contrib.verify(&transcript)));
                 },
