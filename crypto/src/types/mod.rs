@@ -1,5 +1,6 @@
 mod contribution;
 mod error;
+mod group;
 mod transcript;
 mod utils;
 
