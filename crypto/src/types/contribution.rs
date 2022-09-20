@@ -14,26 +14,12 @@ use std::cmp::max;
 use tracing::instrument;
 use zeroize::Zeroizing;
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(into = "ContributionJson")]
-#[serde(try_from = "ContributionJson")]
-pub struct BatchContribution {
-    pub sub_contributions: Vec<Contribution>,
-}
-
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub struct Contribution {
     pub pubkey:    G2Affine,
     pub g1_powers: Vec<G1Affine>,
     pub g2_powers: Vec<G2Affine>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(clippy::module_name_repetitions)]
-pub struct ContributionJson {
-    pub sub_contributions: Vec<SubContributionJson>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -50,16 +36,6 @@ pub struct SubContributionJson {
 pub struct PowersOfTau {
     pub g1_powers: Vec<String>,
     pub g2_powers: Vec<String>,
-}
-
-impl TryFrom<ContributionJson> for BatchContribution {
-    type Error = CeremoniesError;
-
-    fn try_from(value: ContributionJson) -> Result<Self, Self::Error> {
-        value.parse().map(|val| Self {
-            sub_contributions: val,
-        })
-    }
 }
 
 impl From<BatchContribution> for ContributionJson {

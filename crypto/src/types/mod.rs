@@ -3,11 +3,25 @@ mod error;
 mod transcript;
 mod utils;
 
+use serde::{Deserialize, Serialize};
+
 pub use self::{
-    contribution::{BatchContribution, Contribution},
+    contribution::Contribution,
     error::{CeremoniesError, CeremonyError},
-    transcript::{BatchTranscript, Transcript},
+    transcript::Transcript,
 };
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchContribution {
+    pub sub_contributions: Vec<Contribution>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchTranscript {
+    pub sub_transcripts: Vec<Transcript>,
+}
 
 #[cfg(test)]
 pub mod test {

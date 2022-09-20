@@ -33,20 +33,6 @@ pub struct WitnessJson {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(into = "TranscriptJson")]
-#[serde(try_from = "TranscriptJson")]
-pub struct BatchTranscript {
-    pub sub_transcripts: Vec<Transcript>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[allow(clippy::module_name_repetitions)]
-#[serde(rename_all = "camelCase")]
-pub struct TranscriptJson {
-    pub sub_transcripts: Vec<SubTranscriptJson>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct PowersOfTau {
     pub g1_powers: Vec<String>,
