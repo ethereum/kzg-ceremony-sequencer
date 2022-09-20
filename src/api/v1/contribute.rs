@@ -107,7 +107,7 @@ where
         }
     };
 
-    let encoded_receipt_token = receipt.encode(&*keys).map_err(ContributeError::Auth)?;
+    let encoded_receipt_token = receipt.encode(&keys).map_err(ContributeError::Auth)?;
 
     write_transcript_file(options.transcript, shared_transcript).await;
 

@@ -261,7 +261,7 @@ pub async fn github_callback(
         storage,
         user,
         AuthProvider::Github,
-        &*keys,
+        &keys,
     )
     .await
 }
@@ -341,7 +341,7 @@ pub async fn siwe_callback(
         storage,
         user_data,
         AuthProvider::Ethereum,
-        &*keys,
+        &keys,
     )
     .await
 }
