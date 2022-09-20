@@ -1,9 +1,9 @@
 use core::result::Result;
-
 use serde::{de::DeserializeOwned, ser::Serialize};
 
 pub trait Contribution: Serialize + DeserializeOwned {
     type Receipt: Serialize;
+
     fn get_receipt(&self) -> Self::Receipt;
 }
 

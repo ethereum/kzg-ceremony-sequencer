@@ -138,6 +138,7 @@ impl Contribution {
         Bls12_381::pairing(lhs_g1, lhs_g2) == Bls12_381::pairing(rhs_g1, rhs_g2)
     }
 
+
     #[instrument(level = "info", skip_all)]
     fn verify_g2(&self) -> bool {
         let (factors, sum) = random_factors(self.g2_powers.len());
@@ -148,6 +149,7 @@ impl Contribution {
         let rhs_g2 = VariableBaseMSM::multi_scalar_mul(&self.g2_powers[..], &factors[..]);
         Bls12_381::pairing(lhs_g1, lhs_g2) == Bls12_381::pairing(rhs_g1, rhs_g2)
     }
+    // e(Σ, 1) == e(Σg1, s⋅g2)
 }
 
 #[cfg(test)]

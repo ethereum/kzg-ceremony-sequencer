@@ -3,15 +3,13 @@
 #![allow(clippy::cast_lossless)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
 
-mod crypto;
+mod engine;
 pub mod interface;
 pub mod types;
-mod zcash_format;
 
 pub use crate::{
-    crypto::{g1_subgroup_check, g2_subgroup_check},
+    engine::Engine,
     types::{CeremoniesError, CeremonyError, Contribution, Transcript},
-    zcash_format::{parse_g, ParseError},
 };
 
 pub const SIZES: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
@@ -69,7 +67,7 @@ pub mod bench {
     }
 
     pub fn group(criterion: &mut Criterion) {
-        crypto::bench::group(criterion);
-        zcash_format::bench::group(criterion);
+        // endomorphism::bench::group(criterion);
+        // zcash_format::bench::group(criterion);
     }
 }

@@ -1,4 +1,5 @@
 use super::{CeremonyError, Contribution, Powers, G1, G2};
+use crate::engine::Engine;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -21,10 +22,73 @@ pub struct Witness {
 impl Transcript {
     #[must_use]
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
+        assert!(num_g1 >= 2);
+        assert!(num_g2 >= 2);
         Self {
             powers:  Powers::new(num_g1, num_g2),
             witness: Witness::default(),
         }
+    }
+
+    /// Creates the start of a new contribution.
+    #[must_use]
+    pub fn contribution(&self) -> Contribution {
+        Contribution {
+            powers: self.powers.clone(),
+            pubkey: G2::default(),
+        }
+    }
+
+    /// Verifies a contribution.
+    pub fn verify<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
+        assert!(self.powers.g1.len() >= 2);
+        assert!(self.powers.g2.len() >= 2);
+
+        // Compatibility checks
+        if self.powers.g1.len() != contribution.powers.g1.len() {
+            return Err(CeremonyError::UnexpectedNumG1Powers(
+                self.powers.g1.len(),
+                contribution.powers.g1.len(),
+            ));
+        }
+        if self.powers.g2.len() != contribution.powers.g2.len() {
+            return Err(CeremonyError::UnexpectedNumG2Powers(
+                self.powers.g2.len(),
+                contribution.powers.g2.len(),
+            ));
+        }
+
+        // Basic uniqueness checks.
+        // All g1 powers must be unique. All g2 powers must be unique.
+        // The pubkey must be unique in the pubkey set. The pubkey can not be in the g2
+        // powers (except for the first contribution?).
+
+        // TODO
+
+        // Verify the contribution points (encoding and subgroup checks).
+        E::validate_g1(&contribution.powers.g1)?;
+        E::validate_g2(&contribution.powers.g2)?;
+        E::validate_g2(&[contribution.pubkey])?;
+
+        // Verify pairings.
+        E::verify_pubkey(
+            contribution.powers.g1[1],
+            self.powers.g1[1],
+            contribution.pubkey,
+        )?;
+        E::verify_g1(&contribution.powers.g1, contribution.powers.g2[1])?;
+        E::verify_g2(&contribution.powers.g1, &contribution.powers.g2)?;
+
+        // Accept
+        Ok(())
+    }
+
+    /// Adds a contribution to the transcaipt. The contribution must be
+    /// verified.
+    pub fn add(&mut self, contribution: Contribution) {
+        self.witness.products.push(contribution.powers.g1[1]);
+        self.witness.pubkeys.push(contribution.pubkey);
+        self.powers = contribution.powers;
     }
 }
 
