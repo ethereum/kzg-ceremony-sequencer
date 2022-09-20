@@ -24,10 +24,11 @@ pub mod test {
     use proptest::{arbitrary::any, strategy::Strategy};
     use ruint::aliases::U256;
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn arb_fr() -> impl Strategy<Value = Fr> {
         any::<U256>().prop_map(|mut n| {
             n %= U256::from(FrParameters::MODULUS);
-            Fr::from_repr(BigInteger256::from(n)).unwrap()
+            Fr::from_repr(BigInteger256::from(n)).expect("n is smaller than modulus")
         })
     }
 
@@ -49,6 +50,7 @@ pub mod bench {
     use ark_ff::UniformRand;
     use criterion::Criterion;
 
+    #[must_use]
     pub fn rand_fr() -> Fr {
         let mut rng = rand::thread_rng();
         Fr::rand(&mut rng)
@@ -69,6 +71,6 @@ pub mod bench {
     pub fn group(criterion: &mut Criterion) {
         crypto::bench::group(criterion);
         zcash_format::bench::group(criterion);
-        contribution::bench::group(criterion);
+        types::bench::group(criterion);
     }
 }

@@ -234,7 +234,7 @@ pub mod test {
     #[test]
     fn test_g2_endomorphism() {
         proptest!(|(p in arb_g2())| {
-            let value = g2_endomorphism(&p);
+            let _value = g2_endomorphism(&p);
             // TODO: Compute expected value
             // let expected = g2_mul_bigint(&p, &G1_LAMBDA_2).neg().into_affine();
             // assert_eq!(value, expected);
