@@ -6,10 +6,10 @@ use http::StatusCode;
 use kzg_ceremony_crypto::interface::Transcript;
 use serde::Serialize;
 use serde_json::json;
-use tokio::time::{Duration, Instant};
+use tokio::time::Instant;
 
 use crate::{
-    constants::{COMPUTE_DEADLINE, LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
+    lobby,
     lobby::{
         clear_current_contributor, set_current_contributor, SharedContributorState,
         SharedLobbyState,
@@ -71,6 +71,7 @@ pub async fn try_contribute<T: Transcript + Send + Sync>(
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(transcript): Extension<SharedTranscript<T>>,
+    Extension(options): Extension<crate::Options>,
 ) -> Result<TryContributeResponse<T::ContributionType>, TryContributeError> {
     let uid: String;
 
@@ -83,7 +84,7 @@ pub async fn try_contribute<T: Transcript + Send + Sync>(
             .ok_or(TryContributeError::UnknownSessionId)?;
 
         let min_diff =
-            Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC - LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
+            options.lobby.lobby_checkin_frequency - options.lobby.lobby_checkin_tolerance;
 
         let now = Instant::now();
         if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
@@ -111,7 +112,14 @@ pub async fn try_contribute<T: Transcript + Send + Sync>(
 
     // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
     tokio::spawn(async move {
-        remove_participant_on_deadline(contributor_state, storage.clone(), session_id, uid).await;
+        remove_participant_on_deadline(
+            contributor_state,
+            storage.clone(),
+            session_id,
+            uid,
+            options.lobby,
+        )
+        .await;
     });
 
     let transcript = transcript.read().await;
@@ -128,8 +136,9 @@ pub async fn remove_participant_on_deadline(
     storage: PersistentStorage,
     session_id: SessionId,
     uid: String,
+    options: lobby::Options,
 ) {
-    tokio::time::sleep(Duration::from_secs(COMPUTE_DEADLINE as u64)).await;
+    tokio::time::sleep(options.compute_deadline).await;
 
     {
         // Check if the contributor has already left the position
@@ -155,18 +164,24 @@ pub async fn remove_participant_on_deadline(
     clear_current_contributor(contributor_state).await;
 }
 
+#[cfg(test)]
+use crate::test_util::test_options;
+
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn lobby_try_contribute_test() {
     use crate::{
-        storage::test_storage_client,
+        storage::storage_client,
         test_transcript::{TestContribution, TestTranscript},
         test_util::create_test_session_info,
     };
+    use std::time::Duration;
 
+    let opts = test_options();
     let contributor_state = SharedContributorState::default();
     let lobby_state = SharedLobbyState::default();
     let transcript = SharedTranscript::<TestTranscript>::default();
-    let db = test_storage_client().await;
+    let db = storage_client(&opts.storage).await;
 
     let session_id = SessionId::new();
     let other_session_id = SessionId::new();
@@ -181,6 +196,7 @@ async fn lobby_try_contribute_test() {
         Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
+        Extension(opts),
     )
     .await;
     assert!(matches!(
@@ -206,6 +222,7 @@ async fn lobby_try_contribute_test() {
         Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
+        Extension(test_options()),
     )
     .await
     .ok();
@@ -215,6 +232,7 @@ async fn lobby_try_contribute_test() {
         Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
+        Extension(test_options()),
     )
     .await;
     assert!(matches!(
@@ -230,6 +248,7 @@ async fn lobby_try_contribute_test() {
         Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
+        Extension(test_options()),
     )
     .await;
     assert!(matches!(
@@ -251,6 +270,7 @@ async fn lobby_try_contribute_test() {
         Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
+        Extension(test_options()),
     )
     .await;
     assert!(matches!(
@@ -266,6 +286,7 @@ async fn lobby_try_contribute_test() {
         Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
+        Extension(test_options()),
     )
     .await;
     assert!(matches!(

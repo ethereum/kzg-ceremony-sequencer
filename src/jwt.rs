@@ -1,7 +1,7 @@
 pub mod errors;
 use errors::JwtError;
 
-use crate::keys::KEYS;
+use crate::{keys, Keys};
 use serde::{Deserialize, Serialize};
 
 // Receipt for contributor that sequencer has
@@ -9,16 +9,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize)]
 pub struct Receipt<T: Serialize> {
     pub(crate) id_token: IdToken,
-
-    pub witness: T,
+    pub witness:         T,
 }
 
 impl<T: Serialize> Receipt<T> {
-    pub fn encode(&self) -> Result<String, JwtError> {
-        KEYS.get()
-            .unwrap()
-            .encode(self)
-            .map_err(|_| JwtError::TokenCreation)
+    pub fn encode(&self, keys: &keys::Keys) -> Result<String, JwtError> {
+        keys.encode(self).map_err(|_| JwtError::TokenCreation)
     }
 }
 
@@ -43,20 +39,13 @@ impl IdToken {
         &self.sub
     }
 
-    pub fn encode(&self) -> Result<String, JwtError> {
-        KEYS.get()
-            .unwrap()
-            .encode(self)
-            .map_err(|_| JwtError::TokenCreation)
+    pub fn encode(&self, keys: &Keys) -> Result<String, JwtError> {
+        keys.encode(self).map_err(|_| JwtError::TokenCreation)
     }
 
     #[allow(unused)]
-    pub fn decode(token: &str) -> Result<Self, JwtError> {
-        let token_data = KEYS
-            .get()
-            .unwrap()
-            .decode(token)
-            .map_err(|_| JwtError::InvalidToken)?;
+    pub fn decode(token: &str, keys: &Keys) -> Result<Self, JwtError> {
+        let token_data = keys.decode(token).map_err(|_| JwtError::InvalidToken)?;
         Ok(token_data.claims)
     }
 }

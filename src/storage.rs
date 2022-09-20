@@ -1,10 +1,9 @@
-use std::env;
-
 use axum::{
     response::{IntoResponse, Response},
     Json,
 };
 use chrono::Utc;
+use clap::Parser;
 use http::StatusCode;
 use serde_json::json;
 use sqlx::{sqlite::SqlitePoolOptions, Executor, Pool, Row, Sqlite};
@@ -62,24 +61,17 @@ impl PersistentStorage {
     }
 }
 
-pub async fn persistent_storage_client() -> PersistentStorage {
-    let url = env::var("DATABASE_URL").expect("Missing DATABASE_URL!");
-    let db_pool = SqlitePoolOptions::new()
-        .connect(&url)
-        .await
-        .expect("Unable to connect to DATABASE_URL");
-
-    sqlx::migrate!().run(&db_pool).await.unwrap();
-
-    PersistentStorage(db_pool)
+#[derive(Clone, Debug, PartialEq, Eq, Parser)]
+pub struct Options {
+    #[clap(long, env)]
+    database_url: String,
 }
 
-#[cfg(test)]
-pub async fn test_storage_client() -> PersistentStorage {
+pub async fn storage_client(options: &Options) -> PersistentStorage {
     let db_pool = SqlitePoolOptions::new()
-        .connect("sqlite://:memory:")
+        .connect(&options.database_url)
         .await
-        .expect("Unable to connect to memory database");
+        .expect("Unable to connect to DATABASE_URL");
 
     sqlx::migrate!().run(&db_pool).await.unwrap();
 
