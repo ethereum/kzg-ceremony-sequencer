@@ -1,6 +1,6 @@
 use crate::{
     constants::MAX_LOBBY_SIZE,
-    jwt::{errors::JwtError, IdToken},
+    jwt::{errors::JwtError, IdToken, SignedIdToken},
     lobby::SharedLobbyState,
     oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
     storage::{PersistentStorage, StorageError},
@@ -50,7 +50,7 @@ pub enum AuthError {
 }
 
 pub struct UserVerified {
-    id_token:   String,
+    id_token:   SignedIdToken,
     session_id: String,
 }
 
@@ -406,7 +406,7 @@ async fn post_authenticate(
         exp:      u64::MAX,
     };
 
-    let id_token_encoded = id_token.encode().map_err(AuthError::Jwt)?;
+    let id_token_signed = id_token.sign().await.map_err(AuthError::Jwt)?;
 
     {
         let mut lobby = lobby_state.write().await;
@@ -418,7 +418,7 @@ async fn post_authenticate(
     }
 
     Ok(UserVerified {
-        id_token:   id_token_encoded,
+        id_token:   id_token_signed,
         session_id: session_id.to_string(),
     })
 }

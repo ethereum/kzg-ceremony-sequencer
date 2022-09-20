@@ -117,7 +117,7 @@ where
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/siwe", get(siwe_callback))
         .route("/lobby/try_contribute", post(try_contribute::<T>))
-        .route("/contribute", post(contribute::<T>))
+        //.route("/contribute", post(contribute::<T>))
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))

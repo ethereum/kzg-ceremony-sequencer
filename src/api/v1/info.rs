@@ -79,7 +79,7 @@ pub async fn jwt_info() -> JwtInfoResponse {
     let rsa_public_key_pem_as_string = KEYS.get().unwrap().decode_key_to_string();
 
     JwtInfoResponse {
-        alg:         Keys::alg_str(),
+        alg:         "eth",
         rsa_pem_key: rsa_public_key_pem_as_string,
     }
 }

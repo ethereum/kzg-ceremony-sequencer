@@ -4,25 +4,26 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
+use axum_extra::response::ErasedJson;
 use http::StatusCode;
 use kzg_ceremony_crypto::interface::{Contribution, Transcript};
 use serde_json::json;
 
 use crate::{
     io::transcript::write_transcript_file,
-    jwt::{errors::JwtError, Receipt},
+    jwt::{errors::JwtError, Receipt, SignedReceipt},
     lobby::{clear_current_contributor, SharedContributorState},
     storage::PersistentStorage,
     AppConfig, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 
 pub struct ContributeReceipt {
-    encoded_receipt_token: String,
+    signed_receipt: SignedReceipt,
 }
 
 impl IntoResponse for ContributeReceipt {
     fn into_response(self) -> Response {
-        (StatusCode::OK, self.encoded_receipt_token).into_response()
+        (StatusCode::OK, ErasedJson::pretty(self.signed_receipt)).into_response()
     }
 }
 
@@ -104,7 +105,7 @@ where
         }
     };
 
-    let encoded_receipt_token = receipt.encode().map_err(ContributeError::Auth)?;
+    let signed_receipt = receipt.sign().await.map_err(ContributeError::Auth)?;
 
     write_transcript_file(
         config.transcript_file,
@@ -126,7 +127,7 @@ where
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
     Ok(ContributeReceipt {
-        encoded_receipt_token,
+        signed_receipt,
     })
 }
 
@@ -176,8 +177,7 @@ mod tests {
         keys::KEYS
             .set(
                 Keys::new(keys::Options {
-                    private_key: PathBuf::from("private.key"),
-                    public_key:  PathBuf::from("publickey.pem"),
+                    mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
                 })
                 .await
                 .unwrap(),

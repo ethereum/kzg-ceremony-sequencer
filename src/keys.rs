@@ -1,79 +1,74 @@
 use clap::Parser;
 use eyre::Result;
-use jsonwebtoken::{
-    decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
-};
 use once_cell::sync::OnceCell;
-use serde::{de::DeserializeOwned, Serialize};
-use std::{path::PathBuf, str::FromStr};
-use tokio::try_join;
-use tracing::info;
+use ethers_signers::{MnemonicBuilder, coins_bip39::English, LocalWallet, Signer};
+use serde::Serialize;
 
 // TODO: Make part of app state instead of global
 pub static KEYS: OnceCell<Keys> = OnceCell::new();
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
-    /// Public key file (.pem) to use for JWT verification
-    #[clap(long, env, default_value = "publickey.pem")]
-    pub public_key: PathBuf,
-
-    /// Private key file (.key) to use for JWT verification
-    #[clap(long, env, default_value = "private.key")]
-    pub private_key: PathBuf,
+    #[clap(long, env, default_value = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")]
+    pub mnemonic: String
 }
 
+#[derive(Serialize)]
+pub struct Signature(String);
+
 pub struct Keys {
-    encoding: EncodingKey,
-    decoding: DecodingKey,
-    pubkey:   String,
+    wallet: LocalWallet
 }
 
 impl Keys {
     pub async fn new(options: Options) -> Result<Self> {
-        info!(public_key = ?options.public_key, private_key=?options.private_key, "Loading JWT keys");
-        let (private_key, public_key) = try_join!(
-            tokio::fs::read(&options.private_key),
-            tokio::fs::read(&options.public_key)
-        )?;
+        let phrase = options.mnemonic.as_ref();
+        let wallet = MnemonicBuilder::<English>::default()
+            .phrase(phrase)
+            .build()?;
+
         Ok(Self {
-            encoding: EncodingKey::from_rsa_pem(&private_key)?,
-            decoding: DecodingKey::from_rsa_pem(&public_key)?,
-            pubkey:   String::from_utf8(public_key)?,
+            wallet
         })
     }
 
-    pub fn encode<T: Serialize>(&self, token: &T) -> Result<String, jsonwebtoken::errors::Error> {
-        encode(&Header::new(Self::alg()), token, &self.encoding)
+    pub async fn sign(&self, message: &str) -> Result<Signature> {
+        let signature = self.wallet.sign_message(message).await?;
+        Ok(Signature(hex::encode::<Vec<u8>>(signature.into())))
     }
 
-    #[allow(unused)]
-    pub fn decode<T: DeserializeOwned>(
-        &self,
-        token: &str,
-    ) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
-        decode::<T>(token, &self.decoding, &Validation::new(Self::alg()))
-    }
-
-    pub const fn alg_str() -> &'static str {
-        "PS256"
-    }
-
-    fn alg() -> Algorithm {
-        Algorithm::from_str(Self::alg_str()).expect("unknown algorithm")
+    pub fn verify(&self, message: &str, signature: &Signature) -> bool {
+        false
     }
 
     pub fn decode_key_to_string(&self) -> String {
-        self.pubkey.clone()
+        String::from("a")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
+    use serde::{Serialize, Deserialize};
 
-    #[ignore] // Do not run this test by default due to dependency on files.
+    #[tokio::test]
+    async fn develop_crypto() {
+        #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct Token {
+            foo: String,
+            exp: u64,
+        }
+
+        let wallet = MnemonicBuilder::<English>::default()
+            .phrase("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
+            .build()
+            .unwrap();
+
+        let message = wallet.sign_message(&[0, 1, 2]).await;
+        println!("message: {:?}", message);
+
+    }
+
     #[tokio::test]
     async fn encode_decode_pem() {
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -88,15 +83,14 @@ mod tests {
         };
 
         let keys = Keys::new(Options {
-            public_key:  "../publickey.pem".into(),
-            private_key: "../private.key".into(),
+            mnemonic:  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
         })
         .await
         .unwrap();
-        let encoded_token = keys.encode(&t).unwrap();
-        let token_data = keys.decode::<Token>(&encoded_token).unwrap();
-        let got_token = token_data.claims;
 
-        assert_eq!(got_token, t);
+        let message = serde_json::to_string(&t).unwrap();
+        let signature = keys.sign(&message).await.unwrap();
+
+        assert!(keys.verify(&message, &signature));
     }
 }

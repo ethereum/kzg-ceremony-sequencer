@@ -1,7 +1,7 @@
 pub mod errors;
 use errors::JwtError;
 
-use crate::keys::KEYS;
+use crate::keys::{KEYS, Signature};
 use serde::{Deserialize, Serialize};
 
 // Receipt for contributor that sequencer has
@@ -13,18 +13,32 @@ pub struct Receipt<T: Serialize> {
     pub witness: T,
 }
 
+#[derive(Serialize)]
+pub struct SignedReceipt {
+    pub receipt_message: String,
+    pub signature: Signature,
+}
+
 impl<T: Serialize> Receipt<T> {
-    pub fn encode(&self) -> Result<String, JwtError> {
+    pub async fn sign(&self) -> Result<SignedReceipt, JwtError> {
+        let receipt_message = serde_json::to_string(&self).unwrap();
         KEYS.get()
             .unwrap()
-            .encode(self)
+            .sign(&receipt_message)
+            .await
+            .map(move |signature| {
+                SignedReceipt {
+                    receipt_message,
+                    signature
+                }
+            })
             .map_err(|_| JwtError::TokenCreation)
     }
 }
 
 // This is the JWT token that the sequencer will hand out to contributors
 // after they have authenticated through oAUTH
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct IdToken {
     pub sub:      String,
     pub nickname: String,
@@ -32,6 +46,13 @@ pub struct IdToken {
     // Example, Google, Ethereum, Facebook
     pub provider: String,
     pub exp:      u64,
+}
+
+#[derive(Serialize)]
+pub struct SignedIdToken {
+    pub token_message: String,
+    pub signature: Signature,
+
 }
 
 impl IdToken {
@@ -43,20 +64,33 @@ impl IdToken {
         &self.sub
     }
 
-    pub fn encode(&self) -> Result<String, JwtError> {
+    pub async fn sign(&self) -> Result<SignedIdToken, JwtError> {
+        let token_message = serde_json::to_string(&self).unwrap();
+
         KEYS.get()
             .unwrap()
-            .encode(self)
+            .sign(&token_message)
+            .await
+            .map(move |signature| {
+                SignedIdToken {
+                    token_message,
+                    signature
+                }
+            })
             .map_err(|_| JwtError::TokenCreation)
     }
 
-    #[allow(unused)]
-    pub fn decode(token: &str) -> Result<Self, JwtError> {
-        let token_data = KEYS
+    pub fn verify(token: &SignedIdToken) -> Result<Self, JwtError> {
+        let is_valid = KEYS
             .get()
             .unwrap()
-            .decode(token)
-            .map_err(|_| JwtError::InvalidToken)?;
-        Ok(token_data.claims)
+            .verify(&token.token_message, &token.signature);
+
+        if !is_valid {
+            return Err(JwtError::InvalidToken);
+        }
+
+        serde_json::from_str(&token.token_message)
+            .map_err(|_| JwtError::TokenCreation)
     }
 }
