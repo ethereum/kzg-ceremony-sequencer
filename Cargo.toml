@@ -11,6 +11,10 @@ mimalloc = ["cli-batteries/mimalloc"]
 [lib]
 path = "src/main.rs"
 
+[workspace]
+members = [
+    "crypto",
+]
 
 [dependencies]
 cli-batteries = { version = "0.3.3", features = ["signals", "prometheus", "metered-allocator", "otlp"] }
@@ -34,7 +38,7 @@ sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "chrono"
 small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-tau" }
 kzg-ceremony-crypto = { path = "./crypto" }
 ethers-signers = "0.17.0"
-ethers-core = "0.17.0"Z
+ethers-core = "0.17.0"
 k256 = "0.11.5"
 once_cell = "1.8"
 indexmap = "1.9.1"
