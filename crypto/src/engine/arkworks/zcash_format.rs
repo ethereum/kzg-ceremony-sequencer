@@ -1,4 +1,4 @@
-use crate::types::{G1, G2};
+use crate::types::{ParseError, G1, G2};
 use ark_bls12_381::{Fq, G1Affine, G2Affine};
 use ark_ec::{
     models::{ModelParameters, SWModelParameters},
@@ -8,31 +8,17 @@ use ark_ff::{
     fields::{Field, FpParameters, PrimeField},
     BigInteger, QuadExtField, QuadExtParameters, Zero,
 };
-use thiserror::Error;
-
-#[derive(Clone, Copy, PartialEq, Debug, Error)]
-pub enum ParseError {
-    #[error("Invalid x coordinate")]
-    BigIntError,
-    #[error("Point is not compressed")]
-    NotCompressed,
-    #[error("Point at infinity must have zero x coordinate")]
-    InvalidInfinity,
-    #[error("Error in extension field component {0}: Number is too large for the prime field")]
-    InvalidPrimeField(usize),
-    #[error("Error in extension field element")]
-    InvalidExtensionField,
-    #[error("not a valid x coordinate")]
-    InvalidXCoordinate,
-    #[error("curve point is not in prime order subgroup")]
-    InvalidSubgroup,
-}
 
 impl TryFrom<G1> for G1Affine {
     type Error = ParseError;
 
     fn try_from(g1: G1) -> Result<Self, Self::Error> {
-        parse_g(g1.0)
+        let p = parse_g(g1.0)?;
+        // We don't do the subgroup check here because it is expensive.
+        // if !g1_subgroup_check(&p) {
+        //     return Err(ParseError::InvalidSubgroup);
+        // }
+        Ok(p)
     }
 }
 
@@ -40,7 +26,12 @@ impl TryFrom<G2> for G2Affine {
     type Error = ParseError;
 
     fn try_from(g2: G2) -> Result<Self, Self::Error> {
-        parse_g(g2.0)
+        let p = parse_g(g2.0)?;
+        // We don't do the subgroup check here because it is expensive.
+        // if !g2_subgroup_check(&p) {
+        //     return Err(ParseError::InvalidSubgroup);
+        // }
+        Ok(p)
     }
 }
 

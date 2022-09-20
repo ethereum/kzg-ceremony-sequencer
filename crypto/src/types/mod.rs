@@ -8,7 +8,7 @@ mod transcript;
 
 pub use self::{
     contribution::Contribution,
-    error::{CeremoniesError, CeremonyError},
+    error::{CeremoniesError, CeremonyError, ParseError},
     group::{G1, G2},
     powers::Powers,
     transcript::Transcript,
@@ -16,6 +16,7 @@ pub use self::{
 use crate::Engine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -52,6 +53,7 @@ impl BatchTranscript {
 
     /// Adds a batch contribution to the transcript. The contribution must be
     /// valid.
+    #[instrument(level = "info", skip_all, fields(n=contribution.contributions.len()))]
     pub fn verify_add<E: Engine>(
         &mut self,
         contribution: BatchContribution,
