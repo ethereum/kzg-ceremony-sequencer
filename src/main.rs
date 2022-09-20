@@ -27,7 +27,7 @@ use url::Url;
 
 use lobby::SharedLobbyState;
 use sessions::{SessionId, SessionInfo};
-use storage::persistent_storage_client;
+use storage::storage_client;
 
 use crate::{
     api::v1::{
@@ -116,7 +116,10 @@ where
 
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not
     // pinged in a considerable amount of time
-    tokio::spawn(clear_lobby_on_interval(lobby_state.clone(), options.lobby.clone()));
+    tokio::spawn(clear_lobby_on_interval(
+        lobby_state.clone(),
+        options.lobby.clone(),
+    ));
 
     let app = Router::new()
         .layer(TraceLayer::new_for_http())
@@ -137,7 +140,7 @@ where
         .layer(Extension(siwe_oauth_client(&options.ethereum)))
         .layer(Extension(github_oauth_client(&options.github)))
         .layer(Extension(reqwest::Client::new()))
-        .layer(Extension(persistent_storage_client(&options.storage).await))
+        .layer(Extension(storage_client(&options.storage).await))
         .layer(Extension(transcript))
         .layer(Extension(options.clone()));
 

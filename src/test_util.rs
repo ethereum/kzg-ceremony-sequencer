@@ -35,6 +35,8 @@ pub fn test_options() -> Options {
         "INVALID",
         "--eth-client-id",
         "INVALID",
+        "--database-url",
+        "sqlite://:memory:",
     ];
     Options::parse_from(args)
 }

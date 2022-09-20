@@ -67,23 +67,11 @@ pub struct Options {
     database_url: String,
 }
 
-pub async fn persistent_storage_client(options: &Options) -> PersistentStorage {
+pub async fn storage_client(options: &Options) -> PersistentStorage {
     let db_pool = SqlitePoolOptions::new()
         .connect(&options.database_url)
         .await
         .expect("Unable to connect to DATABASE_URL");
-
-    sqlx::migrate!().run(&db_pool).await.unwrap();
-
-    PersistentStorage(db_pool)
-}
-
-#[cfg(test)]
-pub async fn test_storage_client() -> PersistentStorage {
-    let db_pool = SqlitePoolOptions::new()
-        .connect("sqlite://:memory:")
-        .await
-        .expect("Unable to connect to memory database");
 
     sqlx::migrate!().run(&db_pool).await.unwrap();
 

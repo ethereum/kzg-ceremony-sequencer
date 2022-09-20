@@ -85,7 +85,7 @@ mod tests {
             exp: 200_000_000_000,
         };
 
-        let keys = Keys::new(Options {
+        let keys = Keys::new(&Options {
             public_key:  "../publickey.pem".into(),
             private_key: "../private.key".into(),
         })

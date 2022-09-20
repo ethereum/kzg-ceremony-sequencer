@@ -143,7 +143,7 @@ mod tests {
         keys::SharedKeys,
         lobby::SharedContributorState,
         read_transcript_file,
-        storage::test_storage_client,
+        storage::storage_client,
         test_transcript::{
             TestContribution::{InvalidContribution, ValidContribution},
             TestTranscript,
@@ -154,7 +154,7 @@ mod tests {
 
     async fn shared_keys() -> SharedKeys {
         Arc::new(
-            Keys::new(keys::Options {
+            Keys::new(&keys::Options {
                 private_key: PathBuf::from("private.key"),
                 public_key:  PathBuf::from("publickey.pem"),
             })
@@ -165,13 +165,14 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
-        let db = test_storage_client().await;
+        let opts = test_options();
+        let db = storage_client(&opts.storage).await;
         let contributor_state = SharedContributorState::default();
         let result = contribute::<TestTranscript>(
             SessionId::new(),
             Json(ValidContribution(123)),
             Extension(contributor_state),
-            Extension(test_options()),
+            Extension(opts),
             Extension(SharedTranscript::default()),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
@@ -183,7 +184,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_contribution() {
-        let db = test_storage_client().await;
+        let opts = test_options();
+        let db = storage_client(&opts.storage).await;
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         *contributor_state.write().await =
@@ -192,7 +194,7 @@ mod tests {
             participant,
             Json(InvalidContribution(123)),
             Extension(contributor_state),
-            Extension(test_options()),
+            Extension(opts),
             Extension(SharedTranscript::default()),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
@@ -205,10 +207,10 @@ mod tests {
     #[tokio::test]
     async fn accepts_valid_contribution() {
         let keys = shared_keys().await;
-        let db = test_storage_client().await;
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         let cfg = test_options();
+        let db = storage_client(&cfg.storage).await;
         let shared_transcript = SharedTranscript::<TestTranscript>::default();
 
         *contributor_state.write().await =

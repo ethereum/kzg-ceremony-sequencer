@@ -171,16 +171,17 @@ use crate::test_util::test_options;
 #[allow(clippy::too_many_lines)]
 async fn lobby_try_contribute_test() {
     use crate::{
-        storage::test_storage_client,
+        storage::storage_client,
         test_transcript::{TestContribution, TestTranscript},
         test_util::create_test_session_info,
     };
     use std::time::Duration;
 
+    let opts = test_options();
     let contributor_state = SharedContributorState::default();
     let lobby_state = SharedLobbyState::default();
     let transcript = SharedTranscript::<TestTranscript>::default();
-    let db = test_storage_client().await;
+    let db = storage_client(&opts.storage).await;
 
     let session_id = SessionId::new();
     let other_session_id = SessionId::new();
@@ -195,7 +196,7 @@ async fn lobby_try_contribute_test() {
         Extension(lobby_state.clone()),
         Extension(db.clone()),
         Extension(transcript.clone()),
-        Extension(test_options()),
+        Extension(opts),
     )
     .await;
     assert!(matches!(
