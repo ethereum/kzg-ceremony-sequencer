@@ -14,6 +14,7 @@ pub use self::{
     transcript::Transcript,
 };
 use crate::Engine;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -55,23 +56,24 @@ impl BatchTranscript {
         &mut self,
         contribution: BatchContribution,
     ) -> Result<(), CeremoniesError> {
-        // Verify contributions
+        // Verify contribution count
         if self.transcripts.len() != contribution.contributions.len() {
             return Err(CeremoniesError::UnexpectedNumContributions(
                 self.transcripts.len(),
                 contribution.contributions.len(),
             ));
         }
-        for (i, (transcript, contribution)) in self
-            .transcripts
-            .iter_mut()
+
+        // Verify contributions in parallel
+        self.transcripts
+            .par_iter_mut()
             .zip(&contribution.contributions)
             .enumerate()
-        {
-            transcript
-                .verify::<E>(contribution)
-                .map_err(|e| CeremoniesError::InvalidCeremony(i, e))?;
-        }
+            .try_for_each(|(i, (transcript, contribution))| {
+                transcript
+                    .verify::<E>(contribution)
+                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
+            })?;
 
         // Add contributions
         for (transcript, contribution) in self

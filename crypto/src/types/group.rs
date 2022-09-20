@@ -5,10 +5,10 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct G1([u8; 48]);
+pub struct G1(pub [u8; 48]);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct G2([u8; 96]);
+pub struct G2(pub [u8; 96]);
 
 impl Default for G1 {
     fn default() -> Self {
