@@ -1,5 +1,6 @@
 //! BLS12-381 group elements in ZCash encoding.
 
+use hex_literal::hex;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
@@ -8,6 +9,18 @@ pub struct G1([u8; 48]);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct G2([u8; 96]);
+
+impl Default for G1 {
+    fn default() -> Self {
+        G1(hex!("97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"))
+    }
+}
+
+impl Default for G2 {
+    fn default() -> Self {
+        Self(hex!("93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"))
+    }
+}
 
 impl Serialize for G1 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -24,6 +37,12 @@ impl<'de> Deserialize<'de> for G1 {
 impl Serialize for G2 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         bytes_to_hex::<_, 96, 194>(serializer, self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for G2 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        hex_to_bytes(deserializer).map(Self)
     }
 }
 

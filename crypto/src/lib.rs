@@ -71,6 +71,5 @@ pub mod bench {
     pub fn group(criterion: &mut Criterion) {
         crypto::bench::group(criterion);
         zcash_format::bench::group(criterion);
-        types::bench::group(criterion);
     }
 }
