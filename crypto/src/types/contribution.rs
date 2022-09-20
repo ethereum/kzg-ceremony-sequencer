@@ -1,48 +1,46 @@
-use super::{powers_json::PowersJson, CeremonyError, G1, G2};
+use super::{CeremonyError, Powers, G1, G2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(try_from = "ContributionJson", into = "ContributionJson")]
 pub struct Contribution {
-    pub pubkey:    G2,
-    pub g1_powers: Vec<G1>,
-    pub g2_powers: Vec<G2>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ContributionJson {
-    pot_pubkey: G2,
-
     #[serde(flatten)]
-    powers: PowersJson,
+    pub powers: Powers,
+
+    pub pubkey: G2,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase", deny_unknown_fields)]
-struct PowersOfTau {
-    g1_powers: Vec<G1>,
-    g2_powers: Vec<G2>,
-}
+#[cfg(test)]
+mod test {
+    use super::*;
 
-impl From<Contribution> for ContributionJson {
-    fn from(contribution: Contribution) -> Self {
-        Self {
-            powers:     (contribution.g1_powers, contribution.g2_powers).into(),
-            pot_pubkey: contribution.pubkey,
-        }
-    }
-}
-
-impl TryFrom<ContributionJson> for Contribution {
-    type Error = CeremonyError;
-
-    fn try_from(value: ContributionJson) -> Result<Self, Self::Error> {
-        let (g1_powers, g2_powers) = value.powers.try_into()?;
-        Ok(Contribution {
-            pubkey: value.pot_pubkey,
-            g1_powers,
-            g2_powers,
-        })
+    #[test]
+    fn contribution_json() {
+        let value = Contribution {
+            powers: Powers::new(2, 4),
+            pubkey: G2::default(),
+        };
+        let json = serde_json::to_value(&value).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+            "numG1Powers": 2,
+            "numG2Powers": 4,
+            "powersOfTau": {
+                "G1Powers": [
+                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
+                ],
+                "G2Powers": [
+                "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
+                "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
+                "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
+                "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
+                ]
+            },
+            "pubkey": "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
+            })
+        );
+        let deser = serde_json::from_value::<Contribution>(json).unwrap();
+        assert_eq!(deser, value);
     }
 }

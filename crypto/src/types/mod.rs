@@ -3,7 +3,7 @@
 mod contribution;
 mod error;
 mod group;
-mod powers_json;
+mod powers;
 mod transcript;
 
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ pub use self::{
     contribution::Contribution,
     error::{CeremoniesError, CeremonyError},
     group::{G1, G2},
+    powers::Powers,
     transcript::Transcript,
 };
 

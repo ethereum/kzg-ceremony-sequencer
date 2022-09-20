@@ -2,8 +2,15 @@ use super::{CeremonyError, G1, G2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(try_from = "PowersJson", into = "PowersJson")]
+pub struct Powers {
+    pub g1: Vec<G1>,
+    pub g2: Vec<G2>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct PowersJson {
+struct PowersJson {
     num_g1_powers: usize,
     num_g2_powers: usize,
     powers_of_tau: PowersOfTau,
@@ -16,20 +23,20 @@ struct PowersOfTau {
     g2_powers: Vec<G2>,
 }
 
-impl From<(Vec<G1>, Vec<G2>)> for PowersJson {
-    fn from((g1_powers, g2_powers): (Vec<G1>, Vec<G2>)) -> Self {
+impl From<Powers> for PowersJson {
+    fn from(powers: Powers) -> Self {
         Self {
-            num_g1_powers: g1_powers.len(),
-            num_g2_powers: g2_powers.len(),
+            num_g1_powers: powers.g1.len(),
+            num_g2_powers: powers.g2.len(),
             powers_of_tau: PowersOfTau {
-                g1_powers,
-                g2_powers,
+                g1_powers: powers.g1,
+                g2_powers: powers.g2,
             },
         }
     }
 }
 
-impl TryFrom<PowersJson> for (Vec<G1>, Vec<G2>) {
+impl TryFrom<PowersJson> for Powers {
     type Error = CeremonyError;
 
     fn try_from(value: PowersJson) -> Result<Self, Self::Error> {
@@ -45,6 +52,19 @@ impl TryFrom<PowersJson> for (Vec<G1>, Vec<G2>) {
                 value.powers_of_tau.g2_powers.len(),
             ));
         }
-        Ok((value.powers_of_tau.g1_powers, value.powers_of_tau.g2_powers))
+        Ok(Self {
+            g1: value.powers_of_tau.g1_powers,
+            g2: value.powers_of_tau.g2_powers,
+        })
+    }
+}
+
+impl Powers {
+    /// Construct a new `Powers` object initialized to identity elements.
+    pub fn new(num_g1: usize, num_g2: usize) -> Self {
+        Self {
+            g1: vec![G1::default(); num_g1],
+            g2: vec![G2::default(); num_g2],
+        }
     }
 }
