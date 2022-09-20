@@ -1,6 +1,9 @@
+use std::sync::atomic::Ordering;
+
 use crate::{
     keys::{Keys, KEYS},
-    AppConfig, SharedState,
+    lobby::SharedLobbyState,
+    AppConfig, SharedCeremonyStatus,
 };
 use axum::{
     body::StreamBody,
@@ -26,11 +29,16 @@ impl IntoResponse for StatusResponse {
     }
 }
 
-pub async fn status(Extension(store): Extension<SharedState>) -> StatusResponse {
-    let app_state = store.read().await;
+pub async fn status(
+    Extension(lobby_state): Extension<SharedLobbyState>,
+    Extension(ceremony_status): Extension<SharedCeremonyStatus>,
+) -> StatusResponse {
+    let lobby_size = {
+        let state = lobby_state.read().await;
+        state.participants.len()
+    };
 
-    let lobby_size = app_state.lobby.len();
-    let num_contributions = app_state.num_contributions;
+    let num_contributions = ceremony_status.load(Ordering::Relaxed);
 
     StatusResponse {
         lobby_size,

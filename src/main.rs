@@ -7,16 +7,26 @@
 #![allow(clippy::module_name_repetitions)]
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
     env,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    ops::Deref,
     path::PathBuf,
-    sync::Arc,
+    sync::{atomic::AtomicUsize, Arc},
     time::Duration,
 };
 
-use crate::io::transcript::read_transcript_file;
+use crate::{
+    api::v1::{
+        auth::{auth_client_link, github_callback, siwe_callback},
+        contribute::contribute,
+        info::{current_state, jwt_info, status},
+        lobby::try_contribute,
+    },
+    constants::LOBBY_FLUSH_INTERVAL,
+    io::transcript::read_transcript_file,
+    keys::Keys,
+    lobby::{clear_lobby_on_interval, SharedContributorState},
+    oauth::{github_oauth_client, siwe_oauth_client, SharedAuthState},
+    util::parse_url,
+};
 use axum::{
     extract::Extension,
     response::Html,
@@ -26,46 +36,31 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
-use eyre::{bail, ensure, eyre, Result as EyreResult};
-use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use eyre::{eyre, Result as EyreResult};
+use lobby::SharedLobbyState;
 use sessions::{SessionId, SessionInfo};
 use storage::persistent_storage_client;
-use tokio::{
-    sync::RwLock,
-    time::{Instant, Interval},
-};
+use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use tracing::info;
-use url::{Host, Url};
-
-use crate::{
-    api::v1::{
-        auth::{auth_client_link, github_callback, siwe_callback},
-        contribute::contribute,
-        info::{current_state, jwt_info, status},
-        lobby::try_contribute,
-    },
-    constants::{
-        GITHUB_OAUTH_AUTH_URL, GITHUB_OAUTH_REDIRECT_URL, GITHUB_OAUTH_TOKEN_URL,
-        LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
-        SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
-    },
-    keys::Keys,
-};
+use url::Url;
 
 mod api;
 mod constants;
 mod io;
 mod jwt;
 mod keys;
+mod lobby;
+mod oauth;
 mod sessions;
 mod storage;
 mod test_transcript;
 #[cfg(test)]
 mod test_util;
+mod util;
 
 pub type SharedTranscript<T> = Arc<RwLock<T>>;
-pub(crate) type SharedState = Arc<RwLock<AppState>>;
+pub type SharedCeremonyStatus = Arc<AtomicUsize>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -97,17 +92,23 @@ where
         .set(Keys::new(options.keys).await?)
         .map_err(|_e| eyre!("KEYS was already set."))?;
 
-    let shared_state = SharedState::default();
     let config = AppConfig::default();
     let transcript_data = read_transcript_file::<T>(config.transcript_file.clone()).await;
     let transcript = Arc::new(RwLock::new(transcript_data));
 
-    let shared_state_clone = shared_state.clone();
+    let active_contributor_state = SharedContributorState::default();
+
+    // TODO: figure it out from the transcript
+    let ceremony_status = Arc::new(AtomicUsize::new(0));
+    let lobby_state = SharedLobbyState::default();
+    let auth_state = SharedAuthState::default();
 
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not
     // pinged in a considerable amount of time
-    let interval = tokio::time::interval(Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64));
-    tokio::spawn(clear_lobby_on_interval(shared_state_clone, interval));
+    tokio::spawn(clear_lobby_on_interval(
+        lobby_state.clone(),
+        Duration::from_secs(LOBBY_FLUSH_INTERVAL as u64),
+    ));
 
     let app = Router::new()
         .layer(TraceLayer::new_for_http())
@@ -120,7 +121,10 @@ where
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
-        .layer(Extension(shared_state))
+        .layer(Extension(active_contributor_state))
+        .layer(Extension(lobby_state))
+        .layer(Extension(auth_state))
+        .layer(Extension(ceremony_status))
         .layer(Extension(siwe_oauth_client()))
         .layer(Extension(github_oauth_client()))
         .layer(Extension(reqwest::Client::new()))
@@ -136,72 +140,6 @@ where
     server.with_graceful_shutdown(await_shutdown()).await?;
 
     Ok(())
-}
-
-#[derive(Clone)]
-pub struct SiweOAuthClient {
-    client: BasicClient,
-}
-
-impl Deref for SiweOAuthClient {
-    type Target = BasicClient;
-
-    fn deref(&self) -> &Self::Target {
-        &self.client
-    }
-}
-
-fn siwe_oauth_client() -> SiweOAuthClient {
-    let client_id = env::var("SIWE_CLIENT_ID").expect("Missing SIWE_CLIENT_ID!");
-    let client_secret = env::var("SIWE_CLIENT_SECRET").expect("Missing SIWE_CLIENT_SECRET!");
-
-    let redirect_url =
-        env::var("SIWE_REDIRECT_URL").unwrap_or_else(|_| SIWE_OAUTH_REDIRECT_URL.to_string());
-    let auth_url = env::var("SIWE_AUTH_URL").unwrap_or_else(|_| SIWE_OAUTH_AUTH_URL.to_string());
-    let token_url = env::var("SIWE_TOKEN_URL").unwrap_or_else(|_| SIWE_OAUTH_TOKEN_URL.to_string());
-
-    SiweOAuthClient {
-        client: BasicClient::new(
-            ClientId::new(client_id),
-            Some(ClientSecret::new(client_secret)),
-            AuthUrl::new(auth_url).unwrap(),
-            Some(TokenUrl::new(token_url).unwrap()),
-        )
-        .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap()),
-    }
-}
-
-#[derive(Clone)]
-pub struct GithubOAuthClient {
-    client: BasicClient,
-}
-
-impl Deref for GithubOAuthClient {
-    type Target = BasicClient;
-
-    fn deref(&self) -> &Self::Target {
-        &self.client
-    }
-}
-
-fn github_oauth_client() -> GithubOAuthClient {
-    let client_id = env::var("GITHUB_CLIENT_ID").expect("Missing GITHUB_CLIENT_ID!");
-    let client_secret = env::var("GITHUB_CLIENT_SECRET").expect("Missing GITHUB_CLIENT_SECRET!");
-    let redirect_url =
-        env::var("GITHUB_REDIRECT_URL").unwrap_or_else(|_| GITHUB_OAUTH_REDIRECT_URL.to_string());
-    let auth_url =
-        env::var("GITHUB_AUTH_URL").unwrap_or_else(|_| GITHUB_OAUTH_AUTH_URL.to_string());
-    let token_url =
-        env::var("GITHUB_TOKEN_URL").unwrap_or_else(|_| GITHUB_OAUTH_TOKEN_URL.to_string());
-    GithubOAuthClient {
-        client: BasicClient::new(
-            ClientId::new(client_id),
-            Some(ClientSecret::new(client_secret)),
-            AuthUrl::new(auth_url).unwrap(),
-            Some(TokenUrl::new(token_url).unwrap()),
-        )
-        .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap()),
-    }
 }
 
 #[allow(clippy::unused_async)] // Required for axum function signature
@@ -236,154 +174,4 @@ impl Default for AppConfig {
             transcript_in_progress_file: PathBuf::from(transcript_progress),
         }
     }
-}
-
-type IdTokenSub = String;
-type CsrfToken = String;
-
-#[derive(Default)]
-pub struct AppState {
-    // Use can now be in the lobby and only those who are in
-    // the lobby can ping to start participating
-    lobby: BTreeMap<SessionId, SessionInfo>,
-
-    // CSRF tokens for oAUTH
-    csrf_tokens: BTreeSet<CsrfToken>,
-
-    // A map between a users unique social id
-    // and their session.
-    // We use this to check if a user has already entered the lobby
-    unique_id_session: BTreeMap<IdTokenSub, SessionId>,
-
-    num_contributions: usize,
-
-    // This is the Id of the current participant
-    // Only they are allowed to call /contribute
-    participant: Option<(SessionId, SessionInfo)>,
-}
-
-impl AppState {
-    pub fn clear_current_contributor(&mut self) {
-        // Note: when reserving a contribution spot
-        // we remove the user from the lobby
-        // So simply setting this to None, will forget them
-        self.participant = None;
-    }
-
-    /// # Panics
-    ///
-    /// Panics if the user is not in the lobby.
-    pub fn set_current_contributor(&mut self, session_id: SessionId) {
-        let session_info = self.lobby.remove(&session_id).unwrap();
-
-        self.participant = Some((session_id, session_info));
-    }
-}
-
-pub async fn clear_lobby_on_interval(state: SharedState, mut interval: Interval) {
-    let max_diff =
-        Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
-    loop {
-        interval.tick().await;
-
-        let now = Instant::now();
-        // Predicate that returns true whenever users go over the ping deadline
-        let predicate = |session_info: &SessionInfo| -> bool {
-            let time_diff = now - session_info.last_ping_time;
-            time_diff > max_diff
-        };
-
-        let clone = state.clone();
-        clear_lobby(clone, predicate).await;
-    }
-}
-
-async fn clear_lobby(state: SharedState, predicate: impl Fn(&SessionInfo) -> bool + Send) {
-    let mut app_state = state.write().await;
-
-    // Iterate top `MAX_LOBBY_SIZE` participants and check if they have
-    let participants = app_state.lobby.keys().cloned();
-    let mut sessions_to_kick = Vec::new();
-
-    for participant in participants {
-        // Check if they are over their ping deadline
-        app_state.lobby.get(&participant).map_or_else(
-            ||
-                // This should not be possible
-                tracing::debug!("session id in queue but not a valid session"),
-            |session_info| {
-                if predicate(session_info) {
-                    sessions_to_kick.push(participant);
-                }
-            },
-        );
-    }
-    for session_id in sessions_to_kick {
-        app_state.lobby.remove(&session_id);
-    }
-}
-
-#[tokio::test]
-async fn flush_on_predicate() {
-    use crate::test_util::create_test_session_info;
-
-    // We want to test that the clear_lobby_on_interval function works as expected.
-    //
-    // It uses time which can get a bit messy to test correctly
-    // However, the clear_lobby function which is a sub procedure takes
-    // in a predicate function
-    //
-    // We can test this instead to ensure that if the predicate fails
-    // users get kicked. We will use the predicate on the `exp` field
-    // instead of the ping-time
-
-    let to_add = 100;
-
-    let arc_state = SharedState::default();
-
-    {
-        let mut state = arc_state.write().await;
-
-        for i in 0..to_add {
-            let id = SessionId::new();
-            let session_info = create_test_session_info(i as u64);
-            state.lobby.insert(id, session_info);
-        }
-    }
-
-    // Now we are going to kick all of the participants whom have an
-    // expiry which is an even number
-    let predicate = |session_info: &SessionInfo| -> bool { session_info.token.exp % 2 == 0 };
-
-    clear_lobby(arc_state.clone(), predicate).await;
-
-    // Now we expect that half of the lobby should be
-    // kicked
-    let state = arc_state.write().await;
-    assert_eq!(state.lobby.len(), to_add / 2);
-
-    let session_ids = state.lobby.keys().cloned();
-    for id in session_ids {
-        let info = state.lobby.get(&id).unwrap();
-        // We should just be left with `exp` numbers which are odd
-        assert_eq!(info.token.exp % 2, 1);
-    }
-}
-
-fn parse_url(url: &Url) -> EyreResult<(SocketAddr, &str)> {
-    ensure!(
-        url.scheme() == "http",
-        "Only http:// is supported in {}",
-        url
-    );
-    let prefix = url.path();
-    let ip: IpAddr = match url.host() {
-        Some(Host::Ipv4(ip)) => ip.into(),
-        Some(Host::Ipv6(ip)) => ip.into(),
-        Some(_) => bail!("Cannot bind {}", url),
-        None => Ipv4Addr::LOCALHOST.into(),
-    };
-    let port = url.port().unwrap_or(8080);
-    let addr = SocketAddr::new(ip, port);
-    Ok((addr, prefix))
 }
