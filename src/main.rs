@@ -64,7 +64,7 @@ pub type SharedCeremonyStatus = Arc<AtomicUsize>;
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
     /// API Server url to bind
-    #[clap(long, env, default_value = "http://127.0.0.1:8080/")]
+    #[clap(long, env, default_value = "http://127.0.0.1:3000/")]
     pub server: Url,
 
     #[clap(flatten)]
@@ -81,6 +81,9 @@ pub struct Options {
 
     #[clap(flatten)]
     pub lobby: lobby::Options,
+
+    #[clap(flatten)]
+    pub storage: storage::Options,
 }
 
 #[allow(dead_code)] // Entry point
@@ -98,7 +101,7 @@ where
     <<T as kzg_ceremony_crypto::interface::Transcript>::ContributionType as kzg_ceremony_crypto::interface::Contribution>::Receipt:
         Send,
 {
-    let keys = Arc::new(Keys::new(options.keys).await?);
+    let keys = Arc::new(Keys::new(&options.keys).await?);
 
     let transcript_data =
         read_transcript_file::<T>(options.transcript.transcript_file.clone()).await;
@@ -113,7 +116,7 @@ where
 
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not
     // pinged in a considerable amount of time
-    tokio::spawn(clear_lobby_on_interval(lobby_state.clone(), options.lobby));
+    tokio::spawn(clear_lobby_on_interval(lobby_state.clone(), options.lobby.clone()));
 
     let app = Router::new()
         .layer(TraceLayer::new_for_http())
@@ -134,8 +137,9 @@ where
         .layer(Extension(siwe_oauth_client(&options.ethereum)))
         .layer(Extension(github_oauth_client(&options.github)))
         .layer(Extension(reqwest::Client::new()))
-        .layer(Extension(persistent_storage_client().await))
-        .layer(Extension(transcript));
+        .layer(Extension(persistent_storage_client(&options.storage).await))
+        .layer(Extension(transcript))
+        .layer(Extension(options.clone()));
 
     // Run the server
     let (addr, prefix) = parse_url(&options.server)?;

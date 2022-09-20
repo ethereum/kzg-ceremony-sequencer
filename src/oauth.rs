@@ -64,7 +64,7 @@ pub struct EthAuthOptions {
         long = "eth-redirect-url",
         env = "ETH_REDIRECT_URL",
         name = "ETH_REDIRECT_URL",
-        default_value = "http://127.0.0.1:3000/auth/callback/github"
+        default_value = "http://127.0.0.1:3000/auth/callback/siwe"
     )]
     pub redirect_url: String,
 
@@ -72,7 +72,7 @@ pub struct EthAuthOptions {
         long = "eth-auth-url",
         env = "ETH_AUTH_URL",
         name = "ETH_AUTH_URL",
-        default_value = "https://github.com/login/oauth/authorize"
+        default_value = "https://oidc.signinwithethereum.org/authorize"
     )]
     pub auth_url: String,
 
@@ -80,7 +80,7 @@ pub struct EthAuthOptions {
         long = "eth-token-url",
         env = "ETH_TOKEN_URL",
         name = "ETH_TOKEN_URL",
-        default_value = "https://github.com/login/oauth/access_token"
+        default_value = "https://oidc.signinwithethereum.org/token"
     )]
     pub token_url: String,
 }
@@ -108,7 +108,7 @@ pub fn siwe_oauth_client(options: &EthAuthOptions) -> SiweOAuthClient {
             AuthUrl::new(options.auth_url.clone()).unwrap(),
             Some(TokenUrl::new(options.token_url.clone()).unwrap()),
         )
-        .set_redirect_uri(RedirectUrl::new(options.token_url.clone()).unwrap()),
+        .set_redirect_uri(RedirectUrl::new(options.redirect_url.clone()).unwrap()),
     }
 }
 

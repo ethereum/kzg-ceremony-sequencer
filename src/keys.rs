@@ -28,7 +28,7 @@ pub struct Keys {
 pub type SharedKeys = Arc<Keys>;
 
 impl Keys {
-    pub async fn new(options: Options) -> Result<Self> {
+    pub async fn new(options: &Options) -> Result<Self> {
         info!(public_key = ?options.public_key, private_key=?options.private_key, "Loading JWT keys");
         let (private_key, public_key) = try_join!(
             tokio::fs::read(&options.private_key),
