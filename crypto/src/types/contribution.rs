@@ -1,4 +1,4 @@
-use super::{CeremonyError, Powers, G1, G2};
+use super::{Powers, G2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]

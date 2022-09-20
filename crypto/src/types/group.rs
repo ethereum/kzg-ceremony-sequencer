@@ -12,7 +12,7 @@ pub struct G2(pub [u8; 96]);
 
 impl Default for G1 {
     fn default() -> Self {
-        G1(hex!("97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"))
+        Self(hex!("97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"))
     }
 }
 
@@ -59,7 +59,7 @@ fn bytes_to_hex<S: Serializer, const N: usize, const M: usize>(
         let mut hex = [0_u8; M];
         hex[0] = b'0';
         hex[1] = b'x';
-        hex::encode_to_slice(&bytes, &mut hex[2..])
+        hex::encode_to_slice(bytes, &mut hex[2..])
             .expect("BUG: output buffer is of the correct size");
         let str = std::str::from_utf8(&hex).expect("BUG: hex is valid UTF-8");
         serializer.serialize_str(str)

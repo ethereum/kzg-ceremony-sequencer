@@ -47,7 +47,11 @@ impl BatchTranscript {
     #[must_use]
     pub fn contribution(&self) -> BatchContribution {
         BatchContribution {
-            contributions: self.transcripts.iter().map(|t| t.contribution()).collect(),
+            contributions: self
+                .transcripts
+                .iter()
+                .map(Transcript::contribution)
+                .collect(),
         }
     }
 

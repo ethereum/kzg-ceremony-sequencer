@@ -1,6 +1,6 @@
 #![doc = include_str!("../Readme.md")]
 #![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
-#![allow(clippy::cast_lossless)]
+#![allow(clippy::cast_lossless, clippy::module_name_repetitions)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
 
 mod engine;
@@ -67,7 +67,6 @@ pub mod bench {
     }
 
     pub fn group(criterion: &mut Criterion) {
-        // endomorphism::bench::group(criterion);
-        // zcash_format::bench::group(criterion);
+        engine::bench::group(criterion);
     }
 }

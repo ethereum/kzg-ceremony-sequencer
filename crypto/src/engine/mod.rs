@@ -1,4 +1,5 @@
 //! Abstraction over the backend used for cryptographic operations.
+#![allow(clippy::missing_errors_doc)] // TODO
 
 mod arkworks;
 
@@ -20,4 +21,16 @@ pub trait Engine {
 
     /// Verify that `g1` and `g2` contain the same values.
     fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError>;
+}
+
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench {
+    use criterion::Criterion;
+
+    use super::arkworks;
+
+    pub fn group(criterion: &mut Criterion) {
+        arkworks::bench::group(criterion);
+    }
 }

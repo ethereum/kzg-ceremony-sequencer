@@ -61,6 +61,7 @@ impl TryFrom<PowersJson> for Powers {
 
 impl Powers {
     /// Construct a new `Powers` object initialized to identity elements.
+    #[must_use]
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
             g1: vec![G1::default(); num_g1],

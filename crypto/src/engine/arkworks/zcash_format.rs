@@ -37,13 +37,13 @@ impl TryFrom<G2> for G2Affine {
 
 impl From<G1Affine> for G1 {
     fn from(g1: G1Affine) -> Self {
-        G1(write_g(&g1))
+        Self(write_g(&g1))
     }
 }
 
 impl From<G2Affine> for G2 {
     fn from(g2: G2Affine) -> Self {
-        G2(write_g(&g2))
+        Self(write_g(&g2))
     }
 }
 

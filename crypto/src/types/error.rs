@@ -1,7 +1,6 @@
 use thiserror::Error;
 
-#[derive(Clone, Copy, PartialEq, Debug, Error)]
-#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
 pub enum CeremoniesError {
     #[error("Unexpected number of contributions: expected {0}, got {1}")]
     UnexpectedNumContributions(usize, usize),
@@ -9,8 +8,7 @@ pub enum CeremoniesError {
     InvalidCeremony(usize, #[source] CeremonyError),
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Error)]
-#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
 pub enum CeremonyError {
     #[error("Unexpected number of G1 powers: expected {0}, got {1}")]
     UnexpectedNumG1Powers(usize, usize),
@@ -40,7 +38,7 @@ pub enum CeremonyError {
     G2PairingFailed,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Error)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
 pub enum ParseError {
     #[error("Invalid x coordinate")]
     BigIntError,

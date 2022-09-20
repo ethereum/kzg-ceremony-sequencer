@@ -120,3 +120,15 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
     .collect::<Vec<_>>();
     (factors, sum)
 }
+
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench {
+    use super::*;
+    use criterion::Criterion;
+
+    pub fn group(criterion: &mut Criterion) {
+        endomorphism::bench::group(criterion);
+        zcash_format::bench::group(criterion);
+    }
+}
