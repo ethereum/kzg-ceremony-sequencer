@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 // Receipt for contributor that sequencer has
 // included their contribution
 #[derive(Serialize)]
-pub struct Receipt<T: Serialize> {
+pub struct Receipt<T> {
     pub(crate) id_token: IdToken,
     pub witness:         T,
 }

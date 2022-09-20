@@ -6,10 +6,4 @@ await-holding-invalid-types = [
     "tracing::trace::EnteredSpan",
 ]
 
-# Workaround: Ban the constructor methods instead of `await-holding-invalid-types`.
-# This can produce false positives in non-async code, but we can selectively disable
-# the lint there.
-disallowed-methods = [
-   "tracing::span::Span::enter",
-   "tracing::span::Span::entered",
-]
+doc-valid-idents = ["ZCash", ".."]

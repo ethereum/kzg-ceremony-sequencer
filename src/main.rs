@@ -6,29 +6,6 @@
 #![allow(clippy::multiple_crate_versions)]
 #![allow(clippy::module_name_repetitions)]
 
-use std::{
-    env,
-    sync::{atomic::AtomicUsize, Arc},
-};
-
-use axum::{
-    extract::Extension,
-    response::Html,
-    routing::{get, post},
-    Router, Server,
-};
-use clap::Parser;
-use cli_batteries::{await_shutdown, version};
-use eyre::Result as EyreResult;
-use tokio::sync::RwLock;
-use tower_http::trace::TraceLayer;
-use tracing::info;
-use url::Url;
-
-use lobby::SharedLobbyState;
-use sessions::{SessionId, SessionInfo};
-use storage::storage_client;
-
 use crate::{
     api::v1::{
         auth::{auth_client_link, github_callback, siwe_callback},
@@ -38,12 +15,32 @@ use crate::{
     },
     io::{transcript, transcript::read_transcript_file},
     keys::Keys,
-    lobby::{clear_lobby_on_interval, SharedContributorState},
+    lobby::{clear_lobby_on_interval, SharedContributorState, SharedLobbyState},
     oauth::{
         github_oauth_client, siwe_oauth_client, EthAuthOptions, GithubAuthOptions, SharedAuthState,
     },
+    sessions::{SessionId, SessionInfo},
+    storage::storage_client,
     util::parse_url,
 };
+use axum::{
+    extract::Extension,
+    response::Html,
+    routing::{get, post},
+    Router, Server,
+};
+use clap::Parser;
+use cli_batteries::{await_shutdown, version};
+use eyre::Result as EyreResult;
+use kzg_ceremony_crypto::types::Transcript;
+use std::{
+    env,
+    sync::{atomic::AtomicUsize, Arc},
+};
+use tokio::sync::RwLock;
+use tower_http::trace::TraceLayer;
+use tracing::info;
+use url::Url;
 
 mod api;
 mod io;
@@ -90,7 +87,7 @@ pub struct Options {
 fn main() {
     cli_batteries::run(
         version!(crypto, small_powers_of_tau),
-        async_main::<kzg_ceremony_crypto::contribution::Transcript>,
+        async_main::<Transcript>,
     );
 }
 
