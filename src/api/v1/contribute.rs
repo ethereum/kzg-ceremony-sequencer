@@ -1,3 +1,5 @@
+// TODO: Add timeouts to all locks.
+
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
@@ -7,7 +9,7 @@ use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
 use serde_json::json;
 
 use crate::{
-    io::write_transcript_file,
+    io::write_json_file,
     jwt::{errors::JwtError, Receipt},
     storage::PersistentStorage,
     AppConfig, Engine, SessionId, SharedState, SharedTranscript,
@@ -74,6 +76,7 @@ pub async fn contribute(
 
     // 2. Check if the program state transition was correct
     let result = {
+        // TODO: Use `spawn_blocking` to move compute to background thread
         let mut transcript = shared_transcript.write().await;
         transcript
             .verify_add::<Engine>(contribution.clone())
@@ -97,7 +100,8 @@ pub async fn contribute(
 
     let encoded_receipt_token = receipt.encode().map_err(ContributeError::Auth)?;
 
-    write_transcript_file(
+    // Write transcript to disk
+    write_json_file(
         config.transcript_file,
         config.transcript_in_progress_file,
         shared_transcript,
