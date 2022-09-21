@@ -21,7 +21,7 @@ pub use crate::{
     transcript::Transcript,
 };
 
-#[cfg(feature = "atkworks")]
+#[cfg(feature = "arkworks")]
 pub use crate::engine::arkworks::Arkworks;
 
 #[cfg(feature = "bench")]

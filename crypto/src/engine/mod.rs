@@ -22,7 +22,7 @@ pub trait Engine {
     /// from `previous` to `tau`.
     fn verify_pubkey(tau: G1, previous: G1, pubkey: G2) -> Result<(), CeremonyError>;
 
-    /// Verify that `powers` containts a sequence of powers of `tau`.
+    /// Verify that `powers` contains a sequence of powers of `tau`.
     fn verify_g1(powers: &[G1], tau: G2) -> Result<(), CeremonyError>;
 
     /// Verify that `g1` and `g2` contain the same values.

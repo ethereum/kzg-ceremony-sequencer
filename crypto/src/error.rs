@@ -22,7 +22,7 @@ pub enum CeremonyError {
     InvalidG1Power(usize, #[source] ParseError),
     #[error("Error parsing G2 power {0}: {1}")]
     InvalidG2Power(usize, #[source] ParseError),
-    #[error("Parse error in unknonw point: {0}")]
+    #[error("Parse error in unknown point: {0}")]
     ParserError(#[from] ParseError),
     #[error("Error parsing potPubkey: {0}")]
     InvalidPubKey(#[source] ParseError),
