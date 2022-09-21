@@ -1,11 +1,8 @@
 use clap::Parser;
+use ethers_signers::{coins_bip39::English, MnemonicBuilder, Signer, LocalWallet};
 use eyre::Result;
-use once_cell::sync::OnceCell;
-use ethers_signers::{MnemonicBuilder, coins_bip39::English, LocalWallet, Signer};
 use serde::Serialize;
-
-// TODO: Make part of app state instead of global
-pub static KEYS: OnceCell<Keys> = OnceCell::new();
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -20,13 +17,14 @@ pub struct Keys {
     wallet: LocalWallet
 }
 
+pub type SharedKeys = Arc<Keys>;
+
 impl Keys {
-    pub async fn new(options: Options) -> Result<Self> {
+    pub async fn new(options: &Options) -> Result<Self> {
         let phrase = options.mnemonic.as_ref();
         let wallet = MnemonicBuilder::<English>::default()
             .phrase(phrase)
             .build()?;
-
         Ok(Self {
             wallet
         })
@@ -83,7 +81,7 @@ mod tests {
             exp: 200_000_000_000,
         };
 
-        let keys = Keys::new(Options {
+        let keys = Keys::new(&Options {
             mnemonic:  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
         })
         .await

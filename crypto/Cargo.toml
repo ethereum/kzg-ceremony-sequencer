@@ -4,8 +4,8 @@ name = "kzg-ceremony-crypto"
 description = "Implementation of the ethereum kzg cermony spec cryptography"
 authors = ["Remco Bloemen <remco@wicked.ventures>"]
 edition = "2021"
-homepage = "https://github.com/recmo/kzg-ceremony-coordinator"
-repository = "https://github.com/recmo/kzg-ceremony-coordinator"
+homepage = "https://github.com/ethereum/kzg-ceremony-sequencer"
+repository = "https://github.com/ethereum/kzg-ceremony-sequencer"
 keywords = ["cryptography"]
 categories = ["cryptography::cryptocurrencies"]
 readme = "Readme.md"
@@ -22,7 +22,7 @@ path = "criterion.rs"
 required-features = [ "bench" ]
 
 [dependencies]
-criterion = { version = "0.3.6", optional = true } # Dev dep for bench
+criterion = { version = "0.4.0", optional = true } # Dev dep for bench
 ark-bls12-381 = "0.3.0"
 ark-ec = { version = "0.3.0", features = ["parallel"] }
 ark-ff = { version = "0.3.0", features = ["parallel", "asm"] }

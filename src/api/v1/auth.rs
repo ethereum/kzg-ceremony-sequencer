@@ -1,10 +1,10 @@
 use crate::{
-    constants::MAX_LOBBY_SIZE,
     jwt::{errors::JwtError, IdToken, SignedIdToken},
+    keys::SharedKeys,
     lobby::SharedLobbyState,
     oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
     storage::{PersistentStorage, StorageError},
-    AppConfig, SessionId, SessionInfo,
+    EthAuthOptions, Keys, Options, SessionId, SessionInfo,
 };
 use axum::{
     extract::Query,
@@ -18,7 +18,7 @@ use oauth2::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{borrow::Cow, ops::Deref};
+use std::borrow::Cow;
 use tokio::time::Instant;
 
 // These are the providers that are supported
@@ -137,6 +137,7 @@ pub struct AuthClientLinkQueryParams {
 // in order to get an authorisation code
 pub async fn auth_client_link(
     Query(params): Query<AuthClientLinkQueryParams>,
+    Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(siwe_client): Extension<SiweOAuthClient>,
@@ -147,7 +148,7 @@ pub async fn auth_client_link(
     //
     {
         let lobby_size = lobby_state.read().await.participants.len();
-        if lobby_size >= MAX_LOBBY_SIZE {
+        if lobby_size >= options.lobby.max_lobby_size {
             return Err(AuthError::LobbyIsFull);
         }
     }
@@ -216,14 +217,16 @@ struct GhUserInfo {
     created_at: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn github_callback(
     Query(payload): Query<AuthPayload>,
-    Extension(config): Extension<AppConfig>,
+    Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
+    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = gh_oauth_client
@@ -245,14 +248,22 @@ pub async fn github_callback(
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
     let creation_time = DateTime::parse_from_rfc3339(&gh_user_info.created_at)
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
-    if creation_time > config.github_max_creation_time {
+    if creation_time > options.github.max_account_creation_time {
         return Err(AuthError::UserCreatedAfterDeadline);
     }
     let user = AuthenticatedUser {
         uid:      format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
-    post_authenticate(auth_state, lobby_state, storage, user, AuthProvider::Github).await
+    post_authenticate(
+        auth_state,
+        lobby_state,
+        storage,
+        user,
+        AuthProvider::Github,
+        &keys,
+    )
+    .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -270,14 +281,16 @@ struct SiweUserInfo {
 // was malicious. What can happen is sequencer can claim that someone
 // participated when they did not. Is this Okay? Maybe that person can then just
 // say they did not
+#[allow(clippy::too_many_arguments)]
 pub async fn siwe_callback(
     Query(payload): Query<AuthPayload>,
-    Extension(config): Extension<AppConfig>,
+    Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(oauth_client): Extension<SiweOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
+    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = oauth_client
@@ -299,22 +312,21 @@ pub async fn siwe_callback(
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
 
     let addr_parts: Vec<_> = siwe_user.sub.split(':').collect();
-    let address = addr_parts
+    let address = (*addr_parts
         .get(2)
-        .ok_or(AuthError::CouldNotExtractUserData)?
-        .deref()
-        .to_string();
+        .ok_or(AuthError::CouldNotExtractUserData)?)
+    .to_string();
 
     let tx_count = get_tx_count(
         &address,
-        &config.eth_check_nonce_at_block,
+        &options.ethereum.eth_nonce_verification_block,
         &http_client,
-        &config,
+        &options.ethereum,
     )
     .await
     .ok_or(AuthError::CouldNotExtractUserData)?;
 
-    if tx_count < config.eth_min_nonce {
+    if tx_count < options.ethereum.min_nonce {
         return Err(AuthError::UserCreatedAfterDeadline);
     }
 
@@ -329,6 +341,7 @@ pub async fn siwe_callback(
         storage,
         user_data,
         AuthProvider::Ethereum,
+        &keys,
     )
     .await
 }
@@ -337,8 +350,8 @@ async fn get_tx_count(
     address: &str,
     at_block: &str,
     client: &reqwest::Client,
-    config: &AppConfig,
-) -> Option<i64> {
+    options: &EthAuthOptions,
+) -> Option<u64> {
     let rpc_payload = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -347,7 +360,7 @@ async fn get_tx_count(
     });
 
     let rpc_response = client
-        .post(&config.eth_rpc_url)
+        .post(options.rpc_url.get_secret())
         .json(&rpc_payload)
         .send()
         .await
@@ -357,7 +370,7 @@ async fn get_tx_count(
 
     let rpc_result = rpc_response_json.get("result")?.as_str()?;
 
-    i64::from_str_radix(rpc_result.trim_start_matches("0x"), 16).ok()
+    u64::from_str_radix(rpc_result.trim_start_matches("0x"), 16).ok()
 }
 
 async fn verify_csrf(payload: &AuthPayload, store: &SharedAuthState) -> Result<(), AuthError> {
@@ -375,6 +388,7 @@ async fn post_authenticate(
     storage: PersistentStorage,
     user_data: AuthenticatedUser,
     auth_provider: AuthProvider,
+    keys: &Keys,
 ) -> Result<UserVerified, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
@@ -406,7 +420,7 @@ async fn post_authenticate(
         exp:      u64::MAX,
     };
 
-    let id_token_signed = id_token.sign().await.map_err(AuthError::Jwt)?;
+    let id_token_signed = id_token.sign(keys).await.map_err(AuthError::Jwt)?;
 
     {
         let mut lobby = lobby_state.write().await;

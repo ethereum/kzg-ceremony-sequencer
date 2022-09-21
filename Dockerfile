@@ -10,7 +10,7 @@ ARG BIN=rust-app
 # Copy over all releases
 COPY ./target ./target
 
-# Select the binary for currenct architecture
+# Select the binary for current architecture
 RUN cp ./target/$(uname -m)-unknown-linux-musl/release/${BIN} ./bin
 
 # Set capabilities

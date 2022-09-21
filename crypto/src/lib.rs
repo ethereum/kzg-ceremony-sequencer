@@ -1,15 +1,18 @@
 #![doc = include_str!("../Readme.md")]
 #![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
+#![allow(clippy::cast_lossless)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
 
-pub mod contribution;
 mod crypto;
 pub mod interface;
+pub mod types;
 mod zcash_format;
 
-pub use contribution::{CeremoniesError, CeremonyError, SubContribution, SubTranscript};
-pub use crypto::{g1_subgroup_check, g2_subgroup_check};
-pub use zcash_format::{parse_g, ParseError};
+pub use crate::{
+    crypto::{g1_subgroup_check, g2_subgroup_check},
+    types::{CeremoniesError, CeremonyError, SubContribution, SubTranscript},
+    zcash_format::{parse_g, ParseError},
+};
 
 pub const SIZES: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
 
@@ -21,10 +24,11 @@ pub mod test {
     use proptest::{arbitrary::any, strategy::Strategy};
     use ruint::aliases::U256;
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn arb_fr() -> impl Strategy<Value = Fr> {
         any::<U256>().prop_map(|mut n| {
             n %= U256::from(FrParameters::MODULUS);
-            Fr::from_repr(BigInteger256::from(n)).unwrap()
+            Fr::from_repr(BigInteger256::from(n)).expect("n is smaller than modulus")
         })
     }
 
@@ -46,6 +50,7 @@ pub mod bench {
     use ark_ff::UniformRand;
     use criterion::Criterion;
 
+    #[must_use]
     pub fn rand_fr() -> Fr {
         let mut rng = rand::thread_rng();
         Fr::rand(&mut rng)
@@ -66,6 +71,6 @@ pub mod bench {
     pub fn group(criterion: &mut Criterion) {
         crypto::bench::group(criterion);
         zcash_format::bench::group(criterion);
-        contribution::bench::group(criterion);
+        types::bench::group(criterion);
     }
 }

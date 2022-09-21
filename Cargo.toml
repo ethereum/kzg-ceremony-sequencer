@@ -1,7 +1,19 @@
 [package]
 name = "kzg-ceremony-sequencer"
 version = "0.1.0"
+description = "Implementation of the Ethereum KZG Ceremony specification sequencer"
+authors = [
+    "Remco Bloemen <remco@wicked.ventures>",
+    "Kevaundray Wedderburn <kev@the.dev>",
+    "Marcin Kostrzewa <marcin@reilabs.io>",
+    "Grzegorz Świrski <greg@reilabs.io>",
+]
+homepage = "https://github.com/ethereum/kzg-ceremony-sequencer"
+repository = "https://github.com/ethereum/kzg-ceremony-sequencer"
 edition = "2021"
+license-file = "./mit-license.md"
+keywords = ["cryptography"]
+categories = ["cryptography::cryptocurrencies"]
 
 [features]
 default = []
@@ -45,13 +57,13 @@ indexmap = "1.9.1"
 clap = { version = "3.2.21", features = ["derive"] }
 eyre = "0.6.8"
 url = "2.3.1"
+hex = "0.4.3"
 
 # Use Rustls because it makes it easier to cross-compile on CI
 reqwest = { version = "0.11", default-features = false, features = [
     "rustls-tls",
     "json",
 ] }
-hex = "0.4.3"
 
 
 [build-dependencies]

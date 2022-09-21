@@ -1,16 +1,15 @@
 pub mod errors;
 use errors::JwtError;
 
-use crate::keys::{KEYS, Signature};
+use crate::keys::{Keys, Signature};
 use serde::{Deserialize, Serialize};
 
 // Receipt for contributor that sequencer has
 // included their contribution
 #[derive(Serialize)]
-pub struct Receipt<T: Serialize> {
+pub struct Receipt<T> {
     pub(crate) id_token: IdToken,
-
-    pub witness: T,
+    pub witness:         T,
 }
 
 #[derive(Serialize)]
@@ -20,10 +19,9 @@ pub struct SignedReceipt {
 }
 
 impl<T: Serialize> Receipt<T> {
-    pub async fn sign(&self) -> Result<SignedReceipt, JwtError> {
+    pub async fn sign(&self, keys: &Keys) -> Result<SignedReceipt, JwtError> {
         let receipt_message = serde_json::to_string(self).unwrap();
-        KEYS.get()
-            .unwrap()
+        keys
             .sign(&receipt_message)
             .await
             .map(move |signature| {
@@ -64,11 +62,10 @@ impl IdToken {
         &self.sub
     }
 
-    pub async fn sign(&self) -> Result<SignedIdToken, JwtError> {
+    pub async fn sign(&self, keys: &Keys) -> Result<SignedIdToken, JwtError> {
         let token_message = serde_json::to_string(&self).unwrap();
 
-        KEYS.get()
-            .unwrap()
+        keys
             .sign(&token_message)
             .await
             .map(move |signature| {
@@ -80,11 +77,8 @@ impl IdToken {
             .map_err(|_| JwtError::TokenCreation)
     }
 
-    pub fn verify(token: &SignedIdToken) -> Result<Self, JwtError> {
-        let is_valid = KEYS
-            .get()
-            .unwrap()
-            .verify(&token.token_message, &token.signature);
+    pub fn verify(token: &SignedIdToken, keys: &Keys) -> Result<Self, JwtError> {
+        let is_valid = keys.verify(&token.token_message, &token.signature);
 
         if !is_valid {
             return Err(JwtError::InvalidToken);

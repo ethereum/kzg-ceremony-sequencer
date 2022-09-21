@@ -1,10 +1,29 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use crate::sessions::{SessionId, SessionInfo};
+use clap::Parser;
+use std::{collections::BTreeMap, num::ParseIntError, str::FromStr, sync::Arc, time::Duration};
 use tokio::{sync::RwLock, time::Instant};
 
-use crate::{
-    constants::{LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC},
-    sessions::{SessionId, SessionInfo},
-};
+fn duration_from_str(value: &str) -> Result<Duration, ParseIntError> {
+    Ok(Duration::from_secs(u64::from_str(value)?))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Parser)]
+pub struct Options {
+    #[clap(long, env, value_parser=duration_from_str, default_value="180")]
+    pub compute_deadline: Duration,
+
+    #[clap(long, env, value_parser=duration_from_str, default_value="30")]
+    pub lobby_checkin_frequency: Duration,
+
+    #[clap(long, env, value_parser=duration_from_str, default_value="2")]
+    pub lobby_checkin_tolerance: Duration,
+
+    #[clap(long, env, value_parser=duration_from_str, default_value="5")]
+    pub lobby_flush_interval: Duration,
+
+    #[clap(long, env, default_value = "1000")]
+    pub max_lobby_size: usize,
+}
 
 #[derive(Default)]
 pub struct LobbyState {
@@ -16,11 +35,10 @@ pub type ActiveContributor = Option<(SessionId, SessionInfo)>;
 pub type SharedLobbyState = Arc<RwLock<LobbyState>>;
 pub type SharedContributorState = Arc<RwLock<ActiveContributor>>;
 
-pub async fn clear_lobby_on_interval(state: SharedLobbyState, interval: Duration) {
-    let max_diff =
-        Duration::from_secs((LOBBY_CHECKIN_FREQUENCY_SEC + LOBBY_CHECKIN_TOLERANCE_SEC) as u64);
+pub async fn clear_lobby_on_interval(state: SharedLobbyState, options: Options) {
+    let max_diff = options.lobby_checkin_frequency + options.lobby_checkin_tolerance;
 
-    let mut interval = tokio::time::interval(interval);
+    let mut interval = tokio::time::interval(options.lobby_flush_interval);
 
     loop {
         interval.tick().await;
