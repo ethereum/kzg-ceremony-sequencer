@@ -1,4 +1,4 @@
-use crate::types::{ParseError, G1, G2};
+use crate::{ParseError, G1, G2};
 use ark_bls12_381::{Fq, G1Affine, G2Affine};
 use ark_ec::{
     models::{ModelParameters, SWModelParameters},

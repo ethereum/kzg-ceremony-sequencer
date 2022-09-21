@@ -1,5 +1,4 @@
-use super::{Powers, G2};
-use crate::{CeremonyError, Engine};
+use crate::{CeremonyError, Engine, Powers, G2};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 

@@ -66,6 +66,8 @@ use url::{Host, Url};
 pub type SharedTranscript<T> = Arc<RwLock<T>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
 
+pub const SIZES: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
+
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
     /// API Server url to bind

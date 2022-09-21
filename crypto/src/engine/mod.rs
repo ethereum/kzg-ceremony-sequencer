@@ -9,9 +9,7 @@
 
 mod arkworks;
 
-use crate::types::{CeremonyError, G1, G2};
-
-pub use self::arkworks::Arkworks;
+use crate::{CeremonyError, G1, G2};
 
 pub trait Engine {
     /// Verifies that the given G1 points are valid.
@@ -42,11 +40,11 @@ pub mod bench {
     use criterion::Criterion;
 
     pub fn group(criterion: &mut Criterion) {
+        #[cfg(feature = "arkworks")]
         arkworks::bench::group(criterion);
-        bench_engine::<Arkworks>(criterion);
     }
 
-    fn bench_engine<E: Engine>(_criterion: &mut Criterion) {
+    pub(super) fn bench_engine<E: Engine>(_criterion: &mut Criterion) {
         // todo!()
     }
 

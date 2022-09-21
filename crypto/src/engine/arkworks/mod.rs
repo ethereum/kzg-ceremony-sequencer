@@ -1,5 +1,7 @@
 //! Arkworks implementation of [`Engine`].
 
+#![cfg(feature = "arkworks")]
+
 mod endomorphism;
 mod zcash_format;
 
@@ -7,7 +9,7 @@ use std::iter;
 
 use self::endomorphism::{g1_mul_glv, g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
-use crate::types::{CeremonyError, ParseError, G1, G2};
+use crate::{CeremonyError, ParseError, G1, G2};
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
 use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine};
 use ark_ff::{One, PrimeField, UniformRand, Zero};
@@ -162,14 +164,60 @@ fn random_scalar(entropy: [u8; 32]) -> Fr {
     Fr::rand(&mut rng)
 }
 
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use ark_bls12_381::FrParameters;
+    use ark_ec::ProjectiveCurve;
+    use ark_ff::{BigInteger256, FpParameters};
+    use proptest::{arbitrary::any, strategy::Strategy};
+    use ruint::aliases::U256;
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn arb_fr() -> impl Strategy<Value = Fr> {
+        any::<U256>().prop_map(|mut n| {
+            n %= U256::from(FrParameters::MODULUS);
+            Fr::from_repr(BigInteger256::from(n)).expect("n is smaller than modulus")
+        })
+    }
+
+    pub fn arb_g1() -> impl Strategy<Value = G1Affine> {
+        arb_fr().prop_map(|s| G1Affine::prime_subgroup_generator().mul(s).into_affine())
+    }
+
+    pub fn arb_g2() -> impl Strategy<Value = G2Affine> {
+        arb_fr().prop_map(|s| G2Affine::prime_subgroup_generator().mul(s).into_affine())
+    }
+}
+
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
-    use super::*;
+    use super::{super::bench::bench_engine, *};
+    use ark_ec::ProjectiveCurve;
     use criterion::Criterion;
 
     pub fn group(criterion: &mut Criterion) {
+        bench_engine::<Arkworks>(criterion);
         endomorphism::bench::group(criterion);
         zcash_format::bench::group(criterion);
+    }
+
+    #[must_use]
+    pub fn rand_fr() -> Fr {
+        let mut rng = rand::thread_rng();
+        Fr::rand(&mut rng)
+    }
+
+    pub fn rand_g1() -> G1Affine {
+        G1Affine::prime_subgroup_generator()
+            .mul(rand_fr())
+            .into_affine()
+    }
+
+    pub fn rand_g2() -> G2Affine {
+        G2Affine::prime_subgroup_generator()
+            .mul(rand_fr())
+            .into_affine()
     }
 }
