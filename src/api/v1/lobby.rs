@@ -72,7 +72,7 @@ pub async fn try_contribute(
     Extension(storage): Extension<PersistentStorage>,
     Extension(transcript): Extension<SharedTranscript<T>>,
     Extension(options): Extension<crate::Options>,
-) -> Result<TryContributeResponse<T::ContributionType>, TryContributeError> {
+) -> Result<TryContributeResponse<BatchContribution>, TryContributeError> {
     let uid: String;
 
     // 1. Check if this is a valid session. If so, we log the ping time
@@ -165,23 +165,24 @@ pub async fn remove_participant_on_deadline(
 }
 
 #[cfg(test)]
-use crate::test_util::test_options;
+mod tests {
+    use crate::test_util::test_options;
 
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn lobby_try_contribute_test() {
-    use crate::{
-        storage::storage_client,
-        test_transcript::{TestContribution, TestTranscript},
-        test_util::create_test_session_info,
-    };
-    use std::time::Duration;
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn lobby_try_contribute_test() {
+        use crate::{
+            storage::storage_client,
+            test_transcript::{TestContribution, TestTranscript},
+            test_util::create_test_session_info,
+        };
+        use std::time::Duration;
 
-    let opts = test_options();
-    let contributor_state = SharedContributorState::default();
-    let lobby_state = SharedLobbyState::default();
-    let transcript = SharedTranscript::<TestTranscript>::default();
-    let db = storage_client(&opts.storage).await;
+        let opts = test_options();
+        let contributor_state = SharedContributorState::default();
+        let lobby_state = SharedLobbyState::default();
+        let transcript = SharedTranscript::<TestTranscript>::default();
+        let db = storage_client(&opts.storage).await;
 
         let session_id = SessionId::new();
         let other_session_id = SessionId::new();
@@ -189,111 +190,111 @@ async fn lobby_try_contribute_test() {
         // manually control time in tests
         tokio::time::pause();
 
-    // no users in lobby
-    let unknown_session_response = try_contribute(
-        session_id.clone(),
-        Extension(contributor_state.clone()),
-        Extension(lobby_state.clone()),
-        Extension(db.clone()),
-        Extension(transcript.clone()),
-        Extension(opts),
-    )
-    .await;
-    assert!(matches!(
-        unknown_session_response,
-        Err(TryContributeError::UnknownSessionId)
-    ));
+        // no users in lobby
+        let unknown_session_response = try_contribute(
+            session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(opts),
+        )
+        .await;
+        assert!(matches!(
+            unknown_session_response,
+            Err(TryContributeError::UnknownSessionId)
+        ));
 
-    // add two participants to lobby
-    {
-        let mut state = lobby_state.write().await;
-        state
-            .participants
-            .insert(session_id.clone(), create_test_session_info(100));
-        state
-            .participants
-            .insert(other_session_id.clone(), create_test_session_info(100));
-    }
+        // add two participants to lobby
+        {
+            let mut state = lobby_state.write().await;
+            state
+                .participants
+                .insert(session_id.clone(), create_test_session_info(100));
+            state
+                .participants
+                .insert(other_session_id.clone(), create_test_session_info(100));
+        }
 
-    // "other participant" is contributing
-    try_contribute(
-        other_session_id.clone(),
-        Extension(contributor_state.clone()),
-        Extension(lobby_state.clone()),
-        Extension(db.clone()),
-        Extension(transcript.clone()),
-        Extension(test_options()),
-    )
-    .await
-    .ok();
-    let contribution_in_progress_response = try_contribute(
-        session_id.clone(),
-        Extension(contributor_state.clone()),
-        Extension(lobby_state.clone()),
-        Extension(db.clone()),
-        Extension(transcript.clone()),
-        Extension(test_options()),
-    )
-    .await;
-    assert!(matches!(
-        contribution_in_progress_response,
-        Err(TryContributeError::AnotherContributionInProgress)
-    ));
+        // "other participant" is contributing
+        try_contribute(
+            other_session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await
+        .ok();
+        let contribution_in_progress_response = try_contribute(
+            session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+        assert!(matches!(
+            contribution_in_progress_response,
+            Err(TryContributeError::AnotherContributionInProgress)
+        ));
 
-    // call the endpoint too soon - rate limited, other participant computing
-    tokio::time::advance(Duration::from_secs(5)).await;
-    let too_soon_response = try_contribute(
-        session_id.clone(),
-        Extension(contributor_state.clone()),
-        Extension(lobby_state.clone()),
-        Extension(db.clone()),
-        Extension(transcript.clone()),
-        Extension(test_options()),
-    )
-    .await;
-    assert!(matches!(
-        too_soon_response,
-        Err(TryContributeError::RateLimited)
-    ));
+        // call the endpoint too soon - rate limited, other participant computing
+        tokio::time::advance(Duration::from_secs(5)).await;
+        let too_soon_response = try_contribute(
+            session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+        assert!(matches!(
+            too_soon_response,
+            Err(TryContributeError::RateLimited)
+        ));
 
-    // "other participant" finished contributing
-    {
-        let mut state = contributor_state.write().await;
-        *state = None;
-    }
+        // "other participant" finished contributing
+        {
+            let mut state = contributor_state.write().await;
+            *state = None;
+        }
 
-    // call the endpoint too soon - rate limited, no one computing
-    tokio::time::advance(Duration::from_secs(5)).await;
-    let too_soon_response = try_contribute(
-        session_id.clone(),
-        Extension(contributor_state.clone()),
-        Extension(lobby_state.clone()),
-        Extension(db.clone()),
-        Extension(transcript.clone()),
-        Extension(test_options()),
-    )
-    .await;
-    assert!(matches!(
-        too_soon_response,
-        Err(TryContributeError::RateLimited)
-    ));
+        // call the endpoint too soon - rate limited, no one computing
+        tokio::time::advance(Duration::from_secs(5)).await;
+        let too_soon_response = try_contribute(
+            session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+        assert!(matches!(
+            too_soon_response,
+            Err(TryContributeError::RateLimited)
+        ));
 
-    // wait enough time to be able to contribute
-    tokio::time::advance(Duration::from_secs(19)).await;
-    let success_response = try_contribute(
-        session_id.clone(),
-        Extension(contributor_state.clone()),
-        Extension(lobby_state.clone()),
-        Extension(db.clone()),
-        Extension(transcript.clone()),
-        Extension(test_options()),
-    )
-    .await;
-    assert!(matches!(
-        success_response,
-        Ok(TryContributeResponse {
-            contribution: TestContribution::ValidContribution(0),
-        })
+        // wait enough time to be able to contribute
+        tokio::time::advance(Duration::from_secs(19)).await;
+        let success_response = try_contribute(
+            session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+        assert!(matches!(
+            success_response,
+            Ok(TryContributeResponse {
+                contribution: TestContribution::ValidContribution(0),
+            })
         ));
     }
 }

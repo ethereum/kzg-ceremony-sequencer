@@ -13,7 +13,7 @@ use crate::{
         info::{current_state, jwt_info, status},
         lobby::try_contribute,
     },
-    io::{transcript, transcript::read_transcript_file},
+    io::{read_json_file, write_json_file},
     keys::Keys,
     lobby::{clear_lobby_on_interval, SharedContributorState, SharedLobbyState},
     oauth::{
@@ -32,7 +32,6 @@ use axum::{
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
 use eyre::Result as EyreResult;
-use kzg_ceremony_crypto::types::Transcript;
 use std::{
     env,
     sync::{atomic::AtomicUsize, Arc},
@@ -92,17 +91,11 @@ fn main() {
     cli_batteries::run(version!(crypto, small_powers_of_tau), async_main);
 }
 
-async fn async_main<T>(options: Options) -> EyreResult<()>
-where
-    T: kzg_ceremony_crypto::interface::Transcript + Send + Sync + 'static,
-    T::ContributionType: Send,
-    <<T as kzg_ceremony_crypto::interface::Transcript>::ContributionType as kzg_ceremony_crypto::interface::Contribution>::Receipt:
-        Send,
-{
+async fn async_main(options: Options) -> EyreResult<()> {
     let keys = Arc::new(Keys::new(&options.keys).await?);
 
     let transcript_data =
-        read_transcript_file::<T>(options.transcript.transcript_file.clone()).await;
+        read_json_file::<BatchTranscript>(options.transcript.transcript_file.clone()).await;
     let transcript = Arc::new(RwLock::new(transcript_data));
 
     let active_contributor_state = SharedContributorState::default();

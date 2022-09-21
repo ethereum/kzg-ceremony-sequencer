@@ -52,21 +52,16 @@ impl IntoResponse for ContributeError {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn contribute<T>(
+pub async fn contribute(
     session_id: SessionId,
-    Json(contribution): Json<T::ContributionType>,
+    Json(contribution): Json<BatchContribution>,
     Extension(contributor_state): Extension<SharedContributorState>,
     Extension(options): Extension<Options>,
-    Extension(shared_transcript): Extension<SharedTranscript<T>>,
+    Extension(shared_transcript): Extension<SharedTranscript>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
-) -> Result<ContributeReceipt, ContributeError>
-where
-    T: Transcript + Send + Sync + 'static,
-    T::ContributionType: Send,
-    <<T as Transcript>::ContributionType as Contribution>::Receipt: Send,
-{
+) -> Result<ContributeReceipt, ContributeError> {
     // 1. Check if this person should be contributing
     let id_token = {
         let active_contributor = contributor_state.read().await;
@@ -140,19 +135,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        path::PathBuf,
-        sync::{atomic::AtomicUsize, Arc},
-    };
-
-    use axum::{Extension, Json};
-
+    use super::*;
     use crate::{
         api::v1::contribute::ContributeError,
-        contribute, keys,
+        contribute,
+        io::read_json_file,
+        keys,
         keys::SharedKeys,
         lobby::SharedContributorState,
-        read_transcript_file,
         storage::storage_client,
         test_transcript::{
             TestContribution::{InvalidContribution, ValidContribution},
@@ -164,7 +154,10 @@ mod tests {
     use axum::{Extension, Json};
     use chrono::DateTime;
     use kzg_ceremony_crypto::BatchTranscript;
-    use std::{path::PathBuf, sync::Arc};
+    use std::{
+        path::PathBuf,
+        sync::{atomic::AtomicUsize, Arc},
+    };
     use tokio::sync::RwLock;
 
     async fn shared_keys() -> SharedKeys {
