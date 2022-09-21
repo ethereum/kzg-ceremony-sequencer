@@ -15,3 +15,5 @@ Run benchmarks
 ```shell
 cargo bench --bench=criterion --features=bench,arkworks
 ```
+
+The report will be produced at [`../target/criterion/index.html`](../target/criterion/index.html).
