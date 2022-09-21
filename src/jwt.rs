@@ -18,7 +18,7 @@ pub struct SignedReceipt {
     pub signature:       Signature,
 }
 
-impl<T: Serialize> Receipt<T> {
+impl<T: Serialize + Send + Sync> Receipt<T> {
     pub async fn sign(&self, keys: &Keys) -> Result<SignedReceipt, JwtError> {
         let receipt_message = serde_json::to_string(self).unwrap();
         keys.sign(&receipt_message)
@@ -70,8 +70,9 @@ impl IdToken {
             .map_err(|_| JwtError::TokenCreation)
     }
 
+    #[allow(dead_code)]
     pub fn verify(token: &SignedIdToken, keys: &Keys) -> Result<Self, JwtError> {
-        let is_valid = keys.verify(&token.token_message, &token.signature);
+        let is_valid = keys.verify(&token.token_message, &token.signature).is_ok();
 
         if !is_valid {
             return Err(JwtError::InvalidToken);

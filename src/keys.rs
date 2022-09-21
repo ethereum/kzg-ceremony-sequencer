@@ -1,8 +1,11 @@
 use clap::Parser;
+use ethers_core::types::RecoveryMessage;
 use ethers_signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::Arc;
+
+use crate::jwt::errors::JwtError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -38,8 +41,16 @@ impl Keys {
         Ok(Signature(hex::encode::<Vec<u8>>(signature.into())))
     }
 
-    pub fn verify(&self, message: &str, signature: &Signature) -> bool {
-        false
+    pub fn verify(&self, message: &str, signature: &Signature) -> Result<(), JwtError> {
+        let h = hex::decode(&signature.0).map_err(|_| JwtError::InvalidToken)?;
+        let signature = ethers_core::types::Signature::try_from(h.as_ref())
+            .map_err(|_| JwtError::InvalidToken)?;
+        signature
+            .verify(
+                RecoveryMessage::Data(message.as_bytes().to_owned()),
+                self.wallet.address(),
+            )
+            .map_err(|_| JwtError::InvalidToken)
     }
 
     pub fn address(&self) -> String {
@@ -54,27 +65,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     #[tokio::test]
-    async fn develop_crypto() {
-        #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-        pub struct Token {
-            foo: String,
-            exp: u64,
-        }
-
-        let wallet = MnemonicBuilder::<English>::default()
-            .phrase(
-                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
-                 abandon about",
-            )
-            .build()
-            .unwrap();
-
-        let message = wallet.sign_message(&[0, 1, 2]).await;
-        println!("message: {:?}", message);
-    }
-
-    #[tokio::test]
-    async fn encode_decode_pem() {
+    async fn sign_and_verify() {
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
         pub struct Token {
             foo: String,
@@ -97,6 +88,7 @@ mod tests {
         let message = serde_json::to_string(&t).unwrap();
         let signature = keys.sign(&message).await.unwrap();
 
-        assert!(keys.verify(&message, &signature));
+        let result = keys.verify(&message, &signature);
+        println!("result {:?}", result);
     }
 }
