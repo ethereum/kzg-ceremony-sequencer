@@ -111,9 +111,9 @@ impl Engine for Arkworks {
     }
 
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
-    fn add_tau_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError> {
+    fn add_entropy_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError> {
         let tau = random_scalar(entropy);
-        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * &tau))
+        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * tau))
             .take(powers.len())
             .collect::<Vec<_>>();
         powers.par_iter_mut().zip(taus).try_for_each(|(p, tau)| {
@@ -126,9 +126,9 @@ impl Engine for Arkworks {
     }
 
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
-    fn add_tau_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError> {
+    fn add_entropy_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError> {
         let tau = random_scalar(entropy);
-        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * &tau))
+        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * tau))
             .take(powers.len())
             .collect::<Vec<_>>();
         powers.par_iter_mut().zip(taus).try_for_each(|(p, tau)| {

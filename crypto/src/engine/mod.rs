@@ -28,9 +28,9 @@ pub trait Engine {
     /// Verify that `g1` and `g2` contain the same values.
     fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError>;
 
-    fn add_tau_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError>;
+    fn add_entropy_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError>;
 
-    fn add_tau_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError>;
+    fn add_entropy_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError>;
 }
 
 #[cfg(feature = "bench")]

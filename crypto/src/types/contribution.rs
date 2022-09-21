@@ -1,5 +1,7 @@
 use super::{Powers, G2};
+use crate::{CeremonyError, Engine};
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Contribution {
@@ -7,6 +9,25 @@ pub struct Contribution {
     pub powers: Powers,
 
     pub pubkey: G2,
+}
+
+impl Contribution {
+    #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
+    pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremonyError> {
+        // Validate points
+        E::validate_g1(&self.powers.g1)?;
+        E::validate_g2(&self.powers.g2)?;
+        E::validate_g2(&[self.pubkey])?;
+
+        // Add entropy
+        E::add_entropy_g1(entropy, &mut self.powers.g1)?;
+        E::add_entropy_g2(entropy, &mut self.powers.g2)?;
+        let mut temp = [G2::default(), self.pubkey];
+        E::add_entropy_g2(entropy, &mut temp)?;
+        self.pubkey = temp[1];
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

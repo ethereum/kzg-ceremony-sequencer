@@ -48,7 +48,7 @@ impl Transcript {
     }
 
     /// Verifies a contribution.
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "info", skip_all, fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn verify<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
         assert!(self.powers.g1.len() >= 2);
         assert!(self.powers.g2.len() >= 2);

@@ -14,6 +14,7 @@ pub use self::{
     transcript::Transcript,
 };
 use crate::Engine;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
@@ -92,4 +93,25 @@ impl BatchTranscript {
 
         Ok(())
     }
+}
+
+impl BatchContribution {
+    #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
+    pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremoniesError> {
+        let entropies = derive_entropy(entropy, self.contributions.len());
+        self.contributions
+            .par_iter_mut()
+            .zip(entropies)
+            .enumerate()
+            .try_for_each(|(i, (contribution, entropy))| {
+                contribution
+                    .add_entropy::<E>(entropy)
+                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
+            })
+    }
+}
+
+fn derive_entropy(entropy: [u8; 32], size: usize) -> Vec<[u8; 32]> {
+    let mut rng = StdRng::from_seed(entropy);
+    (0..size).map(|_| rng.gen()).collect()
 }
