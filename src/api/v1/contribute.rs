@@ -132,16 +132,19 @@ pub async fn contribute(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
+    use crate::{
+        api::v1::contribute::ContributeError,
+        constants, contribute, keys, read_json_file,
+        storage::test_storage_client,
+        test_util::create_test_session_info,
+        tests::{invalid_contribution, test_transcript, valid_contribution},
+        AppConfig, Engine, Keys, SessionId, SharedState,
+    };
     use axum::{Extension, Json};
     use chrono::DateTime;
-
-    use crate::{
-        api::v1::contribute::ContributeError, constants, contribute, keys, read_transcript_file,
-        storage::test_storage_client, test_util::create_test_session_info, AppConfig, Keys,
-        SessionId, SharedState, SharedTranscript,
-    };
+    use kzg_ceremony_crypto::BatchTranscript;
+    use std::{path::PathBuf, sync::Arc};
+    use tokio::sync::RwLock;
 
     fn config() -> AppConfig {
         let mut transcript = std::env::temp_dir();
@@ -179,12 +182,14 @@ mod tests {
         let db = test_storage_client().await;
         let app_state = SharedState::default();
         app_state.write().await.participant = None;
-        let result = contribute::<TestTranscript>(
+        let transcript = test_transcript();
+        let contrbution = valid_contribution(&transcript, 1);
+        let result = contribute(
             SessionId::new(),
-            Json(ValidContribution(123)),
+            Json(contrbution),
             Extension(app_state),
             Extension(config()),
-            Extension(SharedTranscript::default()),
+            Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
         )
         .await;
@@ -199,16 +204,21 @@ mod tests {
         let participant = SessionId::new();
         app_state.write().await.participant =
             Some((participant.clone(), create_test_session_info(100)));
-        let result = contribute::<TestTranscript>(
+        let transcript = test_transcript();
+        let contribution = invalid_contribution(&transcript, 1);
+        let result = contribute(
             participant,
-            Json(InvalidContribution(123)),
+            Json(contribution),
             Extension(app_state),
             Extension(config()),
-            Extension(SharedTranscript::default()),
+            Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
         )
         .await;
-        assert!(matches!(result, Err(ContributeError::InvalidContribution)));
+        assert!(matches!(
+            result,
+            Err(ContributeError::InvalidContribution(_))
+        ));
     }
 
     #[tokio::test]
@@ -218,13 +228,22 @@ mod tests {
         let app_state = SharedState::default();
         let participant = SessionId::new();
         let cfg = config();
-        let shared_transcript = SharedTranscript::<TestTranscript>::default();
+        let transcript = test_transcript();
+        let contribution_1 = valid_contribution(&transcript, 1);
+        let contribution_2 = {
+            let mut transcript = transcript.clone();
+            transcript
+                .verify_add::<Engine>(contribution_1.clone())
+                .unwrap();
+            valid_contribution(&transcript, 2)
+        };
+        let shared_transcript = Arc::new(RwLock::new(transcript));
 
         app_state.write().await.participant =
             Some((participant.clone(), create_test_session_info(100)));
-        let result = contribute::<TestTranscript>(
+        let result = contribute(
             participant.clone(),
-            Json(ValidContribution(123)),
+            Json(contribution_1),
             Extension(app_state.clone()),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
@@ -233,17 +252,14 @@ mod tests {
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
-        assert_eq!(transcript, TestTranscript {
-            initial:       ValidContribution(0),
-            contributions: vec![ValidContribution(123)],
-        });
+        let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
+        assert_eq!(transcript, test_transcript());
 
         app_state.write().await.participant =
             Some((participant.clone(), create_test_session_info(100)));
-        let result = contribute::<TestTranscript>(
+        let result = contribute(
             participant.clone(),
-            Json(ValidContribution(175)),
+            Json(contribution_2),
             Extension(app_state.clone()),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
@@ -252,10 +268,7 @@ mod tests {
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_transcript_file::<TestTranscript>(cfg.transcript_file.clone()).await;
-        assert_eq!(transcript, TestTranscript {
-            initial:       ValidContribution(0),
-            contributions: vec![ValidContribution(123), ValidContribution(175)],
-        });
+        let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
+        assert_eq!(transcript, test_transcript()); // TODO
     }
 }
