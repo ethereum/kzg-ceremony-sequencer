@@ -1,10 +1,8 @@
 // TODO: Error handling
 
-use std::path::PathBuf;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
-use std::sync::Arc;
 
 /// Asynchronously reads a JSON file from disk.
 pub async fn read_json_file<T: DeserializeOwned + Send + 'static>(path: PathBuf) -> T {

@@ -3,7 +3,8 @@
 #![allow(clippy::cast_lossless, clippy::module_name_repetitions)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
 
-mod batch;
+mod batch_contribution;
+mod batch_transcript;
 mod contribution;
 mod engine;
 mod error;
@@ -12,7 +13,8 @@ mod powers;
 mod transcript;
 
 pub use crate::{
-    batch::{BatchContribution, BatchTranscript},
+    batch_contribution::BatchContribution,
+    batch_transcript::BatchTranscript,
     contribution::Contribution,
     engine::Engine,
     error::{CeremoniesError, CeremonyError, ParseError},
