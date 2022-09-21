@@ -70,7 +70,7 @@ pub async fn try_contribute(
     Extension(contributor_state): Extension<SharedContributorState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
-    Extension(transcript): Extension<SharedTranscript<T>>,
+    Extension(transcript): Extension<SharedTranscript>,
     Extension(options): Extension<crate::Options>,
 ) -> Result<TryContributeResponse<BatchContribution>, TryContributeError> {
     let uid: String;
@@ -166,22 +166,24 @@ pub async fn remove_participant_on_deadline(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_util::test_options;
+    use tokio::sync::RwLock;
+
+    use super::*;
+    use crate::{
+        api::v1::lobby::TryContributeError,
+        storage::storage_client,
+        test_util::{create_test_session_info, test_options},
+        tests::test_transcript,
+    };
+    use std::{sync::Arc, time::Duration};
 
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn lobby_try_contribute_test() {
-        use crate::{
-            storage::storage_client,
-            test_transcript::{TestContribution, TestTranscript},
-            test_util::create_test_session_info,
-        };
-        use std::time::Duration;
-
         let opts = test_options();
         let contributor_state = SharedContributorState::default();
         let lobby_state = SharedLobbyState::default();
-        let transcript = SharedTranscript::<TestTranscript>::default();
+        let transcript = Arc::new(RwLock::new(test_transcript()));
         let db = storage_client(&opts.storage).await;
 
         let session_id = SessionId::new();
@@ -293,7 +295,7 @@ mod tests {
         assert!(matches!(
             success_response,
             Ok(TryContributeResponse {
-                contribution: TestContribution::ValidContribution(0),
+                contribution: BatchContribution { .. },
             })
         ));
     }

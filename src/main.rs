@@ -13,7 +13,7 @@ use crate::{
         info::{current_state, jwt_info, status},
         lobby::try_contribute,
     },
-    io::{read_json_file, write_json_file},
+    io::read_json_file,
     keys::Keys,
     lobby::{clear_lobby_on_interval, SharedContributorState, SharedLobbyState},
     oauth::{
@@ -32,8 +32,10 @@ use axum::{
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
 use eyre::Result as EyreResult;
+use kzg_ceremony_crypto::BatchTranscript;
 use std::{
     env,
+    path::PathBuf,
     sync::{atomic::AtomicUsize, Arc},
 };
 use tokio::sync::RwLock;
@@ -49,17 +51,15 @@ mod lobby;
 mod oauth;
 mod sessions;
 mod storage;
-mod test_transcript;
 #[cfg(test)]
 mod test_util;
 mod util;
 
-pub type SharedTranscript<T> = Arc<RwLock<T>>;
+pub type Engine = kzg_ceremony_crypto::Arkworks;
+pub type SharedTranscript = Arc<RwLock<BatchTranscript>>;
 pub type SharedCeremonyStatus = Arc<AtomicUsize>;
 
 pub const SIZES: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
-
-pub type Engine = kzg_ceremony_crypto::Arkworks;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -76,8 +76,11 @@ pub struct Options {
     #[clap(flatten)]
     pub ethereum: EthAuthOptions,
 
-    #[clap(flatten)]
-    pub transcript: transcript::Options,
+    #[clap(long, env, default_value = "./transcript.json")]
+    pub transcript_file: PathBuf,
+
+    #[clap(long, env, default_value = "./transcript.json.next")]
+    pub transcript_in_progress_file: PathBuf,
 
     #[clap(flatten)]
     pub lobby: lobby::Options,
@@ -94,8 +97,7 @@ fn main() {
 async fn async_main(options: Options) -> EyreResult<()> {
     let keys = Arc::new(Keys::new(&options.keys).await?);
 
-    let transcript_data =
-        read_json_file::<BatchTranscript>(options.transcript.transcript_file.clone()).await;
+    let transcript_data = read_json_file::<BatchTranscript>(options.transcript_file.clone()).await;
     let transcript = Arc::new(RwLock::new(transcript_data));
 
     let active_contributor_state = SharedContributorState::default();
@@ -148,4 +150,26 @@ async fn async_main(options: Options) -> EyreResult<()> {
 #[allow(clippy::unused_async)] // Required for axum function signature
 async fn hello_world() -> Html<&'static str> {
     Html("<h1>Server is Running</h1>")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kzg_ceremony_crypto::{BatchContribution, BatchTranscript, G2};
+
+    pub fn test_transcript() -> BatchTranscript {
+        BatchTranscript::new([(4, 2)])
+    }
+
+    pub fn valid_contribution(transcript: &BatchTranscript, no: u8) -> BatchContribution {
+        let mut contribution = transcript.contribution();
+        contribution.add_entropy::<Engine>([no; 32]).unwrap();
+        contribution
+    }
+
+    pub fn invalid_contribution(transcript: &BatchTranscript, no: u8) -> BatchContribution {
+        let mut contribution = valid_contribution(transcript, no);
+        contribution.contributions[0].pubkey = G2::zero();
+        contribution
+    }
 }
