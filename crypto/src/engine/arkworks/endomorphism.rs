@@ -187,8 +187,10 @@ pub fn g1_mul_glv(p: &G1Affine, tau: Fr) -> G1Projective {
 
 #[cfg(test)]
 pub mod test {
-    use super::*;
-    use crate::test::{arb_fr, arb_g1, arb_g2};
+    use super::{
+        super::test::{arb_fr, arb_g1, arb_g2},
+        *,
+    };
     use ark_ec::AffineCurve;
     use ark_ff::{BigInteger256, PrimeField};
     use proptest::proptest;
@@ -255,8 +257,10 @@ pub mod test {
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
-    use super::*;
-    use crate::bench::{rand_fr, rand_g1, rand_g2};
+    use super::{
+        super::bench::{rand_fr, rand_g1, rand_g2},
+        *,
+    };
     use criterion::{black_box, BatchSize, Criterion};
 
     pub fn group(criterion: &mut Criterion) {

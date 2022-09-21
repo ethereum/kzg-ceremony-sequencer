@@ -1445,6 +1445,7 @@ dependencies = [
  "ark-ff",
  "criterion",
  "hex",
+ "hex-literal",
  "proptest",
  "rand",
  "rayon",

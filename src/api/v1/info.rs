@@ -47,7 +47,7 @@ pub async fn status(
 }
 
 pub async fn current_state(Extension(options): Extension<Options>) -> impl IntoResponse {
-    let f = match File::open(options.transcript.transcript_file).await {
+    let f = match File::open(options.transcript_file).await {
         Ok(file) => file,
         Err(_) => {
             return Err((
