@@ -11,6 +11,8 @@ mod arkworks;
 
 use crate::types::{CeremonyError, G1, G2};
 
+pub use self::arkworks::Arkworks;
+
 pub trait Engine {
     /// Verifies that the given G1 points are valid.
     fn validate_g1(points: &[G1]) -> Result<(), CeremonyError>;
@@ -36,11 +38,57 @@ pub trait Engine {
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
-    use criterion::Criterion;
-
-    use super::arkworks;
+    use super::*;
+    use crate::bench::rand_fr;
+    use ark_ff::UniformRand;
+    use criterion::{black_box, BatchSize, BenchmarkId, Criterion};
 
     pub fn group(criterion: &mut Criterion) {
         arkworks::bench::group(criterion);
+        bench_engine::<Arkworks>(criterion);
     }
+
+    fn bench_engine<E: Engine>(criterion: &mut Criterion) {
+        // todo!()
+    }
+
+    // fn bench_pow_tau(criterion: &mut Criterion) {
+    //     criterion.bench_function("contribution/pow_tau", move |bencher| {
+    //         let mut rng = rand::thread_rng();
+    //         let tau = Zeroizing::new(Fr::rand(&mut rng));
+    //         bencher.iter(||
+    // black_box(Contribution::pow_table(black_box(&tau), 32768)));     });
+    // }
+
+    // fn bench_add_tau(criterion: &mut Criterion) {
+    //     for size in crate::SIZES {
+    //         criterion.bench_with_input(
+    //             BenchmarkId::new("contribution/add_tau", format!("{:?}",
+    // size)),             &size,
+    //             move |bencher, (n1, n2)| {
+    //                 let mut contrib = Contribution::new(*n1, *n2);
+    //                 bencher.iter_batched(
+    //                     rand_fr,
+    //                     |tau| contrib.add_tau(&tau),
+    //                     BatchSize::SmallInput,
+    //                 );
+    //             },
+    //         );
+    //     }
+    // }
+
+    // fn bench_verify(criterion: &mut Criterion) {
+    //     for size in crate::SIZES {
+    //         criterion.bench_with_input(
+    //             BenchmarkId::new("contribution/verify", format!("{:?}",
+    // size)),             &size,
+    //             move |bencher, (n1, n2)| {
+    //                 let transcript = Transcript::new(*n1, *n2);
+    //                 let mut contrib = Contribution::new(*n1, *n2);
+    //                 contrib.add_tau(&rand_fr());
+    //                 bencher.iter(|| black_box(contrib.verify(&transcript)));
+    //             },
+    //         );
+    //     }
+    // }
 }

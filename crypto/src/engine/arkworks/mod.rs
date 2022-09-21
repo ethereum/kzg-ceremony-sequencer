@@ -15,7 +15,9 @@ use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
 use tracing::instrument;
 
-struct Arkworks;
+/// Arkworks implementation of [`Engine`] with additional endomorphism
+/// optimizations.
+pub struct Arkworks;
 
 impl Engine for Arkworks {
     #[instrument(level = "info", skip_all, fields(n=points.len()))]
