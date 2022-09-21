@@ -1,6 +1,9 @@
+use std::sync::atomic::Ordering;
+
 use crate::{
-    keys::{Keys, KEYS},
-    AppConfig, SharedState,
+    keys::{Keys, SharedKeys},
+    lobby::SharedLobbyState,
+    Options, SharedCeremonyStatus,
 };
 use axum::{
     body::StreamBody,
@@ -26,11 +29,16 @@ impl IntoResponse for StatusResponse {
     }
 }
 
-pub async fn status(Extension(store): Extension<SharedState>) -> StatusResponse {
-    let app_state = store.read().await;
+pub async fn status(
+    Extension(lobby_state): Extension<SharedLobbyState>,
+    Extension(ceremony_status): Extension<SharedCeremonyStatus>,
+) -> StatusResponse {
+    let lobby_size = {
+        let state = lobby_state.read().await;
+        state.participants.len()
+    };
 
-    let lobby_size = app_state.lobby.len();
-    let num_contributions = app_state.num_contributions;
+    let num_contributions = ceremony_status.load(Ordering::Relaxed);
 
     StatusResponse {
         lobby_size,
@@ -38,8 +46,8 @@ pub async fn status(Extension(store): Extension<SharedState>) -> StatusResponse 
     }
 }
 
-pub async fn current_state(Extension(config): Extension<AppConfig>) -> impl IntoResponse {
-    let f = match File::open(config.transcript_file).await {
+pub async fn current_state(Extension(options): Extension<Options>) -> impl IntoResponse {
+    let f = match File::open(options.transcript.transcript_file).await {
         Ok(file) => file,
         Err(_) => {
             return Err((
@@ -65,10 +73,9 @@ impl IntoResponse for JwtInfoResponse {
     }
 }
 
-// Returns the relevant JWT information
-#[allow(clippy::unused_async)] // Required for axum function signature
-pub async fn jwt_info() -> JwtInfoResponse {
-    let rsa_public_key_pem_as_string = KEYS.get().unwrap().decode_key_to_string();
+#[allow(clippy::unused_async)]
+pub async fn jwt_info(Extension(keys): Extension<SharedKeys>) -> JwtInfoResponse {
+    let rsa_public_key_pem_as_string = keys.decode_key_to_string();
 
     JwtInfoResponse {
         alg:         Keys::alg_str(),
