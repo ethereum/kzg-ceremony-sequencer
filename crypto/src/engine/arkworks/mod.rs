@@ -198,7 +198,7 @@ pub mod bench {
     use criterion::Criterion;
 
     pub fn group(criterion: &mut Criterion) {
-        bench_engine::<Arkworks>(criterion);
+        bench_engine::<Arkworks>(criterion, "arkworks");
         endomorphism::bench::group(criterion);
         zcash_format::bench::group(criterion);
     }

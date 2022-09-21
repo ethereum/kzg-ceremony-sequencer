@@ -40,54 +40,171 @@ pub trait Engine {
 #[doc(hidden)]
 pub mod bench {
     use super::*;
-    use criterion::Criterion;
+    use criterion::{BatchSize, BenchmarkId, Criterion};
+    use rand::Rng;
+    use std::iter;
 
     pub fn group(criterion: &mut Criterion) {
         #[cfg(feature = "arkworks")]
         arkworks::bench::group(criterion);
     }
 
-    pub(super) fn bench_engine<E: Engine>(_criterion: &mut Criterion) {
-        // todo!()
+    pub(super) fn bench_engine<E: Engine>(criterion: &mut Criterion, name: &str) {
+        bench_validate_g1::<E>(criterion, name);
+        bench_validate_g2::<E>(criterion, name);
+        bench_verify_pubkey::<E>(criterion, name);
+        bench_verify_g1::<E>(criterion, name);
+        bench_verify_g2::<E>(criterion, name);
+        bench_add_entropy_g1::<E>(criterion, name);
+        bench_add_entropy_g2::<E>(criterion, name);
     }
 
-    // fn bench_pow_tau(criterion: &mut Criterion) {
-    //     criterion.bench_function("contribution/pow_tau", move |bencher| {
-    //         let mut rng = rand::thread_rng();
-    //         let tau = Zeroizing::new(Fr::rand(&mut rng));
-    //         bencher.iter(||
-    // black_box(Contribution::pow_table(black_box(&tau), 32768)));     });
-    // }
+    const G1_SIZES: [usize; 5] = [1, 4096, 8192, 16384, 32768];
+    const G2_SIZES: [usize; 2] = [1, 65];
 
-    // fn bench_add_tau(criterion: &mut Criterion) {
-    //     for size in crate::SIZES {
-    //         criterion.bench_with_input(
-    //             BenchmarkId::new("contribution/add_tau", format!("{:?}",
-    // size)),             &size,
-    //             move |bencher, (n1, n2)| {
-    //                 let mut contrib = Contribution::new(*n1, *n2);
-    //                 bencher.iter_batched(
-    //                     rand_fr,
-    //                     |tau| contrib.add_tau(&tau),
-    //                     BatchSize::SmallInput,
-    //                 );
-    //             },
-    //         );
-    //     }
-    // }
+    fn rand_g1() -> G1 {
+        arkworks::bench::rand_g1().into()
+    }
 
-    // fn bench_verify(criterion: &mut Criterion) {
-    //     for size in crate::SIZES {
-    //         criterion.bench_with_input(
-    //             BenchmarkId::new("contribution/verify", format!("{:?}",
-    // size)),             &size,
-    //             move |bencher, (n1, n2)| {
-    //                 let transcript = Transcript::new(*n1, *n2);
-    //                 let mut contrib = Contribution::new(*n1, *n2);
-    //                 contrib.add_tau(&rand_fr());
-    //                 bencher.iter(|| black_box(contrib.verify(&transcript)));
-    //             },
-    //         );
-    //     }
-    // }
+    fn rand_g2() -> G2 {
+        arkworks::bench::rand_g2().into()
+    }
+
+    fn rand_entropy() -> [u8; 32] {
+        let mut rng = rand::thread_rng();
+        rng.gen()
+    }
+
+    fn bench_validate_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/validate_g1", name);
+        for size in G1_SIZES {
+            criterion.bench_with_input(
+                BenchmarkId::new(id.clone(), size),
+                &size,
+                move |bencher, &size| {
+                    bencher.iter_batched_ref(
+                        || iter::repeat(rand_g1()).take(size).collect::<Vec<_>>(),
+                        |points| E::validate_g1(&points).unwrap(),
+                        BatchSize::LargeInput,
+                    );
+                },
+            );
+        }
+    }
+
+    fn bench_validate_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/validate_g2", name);
+        for size in G2_SIZES {
+            criterion.bench_with_input(
+                BenchmarkId::new(id.clone(), size),
+                &size,
+                move |bencher, &size| {
+                    bencher.iter_batched_ref(
+                        || iter::repeat(rand_g2()).take(size).collect::<Vec<_>>(),
+                        |points| E::validate_g2(&points).unwrap(),
+                        BatchSize::LargeInput,
+                    );
+                },
+            );
+        }
+    }
+
+    fn bench_verify_pubkey<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/verify_pubkey", name);
+        criterion.bench_function(&id, move |bencher| {
+            bencher.iter_batched(
+                || (rand_g1(), rand_g1(), rand_g2()),
+                |(a, b, c)| E::verify_pubkey(a, b, c),
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    fn bench_verify_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/verify_g1", name);
+        for size in G1_SIZES {
+            criterion.bench_with_input(
+                BenchmarkId::new(id.clone(), size),
+                &size,
+                move |bencher, &size| {
+                    bencher.iter_batched_ref(
+                        || {
+                            (
+                                iter::repeat(rand_g1()).take(size).collect::<Vec<_>>(),
+                                rand_g2(),
+                            )
+                        },
+                        |(powers, tau)| E::verify_g1(powers, *tau),
+                        BatchSize::LargeInput,
+                    );
+                },
+            );
+        }
+    }
+
+    fn bench_verify_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/verify_g2", name);
+        for size in G2_SIZES {
+            criterion.bench_with_input(
+                BenchmarkId::new(id.clone(), size),
+                &size,
+                move |bencher, &size| {
+                    bencher.iter_batched_ref(
+                        || {
+                            (
+                                iter::repeat(rand_g1()).take(size).collect::<Vec<_>>(),
+                                iter::repeat(rand_g2()).take(size).collect::<Vec<_>>(),
+                            )
+                        },
+                        |(g1, g2)| E::verify_g2(g1, g2),
+                        BatchSize::LargeInput,
+                    );
+                },
+            );
+        }
+    }
+
+    fn bench_add_entropy_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/add_entropy_g1", name);
+        for size in G1_SIZES {
+            criterion.bench_with_input(
+                BenchmarkId::new(id.clone(), size),
+                &size,
+                move |bencher, &size| {
+                    bencher.iter_batched_ref(
+                        || {
+                            (
+                                rand_entropy(),
+                                iter::repeat(rand_g1()).take(size).collect::<Vec<_>>(),
+                            )
+                        },
+                        |(entropy, powers)| E::add_entropy_g1(*entropy, powers).unwrap(),
+                        BatchSize::LargeInput,
+                    );
+                },
+            );
+        }
+    }
+
+    fn bench_add_entropy_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/add_entropy_g2", name);
+        for size in G2_SIZES {
+            criterion.bench_with_input(
+                BenchmarkId::new(id.clone(), size),
+                &size,
+                move |bencher, &size| {
+                    bencher.iter_batched_ref(
+                        || {
+                            (
+                                rand_entropy(),
+                                iter::repeat(rand_g2()).take(size).collect::<Vec<_>>(),
+                            )
+                        },
+                        |(entropy, powers)| E::add_entropy_g2(*entropy, powers).unwrap(),
+                        BatchSize::LargeInput,
+                    );
+                },
+            );
+        }
+    }
 }

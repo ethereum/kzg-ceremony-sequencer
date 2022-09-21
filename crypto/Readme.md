@@ -13,5 +13,5 @@ cargo fmt && cargo clippy --all-targets --all-features && cargo build --release 
 Run benchmarks
 
 ```shell
-cargo bench --bench=criterion --features=bench
+cargo bench --bench=criterion --features=bench,arkworks
 ```
