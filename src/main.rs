@@ -13,7 +13,7 @@ use crate::{
         info::{current_state, jwt_info, status},
         lobby::try_contribute,
     },
-    io::read_json_file,
+    io::{read_or_create_transcript, CeremonySizes},
     keys::Keys,
     lobby::{clear_lobby_on_interval, SharedContributorState, SharedLobbyState},
     oauth::{
@@ -59,7 +59,7 @@ pub type Engine = kzg_ceremony_crypto::Arkworks;
 pub type SharedTranscript = Arc<RwLock<BatchTranscript>>;
 pub type SharedCeremonyStatus = Arc<AtomicUsize>;
 
-pub const SIZES: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
+pub const DEFAULT_CEREMONY_SIZES: &str = "4096,65:8192,65:16384,65:32768,65";
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -82,6 +82,9 @@ pub struct Options {
     #[clap(long, env, default_value = "./transcript.json.next")]
     pub transcript_in_progress_file: PathBuf,
 
+    #[clap(long, env, value_parser=CeremonySizes::parse_from_cmd, default_value=DEFAULT_CEREMONY_SIZES, multiple(false))]
+    pub ceremony_sizes: CeremonySizes,
+
     #[clap(flatten)]
     pub lobby: lobby::Options,
 
@@ -97,7 +100,12 @@ fn main() {
 async fn async_main(options: Options) -> EyreResult<()> {
     let keys = Arc::new(Keys::new(&options.keys).await?);
 
-    let transcript_data = read_json_file::<BatchTranscript>(options.transcript_file.clone()).await;
+    let transcript_data = read_or_create_transcript(
+        options.transcript_file.clone(),
+        options.transcript_in_progress_file.clone(),
+        &options.ceremony_sizes,
+    )
+    .await?;
     let transcript = Arc::new(RwLock::new(transcript_data));
 
     let active_contributor_state = SharedContributorState::default();
@@ -158,7 +166,7 @@ mod tests {
     use kzg_ceremony_crypto::{BatchContribution, BatchTranscript, G2};
 
     pub fn test_transcript() -> BatchTranscript {
-        BatchTranscript::new([(4, 2)])
+        BatchTranscript::new(&[(4, 2)])
     }
 
     pub fn valid_contribution(transcript: &BatchTranscript, no: u8) -> BatchContribution {
