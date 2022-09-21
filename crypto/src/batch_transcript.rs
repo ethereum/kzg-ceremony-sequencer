@@ -10,14 +10,14 @@ pub struct BatchTranscript {
 }
 
 impl BatchTranscript {
-    pub fn new<I>(iter: I) -> Self
+    pub fn new<'a, I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (usize, usize)>,
+        I: IntoIterator<Item = &'a (usize, usize)> + 'a,
     {
         Self {
             transcripts: iter
                 .into_iter()
-                .map(|(num_g1, num_g2)| Transcript::new(num_g1, num_g2))
+                .map(|(num_g1, num_g2)| Transcript::new(*num_g1, *num_g2))
                 .collect(),
         }
     }
