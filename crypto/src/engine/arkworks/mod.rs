@@ -1,14 +1,17 @@
+//! Arkworks implementation of [`Engine`].
+
 mod endomorphism;
 mod zcash_format;
 
 use std::iter;
 
-use self::endomorphism::{g1_subgroup_check, g2_subgroup_check};
+use self::endomorphism::{g1_mul_glv, g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
 use crate::types::{CeremonyError, ParseError, G1, G2};
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
 use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine};
-use ark_ff::{PrimeField, UniformRand, Zero};
+use ark_ff::{One, PrimeField, UniformRand, Zero};
+use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
 use tracing::instrument;
 
@@ -106,6 +109,36 @@ impl Engine for Arkworks {
         }
         Ok(())
     }
+
+    #[instrument(level = "info", skip_all, fields(n=powers.len()))]
+    fn add_tau_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError> {
+        let tau = random_scalar(entropy);
+        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * &tau))
+            .take(powers.len())
+            .collect::<Vec<_>>();
+        powers.par_iter_mut().zip(taus).try_for_each(|(p, tau)| {
+            let affine = G1Affine::try_from(*p)?;
+            let projective = g1_mul_glv(&affine, tau);
+            let affine = G1Affine::from(projective);
+            *p = affine.into();
+            Ok(())
+        })
+    }
+
+    #[instrument(level = "info", skip_all, fields(n=powers.len()))]
+    fn add_tau_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError> {
+        let tau = random_scalar(entropy);
+        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * &tau))
+            .take(powers.len())
+            .collect::<Vec<_>>();
+        powers.par_iter_mut().zip(taus).try_for_each(|(p, tau)| {
+            let affine = G2Affine::try_from(*p)?;
+            let projective = affine.mul(tau);
+            let affine = G2Affine::from(projective);
+            *p = affine.into();
+            Ok(())
+        })
+    }
 }
 
 fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
@@ -119,6 +152,12 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
     .take(n)
     .collect::<Vec<_>>();
     (factors, sum)
+}
+
+fn random_scalar(entropy: [u8; 32]) -> Fr {
+    // TODO: Use an explicit cryptographic rng.
+    let mut rng = StdRng::from_seed(entropy);
+    Fr::rand(&mut rng)
 }
 
 #[cfg(feature = "bench")]
