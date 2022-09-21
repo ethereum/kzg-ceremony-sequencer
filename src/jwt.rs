@@ -15,20 +15,17 @@ pub struct Receipt<T> {
 #[derive(Serialize)]
 pub struct SignedReceipt {
     pub receipt_message: String,
-    pub signature: Signature,
+    pub signature:       Signature,
 }
 
 impl<T: Serialize> Receipt<T> {
     pub async fn sign(&self, keys: &Keys) -> Result<SignedReceipt, JwtError> {
         let receipt_message = serde_json::to_string(self).unwrap();
-        keys
-            .sign(&receipt_message)
+        keys.sign(&receipt_message)
             .await
-            .map(move |signature| {
-                SignedReceipt {
-                    receipt_message,
-                    signature
-                }
+            .map(move |signature| SignedReceipt {
+                receipt_message,
+                signature,
             })
             .map_err(|_| JwtError::TokenCreation)
     }
@@ -49,8 +46,7 @@ pub struct IdToken {
 #[derive(Serialize)]
 pub struct SignedIdToken {
     pub token_message: String,
-    pub signature: Signature,
-
+    pub signature:     Signature,
 }
 
 impl IdToken {
@@ -65,14 +61,11 @@ impl IdToken {
     pub async fn sign(&self, keys: &Keys) -> Result<SignedIdToken, JwtError> {
         let token_message = serde_json::to_string(&self).unwrap();
 
-        keys
-            .sign(&token_message)
+        keys.sign(&token_message)
             .await
-            .map(move |signature| {
-                SignedIdToken {
-                    token_message,
-                    signature
-                }
+            .map(move |signature| SignedIdToken {
+                token_message,
+                signature,
             })
             .map_err(|_| JwtError::TokenCreation)
     }
@@ -84,7 +77,6 @@ impl IdToken {
             return Err(JwtError::InvalidToken);
         }
 
-        serde_json::from_str(&token.token_message)
-            .map_err(|_| JwtError::TokenCreation)
+        serde_json::from_str(&token.token_message).map_err(|_| JwtError::TokenCreation)
     }
 }

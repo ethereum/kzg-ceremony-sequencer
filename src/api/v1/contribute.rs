@@ -124,9 +124,7 @@ where
     storage.finish_contribution(&uid).await;
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
-    Ok(ContributeReceipt {
-        signed_receipt,
-    })
+    Ok(ContributeReceipt { signed_receipt })
 }
 
 #[cfg(test)]
@@ -153,7 +151,9 @@ mod tests {
     async fn shared_keys() -> SharedKeys {
         Arc::new(
             Keys::new(&keys::Options {
-                mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
+                mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon \
+                           abandon abandon abandon about"
+                    .into(),
             })
             .await
             .unwrap(),

@@ -1,20 +1,25 @@
 use clap::Parser;
-use ethers_signers::{coins_bip39::English, MnemonicBuilder, Signer, LocalWallet};
+use ethers_signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer};
 use eyre::Result;
 use serde::Serialize;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
-    #[clap(long, env, default_value = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")]
-    pub mnemonic: String
+    #[clap(
+        long,
+        env,
+        default_value = "abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+                         abandon abandon about"
+    )]
+    pub mnemonic: String,
 }
 
 #[derive(Serialize)]
 pub struct Signature(String);
 
 pub struct Keys {
-    wallet: LocalWallet
+    wallet: LocalWallet,
 }
 
 pub type SharedKeys = Arc<Keys>;
@@ -25,9 +30,7 @@ impl Keys {
         let wallet = MnemonicBuilder::<English>::default()
             .phrase(phrase)
             .build()?;
-        Ok(Self {
-            wallet
-        })
+        Ok(Self { wallet })
     }
 
     pub async fn sign(&self, message: &str) -> Result<Signature> {
@@ -48,7 +51,7 @@ impl Keys {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     #[tokio::test]
     async fn develop_crypto() {
@@ -59,13 +62,15 @@ mod tests {
         }
 
         let wallet = MnemonicBuilder::<English>::default()
-            .phrase("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
+            .phrase(
+                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+                 abandon about",
+            )
             .build()
             .unwrap();
 
         let message = wallet.sign_message(&[0, 1, 2]).await;
         println!("message: {:?}", message);
-
     }
 
     #[tokio::test]
@@ -82,7 +87,9 @@ mod tests {
         };
 
         let keys = Keys::new(&Options {
-            mnemonic:  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
+            mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+                       abandon abandon about"
+                .into(),
         })
         .await
         .unwrap();

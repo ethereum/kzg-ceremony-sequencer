@@ -1,10 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::{
-    keys::SharedKeys,
-    lobby::SharedLobbyState,
-    Options, SharedCeremonyStatus,
-};
+use crate::{keys::SharedKeys, lobby::SharedLobbyState, Options, SharedCeremonyStatus};
 use axum::{
     body::StreamBody,
     response::{IntoResponse, Response},
