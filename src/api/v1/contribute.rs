@@ -3,14 +3,14 @@ use axum::{
     Extension, Json,
 };
 use http::StatusCode;
-use kzg_ceremony_crypto::interface::{Contribution, Transcript};
+use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
 use serde_json::json;
 
 use crate::{
-    io::transcript::write_transcript_file,
+    io::write_transcript_file,
     jwt::{errors::JwtError, Receipt},
     storage::PersistentStorage,
-    AppConfig, SessionId, SharedState, SharedTranscript,
+    AppConfig, Engine, SessionId, SharedState, SharedTranscript,
 };
 
 pub struct ContributeReceipt {
@@ -25,7 +25,7 @@ impl IntoResponse for ContributeReceipt {
 
 pub enum ContributeError {
     NotUsersTurn,
-    InvalidContribution,
+    InvalidContribution(CeremoniesError),
     Auth(JwtError),
 }
 
@@ -36,8 +36,8 @@ impl IntoResponse for ContributeError {
                 let body = Json(json!({"error" : "not your turn to participate"}));
                 (StatusCode::BAD_REQUEST, body)
             }
-            Self::InvalidContribution => {
-                let body = Json(json!({"error" : "contribution invalid"}));
+            Self::InvalidContribution(e) => {
+                let body = Json(json!({ "error": format!("contribution invalid: {}", e) }));
                 (StatusCode::BAD_REQUEST, body)
             }
             Self::Auth(err) => return err.into_response(),
@@ -47,19 +47,14 @@ impl IntoResponse for ContributeError {
     }
 }
 
-pub async fn contribute<T>(
+pub async fn contribute(
     session_id: SessionId,
-    Json(contribution): Json<T::ContributionType>,
+    Json(contribution): Json<BatchContribution>,
     Extension(store): Extension<SharedState>,
     Extension(config): Extension<AppConfig>,
-    Extension(shared_transcript): Extension<SharedTranscript<T>>,
+    Extension(shared_transcript): Extension<SharedTranscript>,
     Extension(storage): Extension<PersistentStorage>,
-) -> Result<ContributeReceipt, ContributeError>
-where
-    T: Transcript + Send + Sync + 'static,
-    T::ContributionType: Send,
-    <<T as Transcript>::ContributionType as Contribution>::Receipt: Send,
-{
+) -> Result<ContributeReceipt, ContributeError> {
     // 1. Check if this person should be contributing
     let id_token = {
         let app_state = store.read().await;
@@ -78,27 +73,25 @@ where
     // when we auth participants, this is checked
 
     // 2. Check if the program state transition was correct
-    {
-        let transcript = shared_transcript.read().await;
-        if transcript.verify_contribution(&contribution).is_err() {
-            let mut app_state = store.write().await;
-            app_state.clear_current_contributor();
-            storage
-                .expire_contribution(id_token.unique_identifier())
-                .await;
-            return Err(ContributeError::InvalidContribution);
-        }
-    }
-
-    {
+    let result = {
         let mut transcript = shared_transcript.write().await;
-        *transcript = transcript.update(&contribution);
+        transcript
+            .verify_add::<Engine>(contribution.clone())
+            .map_err(ContributeError::InvalidContribution)
+    };
+    if result.is_err() {
+        let mut app_state = store.write().await;
+        app_state.clear_current_contributor();
+        storage
+            .expire_contribution(id_token.unique_identifier())
+            .await;
     }
+    result?;
 
     let receipt = {
         Receipt {
             id_token,
-            witness: contribution.get_receipt(),
+            witness: contribution.receipt(),
         }
     };
 
@@ -141,15 +134,9 @@ mod tests {
     use chrono::DateTime;
 
     use crate::{
-        api::v1::contribute::ContributeError,
-        constants, contribute, keys, read_transcript_file,
-        storage::test_storage_client,
-        test_transcript::{
-            TestContribution::{InvalidContribution, ValidContribution},
-            TestTranscript,
-        },
-        test_util::create_test_session_info,
-        AppConfig, Keys, SessionId, SharedState, SharedTranscript,
+        api::v1::contribute::ContributeError, constants, contribute, keys, read_transcript_file,
+        storage::test_storage_client, test_util::create_test_session_info, AppConfig, Keys,
+        SessionId, SharedState, SharedTranscript,
     };
 
     fn config() -> AppConfig {

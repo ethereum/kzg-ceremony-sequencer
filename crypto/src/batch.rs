@@ -1,4 +1,4 @@
-use crate::{CeremoniesError, Contribution, Engine, Transcript};
+use crate::{CeremoniesError, Contribution, Engine, Transcript, G2};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -81,6 +81,11 @@ impl BatchTranscript {
 }
 
 impl BatchContribution {
+    #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
+    pub fn receipt(&self) -> Vec<G2> {
+        self.contributions.iter().map(|c| c.pubkey).collect()
+    }
+
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
     pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremoniesError> {
         let entropies = derive_entropy(entropy, self.contributions.len());

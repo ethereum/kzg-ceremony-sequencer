@@ -22,7 +22,7 @@ pub use crate::{
 };
 
 #[cfg(feature = "arkworks")]
-pub use crate::engine::arkworks::Arkworks;
+pub use crate::engine::Arkworks;
 
 #[cfg(feature = "bench")]
 #[doc(hidden)]

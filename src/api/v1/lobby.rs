@@ -3,7 +3,7 @@ use axum::{
     Extension, Json,
 };
 use http::StatusCode;
-use kzg_ceremony_crypto::interface::Transcript;
+use kzg_ceremony_crypto::BatchContribution;
 use serde::Serialize;
 use serde_json::json;
 use tokio::time::{Duration, Instant};
@@ -62,12 +62,12 @@ impl<C: Serialize> IntoResponse for TryContributeResponse<C> {
     }
 }
 
-pub async fn try_contribute<T: Transcript + Send + Sync>(
+pub async fn try_contribute(
     session_id: SessionId,
     Extension(store): Extension<SharedState>,
     Extension(storage): Extension<PersistentStorage>,
-    Extension(transcript): Extension<SharedTranscript<T>>,
-) -> Result<TryContributeResponse<T::ContributionType>, TryContributeError> {
+    Extension(transcript): Extension<SharedTranscript>,
+) -> Result<TryContributeResponse<BatchContribution>, TryContributeError> {
     let store_clone = store.clone();
     let app_state = &mut store.write().await;
 
@@ -115,7 +115,7 @@ pub async fn try_contribute<T: Transcript + Send + Sync>(
     let transcript = transcript.read().await;
 
     Ok(TryContributeResponse {
-        contribution: transcript.get_contribution(),
+        contribution: transcript.contribution(),
     })
 }
 
@@ -154,14 +154,10 @@ pub async fn remove_participant_on_deadline(
 
 #[tokio::test]
 async fn lobby_try_contribute_test() {
-    use crate::{
-        storage::test_storage_client,
-        test_transcript::{TestContribution, TestTranscript},
-        test_util::create_test_session_info,
-    };
+    use crate::{storage::test_storage_client, test_util::create_test_session_info};
 
     let shared_state = SharedState::default();
-    let transcript = SharedTranscript::<TestTranscript>::default();
+    let transcript = SharedTranscript::default();
     let db = test_storage_client().await;
 
     let session_id = SessionId::new();

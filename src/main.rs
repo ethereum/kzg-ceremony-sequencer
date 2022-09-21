@@ -13,7 +13,6 @@ mod jwt;
 mod keys;
 mod sessions;
 mod storage;
-mod test_transcript;
 #[cfg(test)]
 mod test_util;
 
@@ -29,7 +28,7 @@ use crate::{
         LOBBY_CHECKIN_FREQUENCY_SEC, LOBBY_CHECKIN_TOLERANCE_SEC, LOBBY_FLUSH_INTERVAL,
         SIWE_OAUTH_AUTH_URL, SIWE_OAUTH_REDIRECT_URL, SIWE_OAUTH_TOKEN_URL,
     },
-    io::transcript::read_transcript_file,
+    io::read_json_file,
     keys::Keys,
 };
 use axum::{
@@ -42,7 +41,7 @@ use chrono::{DateTime, FixedOffset};
 use clap::Parser;
 use cli_batteries::{await_shutdown, version};
 use eyre::{bail, ensure, eyre, Result as EyreResult};
-use kzg_ceremony_crypto::types::BatchTranscript;
+use kzg_ceremony_crypto::BatchTranscript;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use sessions::{SessionId, SessionInfo};
 use std::{
@@ -63,10 +62,12 @@ use tower_http::trace::TraceLayer;
 use tracing::info;
 use url::{Host, Url};
 
-pub type SharedTranscript<T> = Arc<RwLock<T>>;
+pub type SharedTranscript = Arc<RwLock<BatchTranscript>>;
 pub(crate) type SharedState = Arc<RwLock<AppState>>;
 
 pub const SIZES: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
+
+pub type Engine = kzg_ceremony_crypto::Arkworks;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -80,19 +81,10 @@ pub struct Options {
 
 #[allow(dead_code)] // Entry point
 fn main() {
-    cli_batteries::run(
-        version!(crypto, small_powers_of_tau),
-        async_main::<BatchTranscript>,
-    );
+    cli_batteries::run(version!(crypto, small_powers_of_tau), async_main);
 }
 
-async fn async_main<T>(options: Options) -> EyreResult<()>
-where
-    T: kzg_ceremony_crypto::interface::Transcript + Send + Sync + 'static,
-    T::ContributionType: Send,
-    <<T as kzg_ceremony_crypto::interface::Transcript>::ContributionType as kzg_ceremony_crypto::interface::Contribution>::Receipt:
-        Send,
-{
+async fn async_main(options: Options) -> EyreResult<()> {
     // Load JWT keys
     keys::KEYS
         .set(Keys::new(options.keys).await?)
@@ -100,7 +92,7 @@ where
 
     let shared_state = SharedState::default();
     let config = AppConfig::default();
-    let transcript_data = read_transcript_file::<T>(config.transcript_file.clone()).await;
+    let transcript_data = read_json_file::<BatchTranscript>(config.transcript_file.clone()).await;
     let transcript = Arc::new(RwLock::new(transcript_data));
 
     let shared_state_clone = shared_state.clone();
@@ -116,8 +108,8 @@ where
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/siwe", get(siwe_callback))
-        .route("/lobby/try_contribute", post(try_contribute::<T>))
-        .route("/contribute", post(contribute::<T>))
+        .route("/lobby/try_contribute", post(try_contribute))
+        .route("/contribute", post(contribute))
         .route("/info/status", get(status))
         .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
