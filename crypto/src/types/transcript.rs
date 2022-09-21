@@ -43,7 +43,7 @@ impl Transcript {
     pub fn contribution(&self) -> Contribution {
         Contribution {
             powers: self.powers.clone(),
-            pubkey: G2::default(),
+            pubkey: G2::one(),
         }
     }
 

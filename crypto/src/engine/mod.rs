@@ -39,16 +39,14 @@ pub trait Engine {
 #[doc(hidden)]
 pub mod bench {
     use super::*;
-    use crate::bench::rand_fr;
-    use ark_ff::UniformRand;
-    use criterion::{black_box, BatchSize, BenchmarkId, Criterion};
+    use criterion::Criterion;
 
     pub fn group(criterion: &mut Criterion) {
         arkworks::bench::group(criterion);
         bench_engine::<Arkworks>(criterion);
     }
 
-    fn bench_engine<E: Engine>(criterion: &mut Criterion) {
+    fn bench_engine<E: Engine>(_criterion: &mut Criterion) {
         // todo!()
     }
 

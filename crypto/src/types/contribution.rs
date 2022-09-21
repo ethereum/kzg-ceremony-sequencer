@@ -22,7 +22,7 @@ impl Contribution {
         // Add entropy
         E::add_entropy_g1(entropy, &mut self.powers.g1)?;
         E::add_entropy_g2(entropy, &mut self.powers.g2)?;
-        let mut temp = [G2::default(), self.pubkey];
+        let mut temp = [G2::zero(), self.pubkey];
         E::add_entropy_g2(entropy, &mut temp)?;
         self.pubkey = temp[1];
 
@@ -38,7 +38,7 @@ mod test {
     fn contribution_json() {
         let value = Contribution {
             powers: Powers::new(2, 4),
-            pubkey: G2::default(),
+            pubkey: G2::one(),
         };
         let json = serde_json::to_value(&value).unwrap();
         assert_eq!(

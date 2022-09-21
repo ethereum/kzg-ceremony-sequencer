@@ -64,8 +64,8 @@ impl Powers {
     #[must_use]
     pub fn new(num_g1: usize, num_g2: usize) -> Self {
         Self {
-            g1: vec![G1::default(); num_g1],
-            g2: vec![G2::default(); num_g2],
+            g1: vec![G1::one(); num_g1],
+            g2: vec![G2::one(); num_g2],
         }
     }
 }
