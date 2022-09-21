@@ -230,12 +230,20 @@ mod tests {
         let cfg = config();
         let transcript = test_transcript();
         let contribution_1 = valid_contribution(&transcript, 1);
-        let contribution_2 = {
+        let transcript_1 = {
             let mut transcript = transcript.clone();
             transcript
                 .verify_add::<Engine>(contribution_1.clone())
                 .unwrap();
-            valid_contribution(&transcript, 2)
+            transcript
+        };
+        let contribution_2 = valid_contribution(&transcript_1, 2);
+        let transcript_2 = {
+            let mut transcript = transcript_1.clone();
+            transcript
+                .verify_add::<Engine>(contribution_2.clone())
+                .unwrap();
+            transcript
         };
         let shared_transcript = Arc::new(RwLock::new(transcript));
 
@@ -253,7 +261,7 @@ mod tests {
 
         assert!(matches!(result, Ok(_)));
         let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
-        assert_eq!(transcript, test_transcript());
+        assert_eq!(transcript, transcript_1);
 
         app_state.write().await.participant =
             Some((participant.clone(), create_test_session_info(100)));
@@ -269,6 +277,6 @@ mod tests {
 
         assert!(matches!(result, Ok(_)));
         let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
-        assert_eq!(transcript, test_transcript()); // TODO
+        assert_eq!(transcript, transcript_2);
     }
 }
