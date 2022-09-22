@@ -3,23 +3,19 @@ use eyre::Result;
 use jsonwebtoken::{
     decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
-use once_cell::sync::OnceCell;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tokio::try_join;
 use tracing::info;
-
-// TODO: Make part of app state instead of global
-pub static KEYS: OnceCell<Keys> = OnceCell::new();
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
     /// Public key file (.pem) to use for JWT verification
-    #[clap(long, env, default_value = "private.key")]
+    #[clap(long, env, default_value = "publickey.pem")]
     pub public_key: PathBuf,
 
     /// Private key file (.key) to use for JWT verification
-    #[clap(long, env, default_value = "publickey.pem")]
+    #[clap(long, env, default_value = "private.key")]
     pub private_key: PathBuf,
 }
 
@@ -29,8 +25,10 @@ pub struct Keys {
     pubkey:   String,
 }
 
+pub type SharedKeys = Arc<Keys>;
+
 impl Keys {
-    pub async fn new(options: Options) -> Result<Self> {
+    pub async fn new(options: &Options) -> Result<Self> {
         info!(public_key = ?options.public_key, private_key=?options.private_key, "Loading JWT keys");
         let (private_key, public_key) = try_join!(
             tokio::fs::read(&options.private_key),
@@ -87,7 +85,7 @@ mod tests {
             exp: 200_000_000_000,
         };
 
-        let keys = Keys::new(Options {
+        let keys = Keys::new(&Options {
             public_key:  "../publickey.pem".into(),
             private_key: "../private.key".into(),
         })

@@ -1,15 +1,15 @@
 /// Optimized subgroup checks.
 ///
 /// Endomorphism and subgroup checks taken from latest (unreleased) arkworks-rs:
-/// See [bls12_381/src/curves/g1.rs](https://github.com/arkworks-rs/curves/blob/dc555882cd867b1e5b6fb16f840ebb0b336136d1/bls12_381/src/curves/g1.rs#L48)
-/// See [bls12_381/src/curves/g2.rs](https://github.com/arkworks-rs/curves/blob/dc555882cd867b1e5b6fb16f840ebb0b336136d1/bls12_381/src/curves/g2.rs#L112)
+/// See [`bls12_381/src/curves/g1.rs`](https://github.com/arkworks-rs/curves/blob/dc555882cd867b1e5b6fb16f840ebb0b336136d1/bls12_381/src/curves/g1.rs#L48)
+/// See [`bls12_381/src/curves/g2.rs`](https://github.com/arkworks-rs/curves/blob/dc555882cd867b1e5b6fb16f840ebb0b336136d1/bls12_381/src/curves/g2.rs#L112)
 use ark_bls12_381::{Fq, Fr, G1Affine, G1Projective, G2Projective, Parameters};
 use ark_bls12_381::{Fq2, G2Affine};
 use ark_ec::{bls12::Bls12Parameters, AffineCurve, ProjectiveCurve};
 use ark_ff::{field_new, Field, PrimeField, Zero};
 use std::ops::{AddAssign, Neg};
 
-/// is_in_correct_subgroup_assuming_on_curve
+/// `is_in_correct_subgroup_assuming_on_curve` from arkworks
 #[inline]
 #[must_use]
 pub fn g1_subgroup_check(p: &G1Affine) -> bool {
@@ -48,8 +48,8 @@ pub fn g2_subgroup_check(point: &G2Affine) -> bool {
 }
 
 #[inline]
-#[must_use]
 fn g1_mul_bigint(base: &G1Affine, scalar: &[u64]) -> G1Projective {
+    // TODO: Small WNAF
     let mut res = G1Projective::zero();
     for b in ark_ff::BitIteratorBE::without_leading_zeros(scalar) {
         res.double_in_place();
@@ -61,8 +61,8 @@ fn g1_mul_bigint(base: &G1Affine, scalar: &[u64]) -> G1Projective {
 }
 
 #[inline]
-#[must_use]
 fn g1_mul_bigint_proj(base: &G1Projective, scalar: &[u64]) -> G1Projective {
+    // TODO: Small WNAF
     let mut res = G1Projective::zero();
     for b in ark_ff::BitIteratorBE::without_leading_zeros(scalar) {
         res.double_in_place();
@@ -74,8 +74,8 @@ fn g1_mul_bigint_proj(base: &G1Projective, scalar: &[u64]) -> G1Projective {
 }
 
 #[inline]
-#[must_use]
 fn g2_mul_bigint(base: &G2Affine, scalar: &[u64]) -> G2Projective {
+    // TODO: Small WNAF
     let mut res = G2Projective::zero();
     for b in ark_ff::BitIteratorBE::without_leading_zeros(scalar) {
         res.double_in_place();
@@ -87,7 +87,6 @@ fn g2_mul_bigint(base: &G2Affine, scalar: &[u64]) -> G2Projective {
 }
 
 #[inline]
-#[must_use]
 pub fn g1_endomorphism(p: &G1Affine) -> G1Affine {
     /// BETA is a non-trivial cubic root of unity in Fq.
     const BETA: Fq = field_new!(Fq, "793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620350");
@@ -95,13 +94,12 @@ pub fn g1_endomorphism(p: &G1Affine) -> G1Affine {
     // Endomorphism of the points on the curve.
     // endomorphism_p(x,y) = (BETA * x, y)
     // where BETA is a non-trivial cubic root of unity in Fq.
-    let mut res = (*p).clone();
+    let mut res = *p;
     res.x *= BETA;
     res
 }
 
 #[inline]
-#[must_use]
 pub fn g2_endomorphism(p: &G2Affine) -> G2Affine {
     // The p-power endomorphism for G2 is defined as follows:
     // 1. Note that G2 is defined on curve E': y^2 = x^3 + 4(u+1).
@@ -132,9 +130,9 @@ pub fn g2_endomorphism(p: &G2Affine) -> G2Affine {
     res.x.frobenius_map(1);
     res.y.frobenius_map(1);
 
-    let tmp_x = res.x.clone();
-    res.x.c0 = -P_POWER_ENDOMORPHISM_COEFF_0_1 * &tmp_x.c1;
-    res.x.c1 = P_POWER_ENDOMORPHISM_COEFF_0_1 * &tmp_x.c0;
+    let tmp_x = res.x;
+    res.x.c0 = -P_POWER_ENDOMORPHISM_COEFF_0_1 * tmp_x.c1;
+    res.x.c1 = P_POWER_ENDOMORPHISM_COEFF_0_1 * tmp_x.c0;
     res.y *= Fq2::new(
         P_POWER_ENDOMORPHISM_COEFF_1_0,
         P_POWER_ENDOMORPHISM_COEFF_1_1,
@@ -143,7 +141,7 @@ pub fn g2_endomorphism(p: &G2Affine) -> G2Affine {
     res
 }
 
-const G1_LAMBDA: u64 = 0xd201_0000_0001_0000;
+// const G1_LAMBDA: u64 = 0xd201_0000_0001_0000;
 const G1_LAMBDA_2: [u64; 2] = [0x0000_0001_0000_0000, 0xac45_a401_0001_a402];
 
 #[inline]
@@ -158,7 +156,6 @@ fn g1_split(tau: Fr) -> (u128, u128) {
 }
 
 /// Implements scalar-point multiplication using Gallant-Lambert-Vanstone (GLV).
-#[must_use]
 pub fn g1_mul_glv(p: &G1Affine, tau: Fr) -> G1Projective {
     let (k0, k1) = g1_split(tau);
 
@@ -171,6 +168,7 @@ pub fn g1_mul_glv(p: &G1Affine, tau: Fr) -> G1Projective {
     // Compute endomorphism
     let q = g1_endomorphism(p).neg();
     let pq = p.into_projective().add_mixed(&q);
+    // TODO: Small WNAF
 
     let mut res = G1Projective::zero();
     loop {
@@ -193,8 +191,10 @@ pub fn g1_mul_glv(p: &G1Affine, tau: Fr) -> G1Projective {
 
 #[cfg(test)]
 pub mod test {
-    use super::*;
-    use crate::test::{arb_fr, arb_g1, arb_g2};
+    use super::{
+        super::test::{arb_fr, arb_g1, arb_g2},
+        *,
+    };
     use ark_ec::AffineCurve;
     use ark_ff::{BigInteger256, PrimeField};
     use proptest::proptest;
@@ -240,7 +240,7 @@ pub mod test {
     #[test]
     fn test_g2_endomorphism() {
         proptest!(|(p in arb_g2())| {
-            let value = g2_endomorphism(&p);
+            let _value = g2_endomorphism(&p);
             // TODO: Compute expected value
             // let expected = g2_mul_bigint(&p, &G1_LAMBDA_2).neg().into_affine();
             // assert_eq!(value, expected);
@@ -261,8 +261,10 @@ pub mod test {
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
-    use super::*;
-    use crate::bench::{rand_fr, rand_g1, rand_g2};
+    use super::{
+        super::bench::{rand_fr, rand_g1, rand_g2},
+        *,
+    };
     use criterion::{black_box, BatchSize, Criterion};
 
     pub fn group(criterion: &mut Criterion) {
