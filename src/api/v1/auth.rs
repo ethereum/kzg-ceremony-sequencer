@@ -62,7 +62,7 @@ pub struct AuthUrl {
 impl IntoResponse for AuthUrl {
     fn into_response(self) -> Response {
         Json(json!({
-            "auth_url": self.siwe_auth_url,
+            "eth_auth_url": self.siwe_auth_url,
             "github_auth_url": self.github_auth_url,
         }))
         .into_response()

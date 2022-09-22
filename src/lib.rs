@@ -26,12 +26,13 @@ use crate::{
 use axum::{
     extract::Extension,
     response::Html,
-    routing::{get, post},
+    routing::{get, post, IntoMakeService},
     Router, Server,
 };
 use clap::Parser;
 use cli_batteries::await_shutdown;
 use eyre::Result as EyreResult;
+use hyper::server::conn::AddrIncoming;
 use kzg_ceremony_crypto::BatchTranscript;
 use std::{
     path::PathBuf,
@@ -92,6 +93,16 @@ pub struct Options {
 }
 
 pub async fn async_main(options: Options) -> EyreResult<()> {
+    let addr = options.server.clone();
+    let server = start_server(options).await?;
+    info!("Listening on http://{}{}", server.local_addr(), addr.path());
+    server.with_graceful_shutdown(await_shutdown()).await?;
+    Ok(())
+}
+
+pub async fn start_server(
+    options: Options,
+) -> EyreResult<Server<AddrIncoming, IntoMakeService<Router>>> {
     let keys = Arc::new(Keys::new(&options.keys).await?);
 
     let transcript_data = read_or_create_transcript(
@@ -143,10 +154,7 @@ pub async fn async_main(options: Options) -> EyreResult<()> {
     let (addr, prefix) = parse_url(&options.server)?;
     let app = Router::new().nest(prefix, app);
     let server = Server::try_bind(&addr)?.serve(app.into_make_service());
-    info!("Listening on http://{}{}", server.local_addr(), prefix);
-    server.with_graceful_shutdown(await_shutdown()).await?;
-
-    Ok(())
+    Ok(server)
 }
 
 #[allow(clippy::unused_async)] // Required for axum function signature
