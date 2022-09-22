@@ -151,3 +151,32 @@ mod test {
         assert_eq!(deser, value);
     }
 }
+
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench {
+    use super::*;
+    use crate::{Arkworks, Transcript};
+    use criterion::{BatchSize, Criterion};
+    use rand::Rng;
+
+    pub fn group(criterion: &mut Criterion) {
+        bench_sanity_check(criterion);
+    }
+
+    fn bench_sanity_check(criterion: &mut Criterion) {
+        criterion.bench_function("contribution/sanity_check", |b| {
+            let mut rng = rand::thread_rng();
+            let transcript = Transcript::new(32768, 65);
+            b.iter_batched_ref(
+                || {
+                    let mut contribution = transcript.contribution();
+                    contribution.add_entropy::<Arkworks>(rng.gen());
+                    contribution
+                },
+                |contribution| contribution.sanity_check().unwrap(),
+                BatchSize::LargeInput,
+            );
+        });
+    }
+}

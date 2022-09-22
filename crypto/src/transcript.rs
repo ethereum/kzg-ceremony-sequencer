@@ -11,7 +11,7 @@ pub struct Transcript {
     pub witness: Witness,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Witness {
     #[serde(rename = "runningProducts")]
     pub products: Vec<G1>,
@@ -21,6 +21,14 @@ pub struct Witness {
 }
 
 impl Transcript {
+    pub fn num_contributions(&self) -> usize {
+        self.witness.pubkeys.len() - 1
+    }
+
+    pub fn has_entropy(&self) -> bool {
+        self.num_contributions() > 0
+    }
+
     /// Create a new transcript for a ceremony of a given size.
     ///
     /// # Panics
@@ -34,7 +42,10 @@ impl Transcript {
         assert!(num_g1 >= num_g2);
         Self {
             powers:  Powers::new(num_g1, num_g2),
-            witness: Witness::default(),
+            witness: Witness {
+                products: vec![G1::one()],
+                pubkeys:  vec![G2::one()],
+            },
         }
     }
 
@@ -51,22 +62,12 @@ impl Transcript {
     #[instrument(level = "info", skip_all, fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn verify<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
         // Sanity checks
-        contribution.sanity_check()?;
-        if self.powers.g1.len() < 2 {
-            return Err(CeremonyError::UnsupportedNumG1Powers(self.powers.g1.len()));
-        }
-        if self.powers.g2.len() < 2 {
-            return Err(CeremonyError::UnsupportedNumG2Powers(self.powers.g2.len()));
-        }
-        if self.powers.g1.len() < self.powers.g2.len() {
-            return Err(CeremonyError::UnsuportedMoreG2Powers(
-                self.powers.g1.len(),
-                self.powers.g2.len(),
-            ));
-        }
+        self.sanity_check()?;
         if !contribution.has_entropy() {
             return Err(CeremonyError::ContributionNoEntropy);
         }
+        contribution.sanity_check()?;
+
         // TODO: More sanity checks:
         // - No values are zero.
         // - All g1 values (both in transcript and contribution) must be unique
@@ -114,6 +115,48 @@ impl Transcript {
         self.witness.products.push(contribution.powers.g1[1]);
         self.witness.pubkeys.push(contribution.pubkey);
         self.powers = contribution.powers;
+    }
+
+    /// Sanity checks based on equality constraints and zero/one values.
+    ///
+    /// Note that these checks require the point encoding to be a bijection.
+    /// This must be checked by the cryptographic [`Engine`].
+    #[instrument(level = "info", skip_all, , fields(
+        n1=self.powers.g1.len(),
+        n2=self.powers.g2.len(),
+        n=self.witness.products.len()
+    ))]
+    pub fn sanity_check(&self) -> Result<(), CeremonyError> {
+        // Sane number of powers and witness
+        if self.powers.g1.len() < 2 {
+            return Err(CeremonyError::UnsupportedNumG1Powers(self.powers.g1.len()));
+        }
+        if self.powers.g2.len() < 2 {
+            return Err(CeremonyError::UnsupportedNumG2Powers(self.powers.g2.len()));
+        }
+        if self.powers.g1.len() < self.powers.g2.len() {
+            return Err(CeremonyError::UnsupportedMoreG2Powers(
+                self.powers.g1.len(),
+                self.powers.g2.len(),
+            ));
+        }
+        if self.witness.products.len() != self.witness.pubkeys.len() {
+            return Err(CeremonyError::WitnessLengthMismatch(
+                self.witness.products.len(),
+                self.witness.pubkeys.len(),
+            ));
+        }
+
+        // If there is no entropy all values must be one.
+        if !self.has_entropy() {
+            // TODO
+        }
+
+        // Otherwise, the first values in powers and witness must be one, and all
+        // other values non-zero, non-one and unique (also unique between powers and
+        // witness, except for g2[1] == pubkey[1] when n=2 and g1[2] == product.last()).
+        // TODO
+        Ok(())
     }
 }
 
