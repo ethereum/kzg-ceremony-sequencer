@@ -1,7 +1,6 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::{CeremonyError, Engine, Powers, G1, G2};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -14,6 +13,7 @@ pub struct Contribution {
 
 impl Contribution {
     /// Check if the contribution has any entropy added.
+    #[must_use]
     pub fn has_entropy(&self) -> bool {
         self.pubkey != G2::one()
     }

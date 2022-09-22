@@ -108,7 +108,7 @@ impl Transcript {
         Ok(())
     }
 
-    /// Adds a contribution to the transcaipt. The contribution must be
+    /// Adds a contribution to the transcript. The contribution must be
     /// verified.
     pub fn add(&mut self, contribution: Contribution) {
         self.witness.products.push(contribution.powers.g1[1]);
