@@ -21,6 +21,10 @@ mimalloc = ["cli-batteries/mimalloc"]
 
 # Dummy lib target so we can run doc tests
 [lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "kzg-ceremony-sequencer"
 path = "src/main.rs"
 
 [workspace]
