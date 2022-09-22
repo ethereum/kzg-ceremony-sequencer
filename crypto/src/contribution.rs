@@ -155,7 +155,6 @@ mod test {
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
-    use super::*;
     use crate::{Arkworks, Transcript};
     use criterion::{BatchSize, Criterion};
     use rand::Rng;
@@ -171,7 +170,7 @@ pub mod bench {
             b.iter_batched_ref(
                 || {
                     let mut contribution = transcript.contribution();
-                    contribution.add_entropy::<Arkworks>(rng.gen());
+                    contribution.add_entropy::<Arkworks>(rng.gen()).unwrap();
                     contribution
                 },
                 |contribution| contribution.sanity_check().unwrap(),
