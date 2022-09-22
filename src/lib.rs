@@ -30,11 +30,10 @@ use axum::{
     Router, Server,
 };
 use clap::Parser;
-use cli_batteries::{await_shutdown, version};
+use cli_batteries::await_shutdown;
 use eyre::Result as EyreResult;
 use kzg_ceremony_crypto::BatchTranscript;
 use std::{
-    env,
     path::PathBuf,
     sync::{atomic::AtomicUsize, Arc},
 };
