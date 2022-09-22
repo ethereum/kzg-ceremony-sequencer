@@ -436,3 +436,8 @@ async fn post_authenticate(
         session_id: session_id.to_string(),
     })
 }
+
+#[cfg(test)]
+mod test {
+
+}
