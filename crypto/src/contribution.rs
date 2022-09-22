@@ -1,4 +1,6 @@
-use crate::{CeremonyError, Engine, Powers, G2};
+use std::collections::{HashMap, HashSet};
+
+use crate::{CeremonyError, Engine, Powers, G1, G2};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -11,8 +13,17 @@ pub struct Contribution {
 }
 
 impl Contribution {
+    /// Check if the contribution has any entropy added.
+    pub fn has_entropy(&self) -> bool {
+        self.pubkey != G2::one()
+    }
+
+    /// Adds entropy to this contribution. Can be called multiple times.
     #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremonyError> {
+        // Basic checks
+        self.sanity_check()?;
+
         // Validate points
         E::validate_g1(&self.powers.g1)?;
         E::validate_g2(&self.powers.g2)?;
@@ -24,6 +35,79 @@ impl Contribution {
         let mut temp = [G2::zero(), self.pubkey];
         E::add_entropy_g2(entropy, &mut temp)?;
         self.pubkey = temp[1];
+
+        Ok(())
+    }
+
+    /// Sanity checks based on equality constraints and zero/one values.
+    #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
+    pub fn sanity_check(&self) -> Result<(), CeremonyError> {
+        // Check that the number of powers is sensible
+        if self.powers.g1.len() < 2 {
+            return Err(CeremonyError::UnsupportedNumG1Powers(self.powers.g1.len()));
+        }
+        if self.powers.g2.len() < 2 {
+            return Err(CeremonyError::UnsupportedNumG2Powers(self.powers.g2.len()));
+        }
+
+        // Zero values are never allowed
+        if self.pubkey == G2::zero() {
+            return Err(CeremonyError::ZeroPubkey);
+        }
+        for (i, g1) in self.powers.g1.iter().enumerate() {
+            if *g1 == G1::zero() {
+                return Err(CeremonyError::ZeroG1(i));
+            }
+        }
+        for (i, g2) in self.powers.g2.iter().enumerate() {
+            if *g2 == G2::zero() {
+                return Err(CeremonyError::ZeroG2(i));
+            }
+        }
+
+        // First values must be the generator
+        if self.powers.g1[0] != G1::one() {
+            return Err(CeremonyError::InvalidG1FirstValue);
+        }
+        if self.powers.g2[0] != G2::one() {
+            return Err(CeremonyError::InvalidG2FirstValue);
+        }
+
+        // If there is no entropy yet, all values must be one.
+        if self.pubkey == G2::one()
+            && self.powers.g1.iter().all(|g1| *g1 == G1::one())
+            && self.powers.g2.iter().all(|g2| *g2 == G2::one())
+        {
+            return Ok(());
+        }
+
+        // All g1 values must be unique
+        let mut set = HashMap::<G1, usize>::new();
+        for (i, g1) in self.powers.g1.iter().enumerate().skip(1) {
+            if *g1 == G1::one() {
+                return Err(CeremonyError::InvalidG1One(i));
+            }
+            if let Some(j) = set.get(g1) {
+                return Err(CeremonyError::DuplicateG1(*j, i));
+            }
+            set.insert(*g1, i);
+        }
+
+        // All g2 values must be unique, but if this is the first contribution, g2[1]
+        // may match pubkey.
+        let mut set = HashMap::<G2, usize>::new();
+        for (i, g2) in self.powers.g2.iter().enumerate().skip(1) {
+            if *g2 == G2::one() {
+                return Err(CeremonyError::InvalidG2One(i));
+            }
+            if i > 1 && *g2 == self.pubkey {
+                return Err(CeremonyError::InvalidG2Pubkey(i));
+            }
+            if let Some(j) = set.get(g2) {
+                return Err(CeremonyError::DuplicateG2(*j, i));
+            }
+            set.insert(*g2, i);
+        }
 
         Ok(())
     }
