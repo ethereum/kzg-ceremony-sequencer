@@ -5,16 +5,17 @@
 mod endomorphism;
 mod zcash_format;
 
-use std::iter;
-
 use self::endomorphism::{g1_mul_glv, g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
 use crate::{CeremonyError, ParseError, G1, G2};
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve, wnaf::WnafContext};
+use ark_ec::{
+    msm::VariableBaseMSM, wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve,
+};
 use ark_ff::{One, PrimeField, UniformRand, Zero};
 use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
+use std::iter;
 use tracing::instrument;
 
 /// Arkworks implementation of [`Engine`] with additional endomorphism
@@ -141,10 +142,12 @@ impl Engine for Arkworks {
         let mut projective = powers
             .par_iter()
             .zip(taus)
-            .map(|(p, tau)| G2Affine::try_from(*p).map(|p| {
-                let wnaf = WnafContext::new(5);
-                wnaf.mul(p.into(), &tau)
-            }))
+            .map(|(p, tau)| {
+                G2Affine::try_from(*p).map(|p| {
+                    let wnaf = WnafContext::new(5);
+                    wnaf.mul(p.into(), &tau)
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
         G2Projective::batch_normalization(&mut projective);
         for (p, a) in powers.iter_mut().zip(projective) {
