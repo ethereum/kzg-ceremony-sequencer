@@ -271,3 +271,30 @@ jobs:
         run: |
           docker tag $IMAGE_ID $IMAGE_LATEST
           docker push $IMAGE_LASTEST
+
+  push_to_docker:
+    name: Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [build_and_push]
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          # Access token `kzg-ceremony-sequencer-github-actions`
+          username: remcob
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Push commit tag
+        run: |
+          docker tag $IMAGE_ID remcob/kzg-ceremony-sequencer:${{ github.sha }}
+          docker push remcob/kzg-ceremony-sequencer:${{ github.sha }}
+      - name: Push latest tag
+        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+        run: |
+          docker tag $IMAGE_ID remcob/kzg-ceremony-sequencer:latest
+          docker push remcob/kzg-ceremony-sequencer:latest
