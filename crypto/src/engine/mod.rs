@@ -94,7 +94,7 @@ pub mod bench {
                 move |bencher, &size| {
                     bencher.iter_batched_ref(
                         || iter::repeat(rand_g1()).take(size).collect::<Vec<_>>(),
-                        |points| E::validate_g1(&points).unwrap(),
+                        |points| E::validate_g1(points).unwrap(),
                         BatchSize::LargeInput,
                     );
                 },
@@ -111,7 +111,7 @@ pub mod bench {
                 move |bencher, &size| {
                     bencher.iter_batched_ref(
                         || iter::repeat(rand_g2()).take(size).collect::<Vec<_>>(),
-                        |points| E::validate_g2(&points).unwrap(),
+                        |points| E::validate_g2(points).unwrap(),
                         BatchSize::LargeInput,
                     );
                 },

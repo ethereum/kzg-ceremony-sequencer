@@ -23,7 +23,7 @@ pub enum CeremonyError {
     #[error("Inconsistent number of G2 powers: numG2Powers = {0}, len = {1}")]
     InconsistentNumG2Powers(usize, usize),
     #[error("Unsupported: more G2 than G1 powers: numG2Powers = {0}, numG2Powers = {1}")]
-    UnsuportedMoreG2Powers(usize, usize),
+    UnsupportedMoreG2Powers(usize, usize),
     #[error("Error parsing G1 power {0}: {1}")]
     InvalidG1Power(usize, #[source] ParseError),
     #[error("Error parsing G2 power {0}: {1}")]
@@ -64,6 +64,8 @@ pub enum CeremonyError {
     DuplicateG2(usize, usize),
     #[error("Contribution contains no entropy: pubkey equals generator")]
     ContributionNoEntropy,
+    #[error("Mismatch in witness length: {0} products and {1} pubkeys")]
+    WitnessLengthMismatch(usize, usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
