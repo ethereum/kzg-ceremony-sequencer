@@ -16,9 +16,15 @@ pub use self::arkworks::Arkworks;
 
 pub trait Engine {
     /// Verifies that the given G1 points are valid.
+    ///
+    /// Valid mean that they are uniquely encoded in compressed ZCash format and
+    /// represent curve points in the prime order subgroup.
     fn validate_g1(points: &[G1]) -> Result<(), CeremonyError>;
 
     /// Verifies that the given G2 points are valid.
+    ///
+    /// Valid mean that they are uniquely encoded in compressed ZCash format and
+    /// represent curve points in the prime order subgroup.
     fn validate_g2(points: &[G2]) -> Result<(), CeremonyError>;
 
     /// Verify that the pubkey contains the contribution added
@@ -31,8 +37,12 @@ pub trait Engine {
     /// Verify that `g1` and `g2` contain the same values.
     fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError>;
 
+    /// Derive a secret scalar $τ$ from the given entropy and multiply elements
+    /// of `powers` by powers of $τ$.
     fn add_entropy_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError>;
 
+    /// Derive a secret scalar $τ4 from the given entropy and multiply elements
+    /// of `powers` by powers of $τ$.
     fn add_entropy_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError>;
 }
 

@@ -40,6 +40,9 @@ impl Contribution {
     }
 
     /// Sanity checks based on equality constraints and zero/one values.
+    ///
+    /// Note that these checks require the point encoding to be a bijection.
+    /// This must be checked by the cryptographic [`Engine`].
     #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn sanity_check(&self) -> Result<(), CeremonyError> {
         // Check that the number of powers is sensible
