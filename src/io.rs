@@ -19,22 +19,22 @@ impl CeremonySizes {
     /// number of, respectively, G1 and G2 points in consecutive ceremonies.
     /// For example, `1,2:3,4:5,6` denotes 3 ceremonies, the first containing
     /// 1 G1 point and 2 G2 points.
-    pub fn parse_from_cmd(cmd: &str) -> eyre::Result<CeremonySizes> {
-        let ceremonies = cmd.split(":");
+    pub fn parse_from_cmd(cmd: &str) -> eyre::Result<Self> {
+        let ceremonies = cmd.split(':');
         let parsed_ceremonies: Vec<_> = ceremonies
             .map(|ceremony| {
-                let parts = ceremony.split(",").collect::<Vec<_>>();
-                if parts.len() != 2 {
-                    Err(eyre!("Invalid ceremony sizes description {ceremony}"))
-                } else {
+                let parts = ceremony.split(',').collect::<Vec<_>>();
+                if parts.len() == 2 {
                     Ok((parts[0].parse()?, parts[1].parse()?))
+                } else {
+                    Err(eyre!("Invalid ceremony sizes description {ceremony}"))
                 }
             })
             .collect::<eyre::Result<_>>()?;
-        if parsed_ceremonies.len() == 0 {
+        if parsed_ceremonies.is_empty() {
             return Err(eyre!("Must specify at least one ceremony"));
         }
-        Ok(CeremonySizes {
+        Ok(Self {
             sizes: parsed_ceremonies,
         })
     }
@@ -86,15 +86,15 @@ pub async fn read_or_create_transcript(
     work_path: PathBuf,
     ceremony_sizes: &CeremonySizes,
 ) -> eyre::Result<SharedTranscript> {
-    if !path.exists() {
+    if path.exists() {
+        let transcript = read_json_file::<BatchTranscript>(path).await;
+        ceremony_sizes.validate_batch_transcript(&transcript)?;
+        Ok(Arc::new(RwLock::new(transcript)))
+    } else {
         let transcript = BatchTranscript::new(&ceremony_sizes.sizes);
         let shared_transcript = Arc::new(RwLock::new(transcript));
         write_json_file(path, work_path, shared_transcript.clone()).await;
         Ok(shared_transcript)
-    } else {
-        let transcript = read_json_file::<BatchTranscript>(path).await;
-        ceremony_sizes.validate_batch_transcript(&transcript)?;
-        Ok(Arc::new(RwLock::new(transcript)))
     }
 }
 

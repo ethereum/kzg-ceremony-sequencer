@@ -50,9 +50,28 @@ impl Transcript {
     /// Verifies a contribution.
     #[instrument(level = "info", skip_all, fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn verify<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
-        assert!(self.powers.g1.len() >= 2);
-        assert!(self.powers.g2.len() >= 2);
-        assert!(self.powers.g1.len() >= self.powers.g2.len());
+        // Sanity checks
+        contribution.sanity_check()?;
+        if self.powers.g1.len() < 2 {
+            return Err(CeremonyError::UnsupportedNumG1Powers(self.powers.g1.len()));
+        }
+        if self.powers.g2.len() < 2 {
+            return Err(CeremonyError::UnsupportedNumG2Powers(self.powers.g2.len()));
+        }
+        if self.powers.g1.len() < self.powers.g2.len() {
+            return Err(CeremonyError::UnsuportedMoreG2Powers(
+                self.powers.g1.len(),
+                self.powers.g2.len(),
+            ));
+        }
+        if !contribution.has_entropy() {
+            return Err(CeremonyError::ContributionNoEntropy);
+        }
+        // TODO: More sanity checks:
+        // - No values are zero.
+        // - All g1 values (both in transcript and contribution) must be unique
+        // - All g2 values (both in transcript and contribution) must be unique, except
+        //   for pubkey on the first contribution.
 
         // Compatibility checks
         if self.powers.g1.len() != contribution.powers.g1.len() {
@@ -67,13 +86,6 @@ impl Transcript {
                 contribution.powers.g2.len(),
             ));
         }
-
-        // Basic uniqueness checks.
-        // All g1 powers must be unique. All g2 powers must be unique.
-        // The pubkey must be unique in the pubkey set. The pubkey can not be in the g2
-        // powers (except for the first contribution?).
-
-        // TODO
 
         // Verify the contribution points (encoding and subgroup checks).
         E::validate_g1(&contribution.powers.g1)?;
@@ -96,7 +108,7 @@ impl Transcript {
         Ok(())
     }
 
-    /// Adds a contribution to the transcaipt. The contribution must be
+    /// Adds a contribution to the transcript. The contribution must be
     /// verified.
     pub fn add(&mut self, contribution: Contribution) {
         self.witness.products.push(contribution.powers.g1[1]);
