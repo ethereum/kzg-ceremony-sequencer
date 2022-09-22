@@ -8,6 +8,7 @@
 #![allow(clippy::missing_errors_doc)] // TODO
 
 mod arkworks;
+mod blst;
 
 use crate::{CeremonyError, G1, G2};
 
@@ -208,3 +209,32 @@ pub mod bench {
         }
     }
 }
+
+mod tests {
+    use super::{*, blst::BLST};
+
+    #[test]
+    fn test_g1() {
+        let g_e1 = &mut [G1::one(), G1::one(), G1::one()];
+        let g_e2 = &mut [G1::one(), G1::one(), G1::one()];
+        
+        BLST::add_entropy_g1([0; 32], g_e1).unwrap();
+        Arkworks::add_entropy_g1([0; 32], g_e2).unwrap();
+
+        assert_eq!(g_e1, g_e2);
+    }
+
+    #[test]
+    fn test_g2() {
+        let g_e1 = &mut [G2::one(), G2::one(), G2::one()];
+        let g_e2 = &mut [G2::one(), G2::one(), G2::one()];
+        
+        BLST::add_entropy_g2([0; 32], g_e1).unwrap();
+        Arkworks::add_entropy_g2([0; 32], g_e2).unwrap();
+
+        assert_eq!(g_e1, g_e2);
+    }
+}
+
+
+

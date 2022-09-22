@@ -12,8 +12,8 @@ use super::Engine;
 use crate::{CeremonyError, ParseError, G1, G2};
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
 use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine};
-use ark_ff::{One, PrimeField, UniformRand, Zero};
-use rand::{rngs::StdRng, SeedableRng};
+use ark_ff::{One, PrimeField, UniformRand, Zero, Field};
+use rand::{rngs::StdRng, SeedableRng, RngCore};
 use rayon::prelude::*;
 use tracing::instrument;
 
@@ -160,8 +160,10 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
 
 fn random_scalar(entropy: [u8; 32]) -> Fr {
     // TODO: Use an explicit cryptographic rng.
+    let mut data = [0u8; 32];
     let mut rng = StdRng::from_seed(entropy);
-    Fr::rand(&mut rng)
+    rng.fill_bytes(&mut data);
+    Fr::from_be_bytes_mod_order(&data)
 }
 
 #[cfg(test)]
