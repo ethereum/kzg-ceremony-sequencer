@@ -236,7 +236,7 @@ pub async fn github_callback(
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
     let response = http_client
-        .get("https://api.github.com/user")
+        .get(options.github.userinfo_url)
         .bearer_auth(token.access_token().secret())
         .header("User-Agent", "ethereum-kzg-ceremony-sequencer")
         .send()

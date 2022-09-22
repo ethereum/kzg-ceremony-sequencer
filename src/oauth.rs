@@ -159,6 +159,14 @@ pub struct GithubAuthOptions {
         default_value = "https://github.com/login/oauth/access_token"
     )]
     pub token_url: String,
+
+    #[clap(
+        long = "github-userinfo-url",
+        env = "GITHUB_USERINFO_URL",
+        name = "GITHUB_USERINFO_URL",
+        default_value = "https://api.github.com/user"
+    )]
+    pub userinfo_url: String,
 }
 
 #[derive(Clone)]
