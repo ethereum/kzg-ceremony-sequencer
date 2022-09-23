@@ -62,7 +62,7 @@ pub struct AuthUrl {
 impl IntoResponse for AuthUrl {
     fn into_response(self) -> Response {
         Json(json!({
-            "auth_url": self.siwe_auth_url,
+            "eth_auth_url": self.siwe_auth_url,
             "github_auth_url": self.github_auth_url,
         }))
         .into_response()
@@ -236,7 +236,7 @@ pub async fn github_callback(
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
     let response = http_client
-        .get("https://api.github.com/user")
+        .get(options.github.userinfo_url)
         .bearer_auth(token.access_token().secret())
         .header("User-Agent", "ethereum-kzg-ceremony-sequencer")
         .send()

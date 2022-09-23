@@ -28,7 +28,7 @@ impl IntoResponse for StatusResponse {
 pub async fn status(
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(ceremony_status): Extension<SharedCeremonyStatus>,
-    Extension(keys): Extension<SharedKeys>
+    Extension(keys): Extension<SharedKeys>,
 ) -> StatusResponse {
     let lobby_size = {
         let state = lobby_state.read().await;
@@ -38,7 +38,6 @@ pub async fn status(
     let num_contributions = ceremony_status.load(Ordering::Relaxed);
     let sequencer_address = keys.address();
 
-
     StatusResponse {
         lobby_size,
         num_contributions,
@@ -47,7 +46,7 @@ pub async fn status(
 }
 
 pub async fn current_state(Extension(options): Extension<Options>) -> impl IntoResponse {
-    let f = match File::open(options.transcript.transcript_file).await {
+    let f = match File::open(options.transcript_file).await {
         Ok(file) => file,
         Err(_) => {
             return Err((

@@ -49,6 +49,7 @@ pub fn g2_subgroup_check(point: &G2Affine) -> bool {
 
 #[inline]
 fn g1_mul_bigint(base: &G1Affine, scalar: &[u64]) -> G1Projective {
+    // TODO: Small WNAF
     let mut res = G1Projective::zero();
     for b in ark_ff::BitIteratorBE::without_leading_zeros(scalar) {
         res.double_in_place();
@@ -61,6 +62,7 @@ fn g1_mul_bigint(base: &G1Affine, scalar: &[u64]) -> G1Projective {
 
 #[inline]
 fn g1_mul_bigint_proj(base: &G1Projective, scalar: &[u64]) -> G1Projective {
+    // TODO: Small WNAF
     let mut res = G1Projective::zero();
     for b in ark_ff::BitIteratorBE::without_leading_zeros(scalar) {
         res.double_in_place();
@@ -73,6 +75,7 @@ fn g1_mul_bigint_proj(base: &G1Projective, scalar: &[u64]) -> G1Projective {
 
 #[inline]
 fn g2_mul_bigint(base: &G2Affine, scalar: &[u64]) -> G2Projective {
+    // TODO: Small WNAF
     let mut res = G2Projective::zero();
     for b in ark_ff::BitIteratorBE::without_leading_zeros(scalar) {
         res.double_in_place();
@@ -165,6 +168,7 @@ pub fn g1_mul_glv(p: &G1Affine, tau: Fr) -> G1Projective {
     // Compute endomorphism
     let q = g1_endomorphism(p).neg();
     let pq = p.into_projective().add_mixed(&q);
+    // TODO: Small WNAF
 
     let mut res = G1Projective::zero();
     loop {
@@ -187,8 +191,10 @@ pub fn g1_mul_glv(p: &G1Affine, tau: Fr) -> G1Projective {
 
 #[cfg(test)]
 pub mod test {
-    use super::*;
-    use crate::test::{arb_fr, arb_g1, arb_g2};
+    use super::{
+        super::test::{arb_fr, arb_g1, arb_g2},
+        *,
+    };
     use ark_ec::AffineCurve;
     use ark_ff::{BigInteger256, PrimeField};
     use proptest::proptest;
@@ -255,8 +261,10 @@ pub mod test {
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
-    use super::*;
-    use crate::bench::{rand_fr, rand_g1, rand_g2};
+    use super::{
+        super::bench::{rand_fr, rand_g1, rand_g2},
+        *,
+    };
     use criterion::{black_box, BatchSize, Criterion};
 
     pub fn group(criterion: &mut Criterion) {

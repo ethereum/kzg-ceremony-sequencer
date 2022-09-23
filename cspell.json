@@ -1,9 +1,15 @@
 {
     "version": "0.1",
     "words": [
+        "arkworks",
+        "BLST",
         "checkin",
         "chrono",
+        "Pubkey",
+        "publickey",
         "reqwest",
-        "siwe"
+        "siwe",
+        "thiserror",
+        "Zeroizing"
     ]
 }
