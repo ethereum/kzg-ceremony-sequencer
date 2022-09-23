@@ -44,7 +44,7 @@ use tracing::info;
 use url::Url;
 
 mod api;
-mod io;
+pub mod io;
 mod jwt;
 mod keys;
 mod lobby;
@@ -107,13 +107,12 @@ pub async fn start_server(
 
     let keys = Arc::new(Keys::new(&options.keys).await?);
 
-    let transcript_data = read_or_create_transcript(
+    let transcript = read_or_create_transcript(
         options.transcript_file.clone(),
         options.transcript_in_progress_file.clone(),
         &options.ceremony_sizes,
     )
     .await?;
-    let transcript = Arc::new(RwLock::new(transcript_data));
 
     let active_contributor_state = SharedContributorState::default();
 
