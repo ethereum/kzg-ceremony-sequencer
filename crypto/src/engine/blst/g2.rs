@@ -1,5 +1,3 @@
-use std::mem::MaybeUninit;
-
 use blst::{
     blst_p2, blst_p2_affine, blst_p2_affine_compress, blst_p2_affine_in_g2, blst_p2_from_affine,
     blst_p2_mult, blst_p2_uncompress, blst_p2s_to_affine, blst_scalar,
@@ -12,9 +10,9 @@ impl TryFrom<G2> for blst_p2_affine {
 
     fn try_from(g2: G2) -> Result<Self, Self::Error> {
         unsafe {
-            let mut p = std::mem::MaybeUninit::zeroed();
-            blst_p2_uncompress(p.as_mut_ptr(), g2.0.as_ptr());
-            Ok(p.as_ptr().read())
+            let mut p = Self::default();
+            blst_p2_uncompress(&mut p, g2.0.as_ptr());
+            Ok(p)
         }
     }
 }
@@ -30,20 +28,19 @@ impl TryFrom<blst_p2_affine> for G2 {
         }
     }
 }
-
 pub fn p2_from_affine(a: blst_p2_affine) -> blst_p2 {
     unsafe {
-        let mut p = std::mem::MaybeUninit::zeroed();
-        blst_p2_from_affine(p.as_mut_ptr(), &a);
-        p.as_ptr().read()
+        let mut p  = blst_p2::default();
+        blst_p2_from_affine(&mut p, &a);
+        p
     }
 }
 
 pub fn p2_mult(p: &blst_p2, s: &blst_scalar) -> blst_p2 {
     unsafe {
-        let mut out = MaybeUninit::zeroed();
-        blst_p2_mult(out.as_mut_ptr(), p, s.b.as_ptr(), 256);
-        out.as_ptr().read()
+        let mut out = blst_p2::default();
+        blst_p2_mult(&mut out, p, s.b.as_ptr(), 256);
+        out
     }
 }
 
@@ -52,7 +49,10 @@ pub fn p2_affine_in_g2(p: &blst_p2_affine) -> bool {
 }
 
 pub fn p2s_to_affine(ps: &Vec<blst_p2>) -> Vec<blst_p2_affine> {
-    let input = ps.iter().map(|x| x as *const blst_p2).collect::<Vec<_>>();
+    let input = ps
+        .iter()
+        .map(|x| x as *const blst_p2)
+        .collect::<Vec<_>>();
     let mut out = Vec::<blst_p2_affine>::with_capacity(ps.len());
 
     unsafe {
