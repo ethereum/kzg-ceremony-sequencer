@@ -2,7 +2,7 @@ mod g1;
 mod g2;
 mod scalar;
 
-use blst::{blst_p1_affine, blst_p2_affine, blst_p2_affine_generator, blst_fp12, blst_miller_loop, blst_final_exp};
+use blst::{blst_p1_affine, blst_p2_affine, blst_p2_affine_generator, blst_fp12, blst_miller_loop, blst_final_exp, p1_affines};
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
@@ -129,7 +129,13 @@ impl Engine for BLST {
     }
 
     fn verify_g1(powers: &[crate::G1], tau: crate::G2) -> Result<(), crate::CeremonyError> {
-        todo!()
+        let powers = powers
+            .into_par_iter()
+            .map(|p| blst_p1_affine::try_from(*p))
+            .collect::<Result<Vec<_>, _>>()?;
+        let tau = blst_p2_affine::try_from(tau)?;
+
+        // TODO: do msm and pairing check
     }
 
     fn verify_g2(g1: &[crate::G1], g2: &[crate::G2]) -> Result<(), crate::CeremonyError> {
