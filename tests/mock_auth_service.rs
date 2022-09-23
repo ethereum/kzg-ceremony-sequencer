@@ -33,24 +33,40 @@ pub struct GhUser {
 
 #[derive(Clone)]
 pub struct AuthState {
-    github_users: Arc<RwLock<HashMap<u64, GhUser>>>,
+    github_users: Arc<RwLock<GhUsersState>>,
+}
+
+#[derive(Default)]
+struct GhUsersState {
+    users:   HashMap<u64, GhUser>,
+    next_id: u64,
+}
+
+impl GhUsersState {
+    fn register(&mut self, user: GhUser) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.users.insert(id, user);
+        id
+    }
 }
 
 impl AuthState {
     pub fn new() -> Self {
         Self {
-            github_users: Arc::new(RwLock::new(HashMap::new())),
+            github_users: Arc::new(RwLock::new(GhUsersState::default())),
         }
     }
 
-    pub async fn register_user(&mut self, auth_code: u64, user: GhUser) {
-        self.github_users.write().await.insert(auth_code, user);
+    pub async fn register_user(&self, user: GhUser) -> u64 {
+        self.github_users.write().await.register(user)
     }
 
     pub async fn get_user(&self, auth_code: u64) -> Option<GhUser> {
         self.github_users
             .read()
             .await
+            .users
             .get(&auth_code)
             .map(Clone::clone)
     }
