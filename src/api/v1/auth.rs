@@ -1,10 +1,9 @@
 use crate::{
-    jwt::{errors::JwtError, IdToken},
-    keys::SharedKeys,
+    jwt::IdToken,
     lobby::SharedLobbyState,
     oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
     storage::{PersistentStorage, StorageError},
-    EthAuthOptions, Keys, Options, SessionId, SessionInfo,
+    EthAuthOptions, Options, SessionId, SessionInfo,
 };
 use axum::{
     extract::Query,
@@ -41,7 +40,6 @@ pub enum AuthError {
     LobbyIsFull,
     UserAlreadyContributed,
     InvalidCsrf,
-    Jwt(JwtError),
     InvalidAuthCode,
     FetchUserDataError,
     CouldNotExtractUserData,
@@ -100,8 +98,6 @@ impl IntoResponse for AuthError {
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
-            Self::Jwt(jwt_err) => return jwt_err.into_response(),
-
             Self::LobbyIsFull => {
                 let body = Json(json!({
                     "error": "lobby is full",
@@ -226,7 +222,6 @@ pub async fn github_callback(
     Extension(storage): Extension<PersistentStorage>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = gh_oauth_client
@@ -282,7 +277,6 @@ pub async fn siwe_callback(
     Extension(storage): Extension<PersistentStorage>,
     Extension(oauth_client): Extension<SiweOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = oauth_client

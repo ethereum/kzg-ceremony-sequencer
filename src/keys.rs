@@ -41,6 +41,7 @@ impl Keys {
         Ok(Signature(hex::encode::<Vec<u8>>(signature.into())))
     }
 
+    #[allow(unused)]
     pub fn verify(&self, message: &str, signature: &Signature) -> Result<(), JwtError> {
         let h = hex::decode(&signature.0).map_err(|_| JwtError::InvalidToken)?;
         let signature = ethers_core::types::Signature::try_from(h.as_ref())
