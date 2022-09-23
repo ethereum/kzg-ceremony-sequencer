@@ -3,7 +3,7 @@
 use crate::mock_auth_service::{AuthState, GhUser};
 use clap::Parser;
 use http::StatusCode;
-use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, Contribution};
+use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript};
 use kzg_ceremony_sequencer::{io::read_json_file, start_server, Options};
 use serde_json::Value;
 use std::collections::HashMap;
