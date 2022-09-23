@@ -11,6 +11,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_DEBUG: 0
   IMAGE_ID: ghcr.io/${{ github.repository }}:${{ github.sha }}
+  IMAGE_LATEST: ghcr.io/${{ github.repository }}:latest
   BIN: ${{ github.event.repository.name }}
 
 jobs:
@@ -265,3 +266,38 @@ jobs:
         run: docker manifest inspect $IMAGE_ID
       - name: Push manifest
         run: docker manifest push $IMAGE_ID
+      - name: Push latest tag
+        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+        run: |
+          docker pull $IMAGE_ID
+          docker tag $IMAGE_ID $IMAGE_LATEST
+          docker push $IMAGE_LATEST
+
+  push_to_docker:
+    name: Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [image_manifest]
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          # Access token `kzg-ceremony-sequencer-github-actions`
+          username: remcob
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Push commit tag
+        run: |
+          docker pull $IMAGE_ID
+          docker tag $IMAGE_ID remcob/kzg-ceremony-sequencer:${{ github.sha }}
+          docker push remcob/kzg-ceremony-sequencer:${{ github.sha }}
+      - name: Push latest tag
+        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+        run: |
+          docker pull $IMAGE_ID
+          docker tag $IMAGE_ID remcob/kzg-ceremony-sequencer:latest
+          docker push remcob/kzg-ceremony-sequencer:latest
