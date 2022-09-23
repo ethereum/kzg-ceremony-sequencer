@@ -271,7 +271,7 @@ jobs:
         run: |
           docker pull $IMAGE_ID
           docker tag $IMAGE_ID $IMAGE_LATEST
-          docker push $IMAGE_LASTEST
+          docker push $IMAGE_LATEST
 
   push_to_docker:
     name: Push to Docker Hub
