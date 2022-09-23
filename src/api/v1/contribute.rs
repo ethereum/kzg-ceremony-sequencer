@@ -144,20 +144,14 @@ mod tests {
         Keys, SessionId,
     };
     use axum::{Extension, Json};
+    use clap::Parser;
     use kzg_ceremony_crypto::BatchTranscript;
     use std::sync::{atomic::AtomicUsize, Arc};
     use tokio::sync::RwLock;
 
     async fn shared_keys() -> SharedKeys {
-        Arc::new(
-            Keys::new(&keys::Options {
-                mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon \
-                           abandon abandon abandon about"
-                    .into(),
-            })
-            .await
-            .unwrap(),
-        )
+        let options = keys::Options::parse_from(Vec::<&str>::new());
+        Arc::new(Keys::new(&options).await.unwrap())
     }
 
     #[tokio::test]

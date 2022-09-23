@@ -116,13 +116,8 @@ mod tests {
             exp: 200_000_000_000,
         };
 
-        let keys = Keys::new(&Options {
-            mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon \
-                       abandon abandon about"
-                .into(),
-        })
-        .await
-        .unwrap();
+        let options = Options::parse_from(Vec::<&str>::new());
+        let keys = Keys::new(&options).await.unwrap();
 
         let message = serde_json::to_string(&t).unwrap();
         let signature = keys.sign(&message).await.unwrap();
