@@ -86,7 +86,7 @@ async fn run_test_harness() -> Harness {
     });
     app_start_receiver.await.unwrap();
     let (auth_start_sender, auth_start_receiver) = oneshot::channel::<()>();
-    let auth_state = AuthState::new();
+    let auth_state = AuthState::default();
     let auth_state_for_server = auth_state.clone();
     tokio::spawn(async move {
         let server = mock_auth_service::start_server(auth_state_for_server);
@@ -169,7 +169,7 @@ async fn login_gh_user(harness: &Harness, http_client: &reqwest::Client, name: S
         })
         .await;
 
-    let csrf = get_and_validate_csrf_token(&harness).await;
+    let csrf = get_and_validate_csrf_token(harness).await;
 
     let callback_result = http_client
         .get(harness.options.server.join("auth/callback/github").unwrap())
@@ -180,7 +180,7 @@ async fn login_gh_user(harness: &Harness, http_client: &reqwest::Client, name: S
 
     assert_eq!(callback_result.status(), StatusCode::OK);
 
-    let session_id = callback_result
+    callback_result
         .json::<Value>()
         .await
         .expect("Response must be valid JSON.")
@@ -188,9 +188,7 @@ async fn login_gh_user(harness: &Harness, http_client: &reqwest::Client, name: S
         .expect("Response must contain session_id")
         .as_str()
         .expect("session_id must be a string")
-        .to_string();
-
-    session_id
+        .to_string()
 }
 
 async fn try_contribute(
@@ -211,11 +209,10 @@ async fn try_contribute(
         "Response must be successful"
     );
 
-    let result = response
+    response
         .json::<BatchContribution>()
         .await
-        .expect("Successful response must be a contribution");
-    result
+        .expect("Successful response must be a contribution")
 }
 
 async fn contribute(
@@ -299,11 +296,10 @@ async fn test_contribution_happy_path() {
         .transcripts
         .iter()
         .map(|t| {
-            t.witness
+            *t.witness
                 .pubkeys
                 .last()
                 .expect("must have pubkeys for accepted contributions")
-                .clone()
         })
         .collect::<Vec<_>>();
     assert_eq!(

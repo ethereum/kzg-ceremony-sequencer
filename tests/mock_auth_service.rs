@@ -31,7 +31,7 @@ pub struct GhUser {
     pub created_at: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AuthState {
     github_users: Arc<RwLock<GhUsersState>>,
 }
@@ -52,12 +52,6 @@ impl GhUsersState {
 }
 
 impl AuthState {
-    pub fn new() -> Self {
-        Self {
-            github_users: Arc::new(RwLock::new(GhUsersState::default())),
-        }
-    }
-
     pub async fn register_user(&self, user: GhUser) -> u64 {
         self.github_users.write().await.register(user)
     }
