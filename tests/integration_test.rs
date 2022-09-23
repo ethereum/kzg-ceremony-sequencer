@@ -16,13 +16,13 @@ fn test_options() -> Options {
         "kzg-ceremony-sequencer",
         "--server",
         "http://127.0.0.1:3000",
-        "--github-token-url",
+        "--gh-token-url",
         "http://127.0.0.1:3001/github/oauth/token",
-        "--github-userinfo-url",
+        "--gh-userinfo-url",
         "http://127.0.0.1:3001/github/user",
-        "--github-client-secret",
+        "--gh-client-secret",
         "INVALID",
-        "--github-client-id",
+        "--gh-client-id",
         "INVALID",
         "--eth-rpc-url",
         "INVALID",
@@ -31,7 +31,7 @@ fn test_options() -> Options {
         "--eth-client-id",
         "INVALID",
         "--database-url",
-        "sqlite://:memory:",
+        "sqlite::memory:",
     ];
     Options::parse_from(args)
 }
