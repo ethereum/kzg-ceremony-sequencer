@@ -269,6 +269,7 @@ jobs:
       - name: Push latest tag
         if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
         run: |
+          docker pull $IMAGE_ID
           docker tag $IMAGE_ID $IMAGE_LATEST
           docker push $IMAGE_LASTEST
 
@@ -291,10 +292,12 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Push commit tag
         run: |
+          docker pull $IMAGE_ID
           docker tag $IMAGE_ID remcob/kzg-ceremony-sequencer:${{ github.sha }}
           docker push remcob/kzg-ceremony-sequencer:${{ github.sha }}
       - name: Push latest tag
         if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
         run: |
+          docker pull $IMAGE_ID
           docker tag $IMAGE_ID remcob/kzg-ceremony-sequencer:latest
           docker push remcob/kzg-ceremony-sequencer:latest
