@@ -45,3 +45,36 @@ cargo fmt && cargo clippy --all-targets --all-features && cargo build --all-targ
 
 - kzg-ceremony-poc.fly.dev
 - You can use the endpoint `/hello_world` to check that the server is running
+
+## Registering for Sign-in-with-Ethereum
+
+See the documentation [here](https://docs.login.xyz/servers/oidc-provider/hosted-oidc-provider).
+
+To register, use the REST API:
+
+```shell
+curl -X POST https://oidc.signinwithethereum.org/register \
+   -H 'Content-Type: application/json' \
+   -d '{"redirect_uris": ["http://127.0.0.1:3000/auth/callback/eth"]}'
+```
+
+```json
+{
+  "client_id": "9b49de48-d198-47e7-afff-7ee26cbcbc95",
+  "client_secret": "...",
+  "registration_access_token": "....",
+  "registration_client_uri": "https://oidc.signinwithethereum.org/client/9b49de48-d198-47e7-afff-7ee26cbcbc95",
+  "redirect_uris": [
+    "http://127.0.0.1:3000/auth/callback/eth"
+  ]
+}
+```
+
+```shell
+fly secrets set ETH_RPC_URL="..."
+fly secrets set ETH_CLIENT_ID="..."
+fly secrets set ETH_CLIENT_SECRET="..."
+fly secrets set GH_CLIENT_ID="..."
+fly secrets set GH_CLIENT_SECRET="..."
+fly volumes create kzg_ceremony_sequencer_dev_data --size 5
+```

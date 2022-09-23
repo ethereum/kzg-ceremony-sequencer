@@ -8,9 +8,23 @@ processes = []
 [build]
     image = "remcob/kzg-ceremony-sequencer:latest"
 
+[[mounts]]
+    source = "kzg_ceremony_sequencer_dev_data"
+    destination = "/data"
+
 [env]
     VEBOSE=3
-    SERVER="http://127.0.0.1:8080/"
+    SERVER="http://127.0.0.1:3000/"
+    DATABASE_URL="sqlite:///data/storage.sqlite"
+    TRANSCRIPT_FILE="/data/transcript.json"
+    TRANSCRIPT_IN_PROGRESS_FILE="/data/transcript.json.wip"
+
+# Secrets
+# - ETH_RPC_URL       (i.e. Alchemy)
+# - GH_CLIENT_ID      (Register at <https://github.com/settings/applications/new>)
+# - GH_CLIENT_SECRET
+# - ETH_CLIENT_ID     (Register at <https://etherscan.io/myapikey>)
+# - ETH_CLIENT_SECRET
 
 [experimental]
     allowed_public_ports = []
@@ -18,7 +32,7 @@ processes = []
 
 [[services]]
     http_checks = []
-    internal_port = 8080
+    internal_port = 3000
     processes = ["app"]
     protocol = "tcp"
     script_checks = []
