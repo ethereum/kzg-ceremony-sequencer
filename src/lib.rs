@@ -8,7 +8,7 @@
 
 use crate::{
     api::v1::{
-        auth::{auth_client_link, github_callback, eth_callback},
+        auth::{auth_client_link, eth_callback, github_callback},
         contribute::contribute,
         info::{current_state, jwt_info, status},
         lobby::try_contribute,
@@ -103,6 +103,8 @@ pub async fn async_main(options: Options) -> EyreResult<()> {
 pub async fn start_server(
     options: Options,
 ) -> EyreResult<Server<AddrIncoming, IntoMakeService<Router>>> {
+    info!(size=?options.ceremony_sizes, "Starting sequencer for KZG ceremony.");
+
     let keys = Arc::new(Keys::new(&options.keys).await?);
 
     let transcript_data = read_or_create_transcript(

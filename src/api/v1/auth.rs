@@ -55,7 +55,7 @@ pub struct UserVerified {
 }
 
 pub struct AuthUrl {
-    eth_auth_url:   String,
+    eth_auth_url:    String,
     github_auth_url: String,
 }
 
@@ -189,7 +189,7 @@ pub async fn auth_client_link(
         .insert(csrf_token.secret().clone());
 
     Ok(AuthUrl {
-        eth_auth_url:   auth_url.to_string(),
+        eth_auth_url:    auth_url.to_string(),
         github_auth_url: gh_url.to_string(),
     })
 }
