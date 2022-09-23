@@ -1,5 +1,5 @@
 use crate::{
-    jwt::IdToken,
+    eth_sign::IdToken,
     lobby::SharedLobbyState,
     oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
     storage::{PersistentStorage, StorageError},

@@ -44,8 +44,8 @@ use tracing::info;
 use url::Url;
 
 mod api;
+mod eth_sign;
 mod io;
-mod jwt;
 mod keys;
 mod lobby;
 mod oauth;

@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use crate::jwt::{errors::JwtError, IdToken};
+use crate::eth_sign::{IdToken, JwtError};
 use async_session::async_trait;
 use axum::{
     extract::{FromRequest, RequestParts},

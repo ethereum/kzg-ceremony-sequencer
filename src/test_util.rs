@@ -2,11 +2,11 @@
 
 use tokio::time::Instant;
 
-use crate::{jwt, sessions::SessionInfo, Options};
+use crate::{eth_sign, sessions::SessionInfo, Options};
 use clap::Parser;
 
-pub fn test_jwt(exp: u64) -> jwt::IdToken {
-    jwt::IdToken {
+pub fn test_jwt(exp: u64) -> eth_sign::IdToken {
+    eth_sign::IdToken {
         sub: String::from("foo"),
         nickname: String::from("foo"),
         provider: String::from("foo"),

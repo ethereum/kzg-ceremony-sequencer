@@ -5,7 +5,7 @@ use eyre::Result;
 use serde::Serialize;
 use std::sync::Arc;
 
-use crate::jwt::errors::JwtError;
+use crate::eth_sign::JwtError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {

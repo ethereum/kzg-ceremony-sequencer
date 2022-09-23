@@ -1,6 +1,6 @@
 use crate::{
+    eth_sign::{JwtError, Receipt},
     io::write_json_file,
-    jwt::{errors::JwtError, Receipt},
     keys::{SharedKeys, Signature},
     lobby::{clear_current_contributor, SharedContributorState},
     storage::PersistentStorage,
