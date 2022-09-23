@@ -25,9 +25,9 @@ pub fn create_test_session_info(exp: u64) -> SessionInfo {
 pub fn test_options() -> Options {
     let args: Vec<&str> = vec![
         "kzg-ceremony-sequencer",
-        "--github-client-secret",
+        "--gh-client-secret",
         "INVALID",
-        "--github-client-id",
+        "--gh-client-id",
         "INVALID",
         "--eth-rpc-url",
         "INVALID",

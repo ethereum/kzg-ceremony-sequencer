@@ -6,6 +6,7 @@ use kzg_ceremony_crypto::BatchTranscript;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
+use tracing::{info, warn};
 
 /// Represents a size constraint on a batch transcript
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -87,10 +88,12 @@ pub async fn read_or_create_transcript(
     ceremony_sizes: &CeremonySizes,
 ) -> eyre::Result<SharedTranscript> {
     if path.exists() {
+        info!(?path, "Opening transcript file");
         let transcript = read_json_file::<BatchTranscript>(path).await;
         ceremony_sizes.validate_batch_transcript(&transcript)?;
         Ok(Arc::new(RwLock::new(transcript)))
     } else {
+        warn!(?path, "No transcript found, creating new transcript file");
         let transcript = BatchTranscript::new(&ceremony_sizes.sizes);
         let shared_transcript = Arc::new(RwLock::new(transcript));
         write_json_file(path, work_path, shared_transcript.clone()).await;

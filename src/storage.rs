@@ -7,10 +7,37 @@ use clap::Parser;
 use http::StatusCode;
 use serde_json::json;
 use sqlx::{sqlite::SqlitePoolOptions, Executor, Pool, Row, Sqlite};
+use tracing::info;
+
+#[derive(Clone, Debug, PartialEq, Eq, Parser)]
+pub struct Options {
+    /// SQLite database connections string.
+    /// By default, it is a file named `storage.db` in the current directory.
+    /// You can use `sqlite::memory:` to use an in-memory database.
+    /// See <https://www.sqlite.org/uri.html>
+    #[clap(long, env, default_value = "sqlite://storage.db")]
+    database_url: String,
+}
+
+#[derive(Clone)]
+pub struct PersistentStorage(Pool<Sqlite>);
 
 #[derive(Debug)]
 pub enum StorageError {
     DatabaseError(sqlx::error::Error),
+}
+
+pub async fn storage_client(options: &Options) -> PersistentStorage {
+    info!(url = %&options.database_url, "Connecting to database");
+
+    let db_pool = SqlitePoolOptions::new()
+        .connect(&options.database_url)
+        .await
+        .expect("Unable to connect to DATABASE_URL");
+
+    sqlx::migrate!().run(&db_pool).await.unwrap();
+
+    PersistentStorage(db_pool)
 }
 
 impl IntoResponse for StorageError {
@@ -22,9 +49,6 @@ impl IntoResponse for StorageError {
         (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
     }
 }
-
-#[derive(Clone)]
-pub struct PersistentStorage(Pool<Sqlite>);
 
 impl PersistentStorage {
     pub async fn has_contributed(&self, uid: &str) -> Result<bool, StorageError> {
@@ -59,21 +83,4 @@ impl PersistentStorage {
             .await
             .ok();
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Parser)]
-pub struct Options {
-    #[clap(long, env)]
-    database_url: String,
-}
-
-pub async fn storage_client(options: &Options) -> PersistentStorage {
-    let db_pool = SqlitePoolOptions::new()
-        .connect(&options.database_url)
-        .await
-        .expect("Unable to connect to DATABASE_URL");
-
-    sqlx::migrate!().run(&db_pool).await.unwrap();
-
-    PersistentStorage(db_pool)
 }
