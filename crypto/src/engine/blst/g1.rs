@@ -29,10 +29,10 @@ impl TryFrom<blst_p1_affine> for G1 {
     }
 }
 
-pub fn p1_from_affine(a: blst_p1_affine) -> blst_p1 {
+pub fn p1_from_affine(a: &blst_p1_affine) -> blst_p1 {
     unsafe {
         let mut p = blst_p1::default();
-        blst_p1_from_affine(&mut p, &a);
+        blst_p1_from_affine(&mut p, a);
         p
     }
 }
