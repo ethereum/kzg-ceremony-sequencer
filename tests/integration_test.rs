@@ -176,9 +176,3 @@ async fn test_gh_auth_happy_path() {
 
     assert_eq!(callback_result.status(), StatusCode::OK);
 }
-
-// #[tokio::test]
-// async fn integration_test() {
-//     test_auth_request_link().await;
-//     test_gh_auth_happy_path().await;
-// }
