@@ -254,10 +254,12 @@ mod tests {
             Extension(test_options()),
         )
         .await;
-        assert!(matches!(
-            too_soon_response,
-            Err(TryContributeError::RateLimited)
-        ));
+
+        assert!(
+            matches!(too_soon_response, Err(TryContributeError::RateLimited),),
+            "response expected: Err(TryContributeError::RateLimited) actual: {:?}",
+            too_soon_response
+        );
 
         // "other participant" finished contributing
         {

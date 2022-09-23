@@ -1,7 +1,7 @@
 use crate::{
     io::write_json_file,
-    jwt::{errors::JwtError, Receipt, SignedReceipt},
-    keys::SharedKeys,
+    jwt::{errors::JwtError, Receipt},
+    keys::{SharedKeys, Signature},
     lobby::{clear_current_contributor, SharedContributorState},
     storage::PersistentStorage,
     Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript,
@@ -12,17 +12,20 @@ use axum::{
 };
 use axum_extra::response::ErasedJson;
 use http::StatusCode;
-use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
+use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, G2};
+use serde::Serialize;
 use serde_json::json;
 use std::sync::atomic::Ordering;
 
-pub struct ContributeReceipt {
-    signed_receipt: SignedReceipt,
+#[derive(Serialize)]
+pub struct ContributeReceipt<T: Serialize> {
+    receipt:   Receipt<T>,
+    signature: Signature,
 }
 
-impl IntoResponse for ContributeReceipt {
+impl<T: Serialize> IntoResponse for ContributeReceipt<T> {
     fn into_response(self) -> Response {
-        (StatusCode::OK, ErasedJson::pretty(self.signed_receipt)).into_response()
+        (StatusCode::OK, ErasedJson::pretty(self)).into_response()
     }
 }
 
@@ -60,7 +63,7 @@ pub async fn contribute(
     Extension(storage): Extension<PersistentStorage>,
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
-) -> Result<ContributeReceipt, ContributeError> {
+) -> Result<ContributeReceipt<Vec<G2>>, ContributeError> {
     // 1. Check if this person should be contributing
     let id_token = {
         let active_contributor = contributor_state.read().await;
@@ -92,14 +95,12 @@ pub async fn contribute(
         return Err(e);
     }
 
-    let receipt = {
-        Receipt {
-            id_token,
-            witness: contribution.receipt(),
-        }
+    let receipt = Receipt {
+        id_token,
+        witness: contribution.receipt(),
     };
 
-    let signed_receipt = receipt.sign(&keys).await.map_err(ContributeError::Auth)?;
+    let signature = receipt.sign(&keys).await.map_err(ContributeError::Auth)?;
 
     write_json_file(
         options.transcript_file,
@@ -121,7 +122,7 @@ pub async fn contribute(
     storage.finish_contribution(&uid).await;
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
-    Ok(ContributeReceipt { signed_receipt })
+    Ok(ContributeReceipt { receipt, signature })
 }
 
 #[cfg(test)]
@@ -141,10 +142,7 @@ mod tests {
     };
     use axum::{Extension, Json};
     use kzg_ceremony_crypto::BatchTranscript;
-    use std::{
-        path::PathBuf,
-        sync::{atomic::AtomicUsize, Arc},
-    };
+    use std::sync::{atomic::AtomicUsize, Arc};
     use tokio::sync::RwLock;
 
     async fn shared_keys() -> SharedKeys {

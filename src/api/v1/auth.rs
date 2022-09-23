@@ -1,5 +1,5 @@
 use crate::{
-    jwt::{errors::JwtError, IdToken, SignedIdToken},
+    jwt::{errors::JwtError, IdToken},
     keys::SharedKeys,
     lobby::SharedLobbyState,
     oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
@@ -50,7 +50,7 @@ pub enum AuthError {
 }
 
 pub struct UserVerified {
-    id_token:   SignedIdToken,
+    id_token:   IdToken,
     session_id: String,
 }
 
@@ -255,15 +255,7 @@ pub async fn github_callback(
         uid:      format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
-    post_authenticate(
-        auth_state,
-        lobby_state,
-        storage,
-        user,
-        AuthProvider::Github,
-        &keys,
-    )
-    .await
+    post_authenticate(auth_state, lobby_state, storage, user, AuthProvider::Github).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -341,7 +333,6 @@ pub async fn siwe_callback(
         storage,
         user_data,
         AuthProvider::Ethereum,
-        &keys,
     )
     .await
 }
@@ -388,7 +379,6 @@ async fn post_authenticate(
     storage: PersistentStorage,
     user_data: AuthenticatedUser,
     auth_provider: AuthProvider,
-    keys: &Keys,
 ) -> Result<UserVerified, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
@@ -420,19 +410,17 @@ async fn post_authenticate(
         exp:      u64::MAX,
     };
 
-    let id_token_signed = id_token.sign(keys).await.map_err(AuthError::Jwt)?;
-
     {
         let mut lobby = lobby_state.write().await;
         lobby.participants.insert(session_id.clone(), SessionInfo {
-            token:                 id_token,
+            token:                 id_token.clone(),
             last_ping_time:        Instant::now(),
             is_first_ping_attempt: true,
         });
     }
 
     Ok(UserVerified {
-        id_token:   id_token_signed,
+        id_token,
         session_id: session_id.to_string(),
     })
 }
