@@ -10,7 +10,7 @@ use crate::{
     api::v1::{
         auth::{auth_client_link, github_callback, siwe_callback},
         contribute::contribute,
-        info::{current_state, jwt_info, status},
+        info::{current_state, status},
         lobby::try_contribute,
     },
     io::{transcript, transcript::read_transcript_file},
@@ -127,7 +127,6 @@ where
         .route("/lobby/try_contribute", post(try_contribute::<T>))
         .route("/contribute", post(contribute::<T>))
         .route("/info/status", get(status))
-        .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
         .layer(Extension(active_contributor_state))
         .layer(Extension(lobby_state))

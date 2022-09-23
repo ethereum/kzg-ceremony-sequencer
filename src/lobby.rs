@@ -12,10 +12,10 @@ pub struct Options {
     #[clap(long, env, value_parser=duration_from_str, default_value="180")]
     pub compute_deadline: Duration,
 
-    #[clap(long, env, value_parser=duration_from_str, default_value="30")]
+    #[clap(long, env, value_parser=duration_from_str, default_value="1800")]
     pub lobby_checkin_frequency: Duration,
 
-    #[clap(long, env, value_parser=duration_from_str, default_value="2")]
+    #[clap(long, env, value_parser=duration_from_str, default_value="1799")]
     pub lobby_checkin_tolerance: Duration,
 
     #[clap(long, env, value_parser=duration_from_str, default_value="5")]
