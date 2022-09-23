@@ -6,7 +6,7 @@ kill_timeout = 30 # Seconds
 processes = []
 
 [build]
-    image = "ghcr.io/ethereum/kzg-ceremony-sequencer:master"
+    image = "remcob/kzg-ceremony-sequencer:latest"
 
 [env]
     VEBOSE=3
