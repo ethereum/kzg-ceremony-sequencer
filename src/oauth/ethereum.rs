@@ -44,7 +44,7 @@ pub struct EthAuthOptions {
     pub eth_userinfo_url: String,
 
     //// Sign-in-with-Ethereum OAuth2 callback redirect url.
-    #[clap(long, env, default_value = "http://127.0.0.1:3000/auth/callback/siwe")]
+    #[clap(long, env, default_value = "http://127.0.0.1:3000/auth/callback/eth")]
     pub eth_redirect_url: String,
 
     //// Sign-in-with-Ethereum OAuth2 client access id.
@@ -57,11 +57,11 @@ pub struct EthAuthOptions {
 }
 
 #[derive(Clone)]
-pub struct SiweOAuthClient {
+pub struct EthOAuthClient {
     client: BasicClient,
 }
 
-impl Deref for SiweOAuthClient {
+impl Deref for EthOAuthClient {
     type Target = BasicClient;
 
     fn deref(&self) -> &Self::Target {
@@ -69,8 +69,8 @@ impl Deref for SiweOAuthClient {
     }
 }
 
-pub fn siwe_oauth_client(options: &EthAuthOptions) -> SiweOAuthClient {
-    SiweOAuthClient {
+pub fn eth_oauth_client(options: &EthAuthOptions) -> EthOAuthClient {
+    EthOAuthClient {
         client: BasicClient::new(
             ClientId::new(options.eth_client_id.get_secret().to_owned()),
             Some(ClientSecret::new(

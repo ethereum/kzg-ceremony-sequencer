@@ -9,7 +9,7 @@ use std::{
 use tokio::sync::RwLock;
 
 pub use self::{
-    ethereum::{siwe_oauth_client, EthAuthOptions, SiweOAuthClient},
+    ethereum::{eth_oauth_client, EthAuthOptions, EthOAuthClient},
     github::{github_oauth_client, GithubAuthOptions, GithubOAuthClient},
 };
 

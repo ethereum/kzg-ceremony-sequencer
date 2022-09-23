@@ -2,7 +2,7 @@ use crate::{
     jwt::{errors::JwtError, IdToken},
     keys::SharedKeys,
     lobby::SharedLobbyState,
-    oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
+    oauth::{EthOAuthClient, GithubOAuthClient, SharedAuthState},
     storage::{PersistentStorage, StorageError},
     EthAuthOptions, Keys, Options, SessionId, SessionInfo,
 };
@@ -55,14 +55,14 @@ pub struct UserVerified {
 }
 
 pub struct AuthUrl {
-    siwe_auth_url:   String,
+    eth_auth_url:   String,
     github_auth_url: String,
 }
 
 impl IntoResponse for AuthUrl {
     fn into_response(self) -> Response {
         Json(json!({
-            "eth_auth_url": self.siwe_auth_url,
+            "eth_auth_url": self.eth_auth_url,
             "github_auth_url": self.github_auth_url,
         }))
         .into_response()
@@ -140,7 +140,7 @@ pub async fn auth_client_link(
     Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
-    Extension(siwe_client): Extension<SiweOAuthClient>,
+    Extension(eth_client): Extension<EthOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
 ) -> Result<AuthUrl, AuthError> {
     // Fist check if the lobby is full before giving users an auth link
@@ -159,7 +159,7 @@ pub async fn auth_client_link(
         .redirect_to
         .and_then(|uri| RedirectUrl::new(uri).ok());
 
-    let auth_request = siwe_client
+    let auth_request = eth_client
         .authorize_url(|| csrf_token)
         .add_scope(Scope::new("openid".to_string()));
 
@@ -189,7 +189,7 @@ pub async fn auth_client_link(
         .insert(csrf_token.secret().clone());
 
     Ok(AuthUrl {
-        siwe_auth_url:   auth_url.to_string(),
+        eth_auth_url:   auth_url.to_string(),
         github_auth_url: gh_url.to_string(),
     })
 }
@@ -267,7 +267,7 @@ pub async fn github_callback(
 }
 
 #[derive(Debug, Deserialize)]
-struct SiweUserInfo {
+struct EthUserInfo {
     sub:                String,
     preferred_username: String,
 }
@@ -282,13 +282,13 @@ struct SiweUserInfo {
 // participated when they did not. Is this Okay? Maybe that person can then just
 // say they did not
 #[allow(clippy::too_many_arguments)]
-pub async fn siwe_callback(
+pub async fn eth_callback(
     Query(payload): Query<AuthPayload>,
     Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
-    Extension(oauth_client): Extension<SiweOAuthClient>,
+    Extension(oauth_client): Extension<EthOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
     Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
@@ -306,12 +306,12 @@ pub async fn siwe_callback(
         .await
         .map_err(|_| AuthError::FetchUserDataError)?;
 
-    let siwe_user = response
-        .json::<SiweUserInfo>()
+    let eth_user = response
+        .json::<EthUserInfo>()
         .await
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
 
-    let addr_parts: Vec<_> = siwe_user.sub.split(':').collect();
+    let addr_parts: Vec<_> = eth_user.sub.split(':').collect();
     let address = (*addr_parts
         .get(2)
         .ok_or(AuthError::CouldNotExtractUserData)?)
@@ -332,7 +332,7 @@ pub async fn siwe_callback(
 
     let user_data = AuthenticatedUser {
         uid:      format!("eth | {}", address),
-        nickname: siwe_user.preferred_username,
+        nickname: eth_user.preferred_username,
     };
 
     post_authenticate(

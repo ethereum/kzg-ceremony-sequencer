@@ -8,7 +8,7 @@
 
 use crate::{
     api::v1::{
-        auth::{auth_client_link, github_callback, siwe_callback},
+        auth::{auth_client_link, github_callback, eth_callback},
         contribute::contribute,
         info::{current_state, jwt_info, status},
         lobby::try_contribute,
@@ -17,7 +17,7 @@ use crate::{
     keys::Keys,
     lobby::{clear_lobby_on_interval, SharedContributorState, SharedLobbyState},
     oauth::{
-        github_oauth_client, siwe_oauth_client, EthAuthOptions, GithubAuthOptions, SharedAuthState,
+        eth_oauth_client, github_oauth_client, EthAuthOptions, GithubAuthOptions, SharedAuthState,
     },
     sessions::{SessionId, SessionInfo},
     storage::storage_client,
@@ -132,7 +132,7 @@ pub async fn start_server(
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
-        .route("/auth/callback/siwe", get(siwe_callback))
+        .route("/auth/callback/eth", get(eth_callback))
         .route("/lobby/try_contribute", post(try_contribute))
         .route("/contribute", post(contribute))
         .route("/info/status", get(status))
@@ -143,7 +143,7 @@ pub async fn start_server(
         .layer(Extension(auth_state))
         .layer(Extension(ceremony_status))
         .layer(Extension(keys))
-        .layer(Extension(siwe_oauth_client(&options.ethereum)))
+        .layer(Extension(eth_oauth_client(&options.ethereum)))
         .layer(Extension(github_oauth_client(&options.github)))
         .layer(Extension(reqwest::Client::new()))
         .layer(Extension(storage_client(&options.storage).await))
