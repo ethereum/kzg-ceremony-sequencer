@@ -2,6 +2,7 @@ mod g1;
 mod g2;
 mod scalar;
 
+use blst::{blst_p1_affine, blst_p2_affine};
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
@@ -11,25 +12,20 @@ use std::iter;
 use crate::{CeremonyError, Engine, ParseError, G1, G2};
 
 use self::{
-    g1::{batch_g1_projective_to_affine, G1BlstAffine, G1BlstProjective},
-    g2::{batch_g2_projective_to_affine, G2BlstAffine, G2BlstProjective},
-    scalar::{random_scalar, scalar_mul, ScalarBlst},
+    g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_to_affine},
+    g2::{p2_affine_in_g2, p2_from_affine, p2_mult, p2s_to_affine},
+    scalar::{random_scalar, scalar_from_be_bytes, scalar_from_u64, scalar_mul},
 };
 
 pub struct BLST;
-
-pub trait BLSTAlgebra {
-    fn mul(&self, scalar: &ScalarBlst) -> Self;
-    fn is_in_subgroup(&self) -> bool;
-}
 
 impl Engine for BLST {
     fn add_entropy_g1(
         entropy: [u8; 32],
         powers: &mut [crate::G1],
     ) -> Result<(), crate::CeremonyError> {
-        let tau = ScalarBlst::try_from(random_scalar(entropy))?;
-        let one = ScalarBlst::try_from(1u64)?;
+        let tau = scalar_from_be_bytes(random_scalar(entropy));
+        let one = scalar_from_u64(1u64);
 
         let taus = iter::successors(Some(one), |x| Some(scalar_mul(x, &tau)))
             .take(powers.len())
@@ -39,13 +35,13 @@ impl Engine for BLST {
             .par_iter()
             .zip(taus)
             .map(|(&p, tau)| {
-                let p = G1BlstAffine::try_from(p).unwrap(); // TODO
-                let p = G1BlstProjective::try_from(p).unwrap(); // TODO
-                p.mul(&tau)
+                let p = blst_p1_affine::try_from(p).unwrap(); // TODO
+                let p = p1_from_affine(p);
+                p1_mult(&p, &tau)
             })
             .collect::<Vec<_>>();
 
-        let powers_affine = batch_g1_projective_to_affine(&powers_projective);
+        let powers_affine = p1s_to_affine(&powers_projective);
 
         powers
             .par_iter_mut()
@@ -60,8 +56,8 @@ impl Engine for BLST {
         entropy: [u8; 32],
         powers: &mut [crate::G2],
     ) -> Result<(), crate::CeremonyError> {
-        let tau = ScalarBlst::try_from(random_scalar(entropy))?;
-        let one = ScalarBlst::try_from(1u64)?;
+        let tau = scalar_from_be_bytes(random_scalar(entropy));
+        let one = scalar_from_u64(1u64);
 
         let taus = iter::successors(Some(one), |x| Some(scalar_mul(x, &tau)))
             .take(powers.len())
@@ -71,13 +67,13 @@ impl Engine for BLST {
             .par_iter()
             .zip(taus)
             .map(|(&p, tau)| {
-                let p = G2BlstAffine::try_from(p).unwrap(); // TODO
-                let p = G2BlstProjective::try_from(p).unwrap(); // TODO
-                p.mul(&tau)
+                let p = blst_p2_affine::try_from(p).unwrap(); // TODO
+                let p = p2_from_affine(p);
+                p2_mult(&p, &tau)
             })
             .collect::<Vec<_>>();
 
-        let powers_affine = batch_g2_projective_to_affine(&powers_projective);
+        let powers_affine = p2s_to_affine(&powers_projective);
 
         powers
             .par_iter_mut()
@@ -89,9 +85,9 @@ impl Engine for BLST {
     }
 
     fn validate_g1(points: &[crate::G1]) -> Result<(), crate::CeremonyError> {
-        points.into_par_iter().enumerate().try_for_each(|(i, p)| {
-            let p = G1BlstAffine::try_from(*p)?;
-            if !p.is_in_subgroup() {
+        points.into_par_iter().enumerate().try_for_each(|(i, &p)| {
+            let p = blst_p1_affine::try_from(p).unwrap(); // TODO
+            if p1_affine_in_g1(&p) {
                 return Err(CeremonyError::InvalidG1Power(
                     i,
                     ParseError::InvalidSubgroup,
@@ -102,9 +98,9 @@ impl Engine for BLST {
     }
 
     fn validate_g2(points: &[crate::G2]) -> Result<(), crate::CeremonyError> {
-        points.into_par_iter().enumerate().try_for_each(|(i, p)| {
-            let p = G2BlstAffine::try_from(*p)?;
-            if !p.is_in_subgroup() {
+        points.into_par_iter().enumerate().try_for_each(|(i, &p)| {
+            let p = blst_p2_affine::try_from(p).unwrap(); // TODO
+            if p2_affine_in_g2(&p) {
                 return Err(CeremonyError::InvalidG2Power(
                     i,
                     ParseError::InvalidSubgroup,
