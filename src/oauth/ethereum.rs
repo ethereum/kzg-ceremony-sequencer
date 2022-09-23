@@ -69,6 +69,8 @@ impl Deref for EthOAuthClient {
     }
 }
 
+// TODO: Log ETH RPC connection
+
 pub fn eth_oauth_client(options: &EthAuthOptions) -> EthOAuthClient {
     EthOAuthClient {
         client: BasicClient::new(
