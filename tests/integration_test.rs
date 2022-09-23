@@ -2,7 +2,6 @@
 
 use crate::mock_auth_service::{AuthState, GhUser};
 use clap::Parser;
-use cli_batteries::await_shutdown;
 use http::StatusCode;
 use kzg_ceremony_sequencer::{start_server, Options};
 use std::collections::HashMap;
@@ -38,14 +37,25 @@ fn test_options() -> Options {
 }
 
 struct Harness {
-    options:     Options,
-    auth_state:  AuthState,
-    http_client: Mutex<reqwest::Client>,
+    options:         Options,
+    auth_state:      AuthState,
+    shutdown_sender: broadcast::Sender<()>,
 }
 
-static SERVER: OnceCell<Harness> = OnceCell::const_new();
+impl Drop for Harness {
+    fn drop(&mut self) {
+        self.shutdown_sender.send(()).unwrap();
+    }
+}
+
+static SERVER_LOCK: OnceCell<Mutex<()>> = OnceCell::const_new();
+
+async fn server_lock() -> &'static Mutex<()> {
+    SERVER_LOCK.get_or_init(|| async { Mutex::new(()) }).await
+}
 
 async fn run_test_harness() -> Harness {
+    let _lock = server_lock().await.lock().await;
     let temp_dir = tempdir().unwrap();
     let transcript = temp_dir.path().join("transcript.json");
     let transcript_wip = temp_dir.path().join("transcript.json.next");
@@ -53,11 +63,16 @@ async fn run_test_harness() -> Harness {
     options.transcript_file = transcript;
     options.transcript_in_progress_file = transcript_wip;
     let server_options = options.clone();
+    let (shutdown_sender, mut app_shutdown_receiver) = broadcast::channel::<()>(1);
+    let mut auth_shutdown_receiver = shutdown_sender.subscribe();
     let (app_start_sender, app_start_receiver) = oneshot::channel::<()>();
     tokio::spawn(async move {
         let server = start_server(server_options).await.unwrap();
         app_start_sender.send(()).unwrap();
-        server.await.unwrap();
+        server
+            .with_graceful_shutdown(async move { app_shutdown_receiver.recv().await.unwrap() })
+            .await
+            .unwrap();
     });
     app_start_receiver.await.unwrap();
     let (auth_start_sender, auth_start_receiver) = oneshot::channel::<()>();
@@ -66,33 +81,23 @@ async fn run_test_harness() -> Harness {
     tokio::spawn(async move {
         let server = mock_auth_service::start_server(auth_state_for_server);
         auth_start_sender.send(()).unwrap();
-        server.await.unwrap();
+        server
+            .with_graceful_shutdown(async move { auth_shutdown_receiver.recv().await.unwrap() })
+            .await
+            .unwrap();
     });
     auth_start_receiver.await.unwrap();
     Harness {
         options: options.clone(),
         auth_state,
-        http_client: Mutex::new(
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(0)
-                .build()
-                .unwrap(),
-        ),
+        shutdown_sender,
     }
-}
-
-async fn global_test_harness() -> &'static Harness {
-    SERVER
-        .get_or_init(|| async { run_test_harness().await })
-        .await
 }
 
 /// This function acts both as a test and a utility. This way, we'll test the
 /// behavior in a variety of different app states.
-async fn get_and_validate_csrf_token() -> String {
-    let harness = global_test_harness().await;
-
-    let client = harness.http_client.lock().await;
+async fn get_and_validate_csrf_token(harness: &Harness) -> String {
+    let client = reqwest::Client::new();
 
     let response = client
         .get(harness.options.server.join("auth/request_link").unwrap())
@@ -144,12 +149,14 @@ async fn get_and_validate_csrf_token() -> String {
 
 #[tokio::test]
 async fn test_auth_request_link() {
-    get_and_validate_csrf_token().await;
+    let harness = run_test_harness().await;
+    get_and_validate_csrf_token(&harness).await;
 }
 
 #[tokio::test]
 async fn test_gh_auth_happy_path() {
-    let harness = global_test_harness().await;
+    let harness = run_test_harness().await;
+    let http_client = reqwest::Client::new();
 
     harness
         .auth_state
@@ -160,11 +167,9 @@ async fn test_gh_auth_happy_path() {
         })
         .await;
 
-    let csrf = get_and_validate_csrf_token().await;
+    let csrf = get_and_validate_csrf_token(&harness).await;
 
-    let client = harness.http_client.lock().await;
-
-    let callback_result = client
+    let callback_result = http_client
         .get(harness.options.server.join("auth/callback/github").unwrap())
         .query(&[("state", csrf), ("code", "1234".to_string())])
         .send()
