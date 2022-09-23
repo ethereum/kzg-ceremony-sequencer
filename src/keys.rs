@@ -1,11 +1,15 @@
+use axum::{
+    response::{IntoResponse, Response},
+    Json,
+};
 use clap::Parser;
 use ethers_core::types::RecoveryMessage;
 use ethers_signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer};
 use eyre::Result;
+use http::StatusCode;
 use serde::Serialize;
+use serde_json::json;
 use std::sync::Arc;
-
-use crate::eth_sign::JwtError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -20,6 +24,36 @@ pub struct Options {
 
 #[derive(Serialize)]
 pub struct Signature(String);
+
+#[derive(Debug)]
+pub enum SignatureError {
+    SignatureCreation,
+    InvalidToken,
+    InvalidSignature,
+}
+
+impl IntoResponse for SignatureError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            Self::SignatureCreation => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "couldn't sign the receipt",
+            ),
+            Self::InvalidToken => (
+                StatusCode::BAD_REQUEST,
+                "signature is not a valid hex string",
+            ),
+            Self::InvalidSignature => (
+                StatusCode::BAD_REQUEST,
+                "couldn't create signature from string",
+            ),
+        };
+        let body = Json(json!({
+            "error": error_message,
+        }));
+        (status, body).into_response()
+    }
+}
 
 pub struct Keys {
     wallet: LocalWallet,
@@ -36,22 +70,26 @@ impl Keys {
         Ok(Self { wallet })
     }
 
-    pub async fn sign(&self, message: &str) -> Result<Signature> {
-        let signature = self.wallet.sign_message(message).await?;
+    pub async fn sign(&self, message: &str) -> Result<Signature, SignatureError> {
+        let signature = self
+            .wallet
+            .sign_message(message)
+            .await
+            .map_err(|_| SignatureError::SignatureCreation)?;
         Ok(Signature(hex::encode::<Vec<u8>>(signature.into())))
     }
 
     #[allow(unused)]
-    pub fn verify(&self, message: &str, signature: &Signature) -> Result<(), JwtError> {
-        let h = hex::decode(&signature.0).map_err(|_| JwtError::InvalidToken)?;
+    pub fn verify(&self, message: &str, signature: &Signature) -> Result<(), SignatureError> {
+        let h = hex::decode(&signature.0).map_err(|_| SignatureError::InvalidToken)?;
         let signature = ethers_core::types::Signature::try_from(h.as_ref())
-            .map_err(|_| JwtError::InvalidToken)?;
+            .map_err(|_| SignatureError::InvalidSignature)?;
         signature
             .verify(
                 RecoveryMessage::Data(message.as_bytes().to_owned()),
                 self.wallet.address(),
             )
-            .map_err(|_| JwtError::InvalidToken)
+            .map_err(|_| SignatureError::InvalidToken)
     }
 
     pub fn address(&self) -> String {

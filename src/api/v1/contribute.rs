@@ -1,8 +1,8 @@
 use crate::{
-    eth_sign::{JwtError, Receipt},
     io::write_json_file,
-    keys::{SharedKeys, Signature},
+    keys::{SharedKeys, Signature, SignatureError},
     lobby::{clear_current_contributor, SharedContributorState},
+    receipt::Receipt,
     storage::PersistentStorage,
     Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
@@ -32,7 +32,7 @@ impl<T: Serialize> IntoResponse for ContributeReceipt<T> {
 pub enum ContributeError {
     NotUsersTurn,
     InvalidContribution(CeremoniesError),
-    Auth(JwtError),
+    Signature(SignatureError),
 }
 
 impl IntoResponse for ContributeError {
@@ -46,7 +46,7 @@ impl IntoResponse for ContributeError {
                 let body = Json(json!({ "error": format!("contribution invalid: {}", e) }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            Self::Auth(err) => return err.into_response(),
+            Self::Signature(err) => return err.into_response(),
         };
 
         (status, body).into_response()
@@ -100,7 +100,10 @@ pub async fn contribute(
         witness: contribution.receipt(),
     };
 
-    let signature = receipt.sign(&keys).await.map_err(ContributeError::Auth)?;
+    let signature = receipt
+        .sign(&keys)
+        .await
+        .map_err(ContributeError::Signature)?;
 
     write_json_file(
         options.transcript_file,

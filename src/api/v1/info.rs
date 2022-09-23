@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use crate::{keys::SharedKeys, lobby::SharedLobbyState, Options, SharedCeremonyStatus};
 use axum::{
     body::StreamBody,
@@ -8,6 +6,7 @@ use axum::{
 };
 use http::StatusCode;
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 

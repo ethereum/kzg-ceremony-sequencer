@@ -44,11 +44,11 @@ use tracing::info;
 use url::Url;
 
 mod api;
-mod eth_sign;
 mod io;
 mod keys;
 mod lobby;
 mod oauth;
+mod receipt;
 mod sessions;
 mod storage;
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::{
-    eth_sign::IdToken,
     lobby::SharedLobbyState,
     oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
+    sessions::IdToken,
     storage::{PersistentStorage, StorageError},
     EthAuthOptions, Options, SessionId, SessionInfo,
 };

@@ -1,12 +1,14 @@
 #![cfg(test)]
 
+use crate::{
+    sessions::{IdToken, SessionInfo},
+    Options,
+};
+use clap::Parser;
 use tokio::time::Instant;
 
-use crate::{eth_sign, sessions::SessionInfo, Options};
-use clap::Parser;
-
-pub fn test_jwt(exp: u64) -> eth_sign::IdToken {
-    eth_sign::IdToken {
+pub fn test_jwt(exp: u64) -> IdToken {
+    IdToken {
         sub: String::from("foo"),
         nickname: String::from("foo"),
         provider: String::from("foo"),
