@@ -113,7 +113,7 @@ async fn get_and_validate_csrf_token(harness: &Harness) -> String {
             .get("github_auth_url")
             .expect("/auth/request_link response must contain a github_auth_url")
             .as_str()
-            .expect("github_auth_url must be a string")
+            .expect("github_auth_url must be a string"),
     )
     .expect("github_auth_url must be a valid Url")
     .query_pairs()
