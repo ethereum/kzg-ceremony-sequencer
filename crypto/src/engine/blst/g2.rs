@@ -48,7 +48,7 @@ pub fn p2_affine_in_g2(p: &blst_p2_affine) -> bool {
     unsafe { blst_p2_affine_in_g2(p) }
 }
 
-pub fn p2s_to_affine(ps: &Vec<blst_p2>) -> Vec<blst_p2_affine> {
+pub fn p2s_to_affine(ps: &[blst_p2]) -> Vec<blst_p2_affine> {
     let input = ps
         .iter()
         .map(|x| x as *const blst_p2)

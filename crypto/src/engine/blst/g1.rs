@@ -49,7 +49,7 @@ pub fn p1_affine_in_g1(p: &blst_p1_affine) -> bool {
     unsafe { blst_p1_affine_in_g1(p) }
 }
 
-pub fn p1s_to_affine(ps: &Vec<blst_p1>) -> Vec<blst_p1_affine> {
+pub fn p1s_to_affine(ps: &[blst_p1]) -> Vec<blst_p1_affine> {
     let input = ps.iter().map(|x| x as *const blst_p1).collect::<Vec<_>>();
     let mut out = Vec::<blst_p1_affine>::with_capacity(ps.len());
 
