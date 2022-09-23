@@ -88,12 +88,11 @@ async fn gh_userinfo(
     Extension(state): Extension<AuthState>,
 ) -> (StatusCode, Json<Value>) {
     let token = auth.0.token();
-    let code_str = token
+    let code_str = *token
         .split("::")
         .collect::<Vec<_>>()
         .get(1)
-        .expect("invalid auth token")
-        .clone();
+        .expect("invalid auth token");
     let code = u64::from_str(code_str).expect("invalid auth token");
     let user = state.get_user(code).await;
     match user {
