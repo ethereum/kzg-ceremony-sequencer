@@ -236,7 +236,7 @@ pub async fn github_callback(
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
     let response = http_client
-        .get(options.github.userinfo_url)
+        .get(options.github.gh_userinfo_url)
         .bearer_auth(token.access_token().secret())
         .header("User-Agent", "ethereum-kzg-ceremony-sequencer")
         .send()
@@ -248,7 +248,7 @@ pub async fn github_callback(
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
     let creation_time = DateTime::parse_from_rfc3339(&gh_user_info.created_at)
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
-    if creation_time > options.github.max_account_creation_time {
+    if creation_time > options.github.gh_max_account_creation_time {
         return Err(AuthError::UserCreatedAfterDeadline);
     }
     let user = AuthenticatedUser {
@@ -300,7 +300,7 @@ pub async fn siwe_callback(
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
     let response = http_client
-        .get("https://oidc.signinwithethereum.org/userinfo")
+        .get(&options.ethereum.eth_userinfo_url)
         .bearer_auth(token.access_token().secret())
         .send()
         .await
@@ -326,7 +326,7 @@ pub async fn siwe_callback(
     .await
     .ok_or(AuthError::CouldNotExtractUserData)?;
 
-    if tx_count < options.ethereum.min_nonce {
+    if tx_count < options.ethereum.eth_min_nonce {
         return Err(AuthError::UserCreatedAfterDeadline);
     }
 
@@ -346,6 +346,7 @@ pub async fn siwe_callback(
     .await
 }
 
+// TODO: This has many failure modes and should return and eyre::Result.
 async fn get_tx_count(
     address: &str,
     at_block: &str,
@@ -360,7 +361,7 @@ async fn get_tx_count(
     });
 
     let rpc_response = client
-        .post(options.rpc_url.get_secret())
+        .post(options.eth_rpc_url.get_secret())
         .json(&rpc_payload)
         .send()
         .await
