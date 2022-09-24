@@ -11,6 +11,7 @@ use serde::Serialize;
 use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
+use tracing::info;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -71,6 +72,7 @@ impl Keys {
         let wallet = MnemonicBuilder::<English>::default()
             .phrase(phrase)
             .build()?;
+        info!(address = ?wallet.address(), "Wallet created");
         Ok(Self { wallet })
     }
 
