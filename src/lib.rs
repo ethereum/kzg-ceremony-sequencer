@@ -92,6 +92,7 @@ pub struct Options {
     pub storage: storage::Options,
 }
 
+#[allow(clippy::missing_errors_doc)]
 pub async fn async_main(options: Options) -> EyreResult<()> {
     let addr = options.server.clone();
     let server = start_server(options).await?;
@@ -100,6 +101,7 @@ pub async fn async_main(options: Options) -> EyreResult<()> {
     Ok(())
 }
 
+#[allow(clippy::missing_errors_doc)]
 pub async fn start_server(
     options: Options,
 ) -> EyreResult<Server<AddrIncoming, IntoMakeService<Router>>> {
@@ -147,7 +149,7 @@ pub async fn start_server(
         .layer(Extension(eth_oauth_client(&options.ethereum)))
         .layer(Extension(github_oauth_client(&options.github)))
         .layer(Extension(reqwest::Client::new()))
-        .layer(Extension(storage_client(&options.storage).await))
+        .layer(Extension(storage_client(&options.storage).await?))
         .layer(Extension(transcript))
         .layer(Extension(options.clone()));
 
@@ -167,6 +169,10 @@ async fn hello_world() -> Html<&'static str> {
 mod tests {
     use super::*;
     use kzg_ceremony_crypto::{BatchContribution, BatchTranscript, G2};
+    use once_cell::sync::Lazy;
+    use tokio::sync::Mutex;
+
+    pub static DB_TEST_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     pub fn test_transcript() -> BatchTranscript {
         BatchTranscript::new(&[(4, 2)])

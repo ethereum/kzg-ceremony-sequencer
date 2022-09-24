@@ -4,10 +4,13 @@ use axum::{
 };
 use http::StatusCode;
 use serde_json::json;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
 pub enum JwtError {
+    #[error("token creation error")]
     TokenCreation,
+    #[error("invalid token")]
     InvalidToken,
 }
 

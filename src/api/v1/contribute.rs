@@ -3,7 +3,7 @@ use crate::{
     jwt::{errors::JwtError, Receipt},
     keys::SharedKeys,
     lobby::{clear_current_contributor, SharedContributorState},
-    storage::PersistentStorage,
+    storage::{PersistentStorage, StorageError},
     Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 use axum::{
@@ -14,6 +14,7 @@ use http::StatusCode;
 use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
 use serde_json::json;
 use std::sync::atomic::Ordering;
+use thiserror::Error;
 
 pub struct ContributeReceipt {
     encoded_receipt_token: String,
@@ -25,10 +26,16 @@ impl IntoResponse for ContributeReceipt {
     }
 }
 
+#[derive(Debug, Error)]
 pub enum ContributeError {
+    #[error("not your turn to participate")]
     NotUsersTurn,
-    InvalidContribution(CeremoniesError),
-    Auth(JwtError),
+    #[error("contribution invalid: {0}")]
+    InvalidContribution(#[from] CeremoniesError),
+    #[error("jwt error: {0}")]
+    Auth(#[from] JwtError),
+    #[error("storage error: {0}")]
+    StorageError(#[from] StorageError),
 }
 
 impl IntoResponse for ContributeError {
@@ -43,6 +50,7 @@ impl IntoResponse for ContributeError {
                 (StatusCode::BAD_REQUEST, body)
             }
             Self::Auth(err) => return err.into_response(),
+            Self::StorageError(err) => return err.into_response(),
         };
 
         (status, body).into_response()
@@ -87,7 +95,7 @@ pub async fn contribute(
         clear_current_contributor(contributor_state).await;
         storage
             .expire_contribution(id_token.unique_identifier())
-            .await;
+            .await?;
         return Err(e);
     }
 
@@ -117,7 +125,7 @@ pub async fn contribute(
     };
 
     clear_current_contributor(contributor_state).await;
-    storage.finish_contribution(&uid).await;
+    storage.finish_contribution(&uid).await?;
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
     Ok(ContributeReceipt {
@@ -137,7 +145,7 @@ mod tests {
         lobby::SharedContributorState,
         storage::storage_client,
         test_util::{create_test_session_info, test_options},
-        tests::{invalid_contribution, test_transcript, valid_contribution},
+        tests::{invalid_contribution, test_transcript, valid_contribution, DB_TEST_MUTEX},
         Keys, SessionId,
     };
     use axum::{Extension, Json};
@@ -161,8 +169,9 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
+        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
         let transcript = test_transcript();
         let contrbution = valid_contribution(&transcript, 1);
@@ -182,8 +191,9 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_contribution() {
+        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         *contributor_state.write().await =
@@ -209,11 +219,12 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
+        let _guard = DB_TEST_MUTEX.lock().await;
         let keys = shared_keys().await;
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         let cfg = test_options();
-        let db = storage_client(&cfg.storage).await;
+        let db = storage_client(&cfg.storage).await.unwrap();
         let transcript = test_transcript();
         let contribution_1 = valid_contribution(&transcript, 1);
         let transcript_1 = {

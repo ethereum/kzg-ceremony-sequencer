@@ -1,6 +1,6 @@
 pub mod errors;
-use errors::JwtError;
 
+use self::errors::JwtError;
 use crate::{keys, Keys};
 use serde::{Deserialize, Serialize};
 
