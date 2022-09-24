@@ -4,40 +4,139 @@ use axum::{
 };
 use chrono::Utc;
 use clap::Parser;
+use eyre::{eyre, WrapErr};
 use http::StatusCode;
 use serde_json::json;
-use sqlx::{sqlite::SqlitePoolOptions, Executor, Pool, Row, Sqlite};
-use tracing::info;
+use sqlx::{
+    any::AnyKind,
+    migrate::{Migrate, MigrateDatabase, Migrator},
+    pool::PoolOptions,
+    sqlite::SqlitePoolOptions,
+    Any, Executor, Pool, Row, Sqlite,
+};
+use tracing::{error, info, warn};
+
+// Statically link in migration files
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
-    /// SQLite database connections string.
+    /// Database server connection string.
+    ///
+    /// Example: `postgres://user:password@localhost:5432/database`
+    /// Sqlite file: `sqlite://storage.db`
+    /// In memory DB: `sqlite::memory:`
+    ///
     /// By default, it is a file named `storage.db` in the current directory.
     /// You can use `sqlite::memory:` to use an in-memory database.
-    /// See <https://www.sqlite.org/uri.html>
     #[clap(long, env, default_value = "sqlite://storage.db")]
     database_url: String,
+
+    /// Allow creation or migration of the database schema.
+    /// When set to false the process will terminate if the database is not
+    /// up to date.
+    #[clap(long, env, default_value = "true")]
+    pub database_migrate: bool,
+
+    /// Maximum number of connections in the database connection pool
+    #[clap(long, env, default_value = "10")]
+    pub database_max_connections: u32,
 }
 
 #[derive(Clone)]
-pub struct PersistentStorage(Pool<Sqlite>);
+pub struct PersistentStorage(Pool<Any>);
 
 #[derive(Debug)]
 pub enum StorageError {
     DatabaseError(sqlx::error::Error),
 }
 
-pub async fn storage_client(options: &Options) -> PersistentStorage {
+pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage> {
     info!(url = %&options.database_url, "Connecting to database");
 
-    let db_pool = SqlitePoolOptions::new()
-        .connect(&options.database_url)
+    // Create database if requested and does not exist
+    if options.database_migrate && !Any::database_exists(options.database_url.as_str()).await? {
+        warn!(url = %&options.database_url, "Database does not exist, creating database");
+        Any::create_database(options.database_url.as_str()).await?;
+    }
+
+    // Create a connection pool
+    let pool = PoolOptions::<Any>::new()
+        .max_connections(options.database_max_connections)
+        .connect(options.database_url.as_str())
         .await
-        .expect("Unable to connect to DATABASE_URL");
+        .wrap_err("error connecting to database")?;
 
-    sqlx::migrate!().run(&db_pool).await.unwrap();
+    // Log DB version to test connection.
+    let sql = match pool.any_kind() {
+        #[cfg(feature = "sqlite")]
+        AnyKind::Sqlite => "sqlite_version() || ' ' || sqlite_source_id()",
 
-    PersistentStorage(db_pool)
+        #[cfg(feature = "postgres")]
+        AnyKind::Postgres => "version()",
+
+        // Depending on compilation flags there may be more patterns.
+        #[allow(unreachable_patterns)]
+        _ => "'unknown'",
+    };
+    let version = pool
+        .fetch_one(format!("SELECT {sql};", sql = sql).as_str())
+        .await
+        .wrap_err("error getting database version")?
+        .get::<String, _>(0);
+    info!(url = %&options.database_url, kind = ?pool.any_kind(), ?version, "Connected to database");
+
+    // Run migrations if requested.
+    let latest = MIGRATOR.migrations.last().unwrap().version;
+    if options.database_migrate {
+        info!(url = %&options.database_url, "Running database migrations if necessary");
+        MIGRATOR.run(&pool).await?;
+    }
+
+    // Validate database schema version
+    #[allow(deprecated)] // HACK: No good alternative to `version()`?
+    if let Some((version, dirty)) = pool.acquire().await?.version().await? {
+        if dirty {
+            error!(
+                url = %&options.database_url,
+                version,
+                expected = latest,
+                "Database is in incomplete migration state.",
+            );
+            return Err(eyre!("Database is in incomplete migration state."));
+        } else if version < latest {
+            error!(
+                url = %&options.database_url,
+                version,
+                expected = latest,
+                "Database is not up to date, try rerunning with --database-migrate",
+            );
+            return Err(eyre!(
+                "Database is not up to date, try rerunning with --database-migrate"
+            ));
+        } else if version > latest {
+            error!(
+                url = %&options.database_url,
+                version,
+                latest,
+                "Database version is newer than this version of the software, please update.",
+            );
+            return Err(eyre!(
+                "Database version is newer than this version of the software, please update."
+            ));
+        }
+        info!(
+            url = %&options.database_url,
+            version,
+            latest,
+            "Database version is up to date.",
+        );
+    } else {
+        error!(url = %&options.database_url, "Could not get database version");
+        return Err(eyre!("Could not get database version."));
+    }
+
+    Ok(PersistentStorage(pool))
 }
 
 impl IntoResponse for StorageError {

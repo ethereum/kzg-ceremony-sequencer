@@ -184,7 +184,7 @@ mod tests {
         let contributor_state = SharedContributorState::default();
         let lobby_state = SharedLobbyState::default();
         let transcript = Arc::new(RwLock::new(test_transcript()));
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
 
         let session_id = SessionId::new();
         let other_session_id = SessionId::new();

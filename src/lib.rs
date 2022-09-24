@@ -148,7 +148,7 @@ pub async fn start_server(
         .layer(Extension(eth_oauth_client(&options.ethereum)))
         .layer(Extension(github_oauth_client(&options.github)))
         .layer(Extension(reqwest::Client::new()))
-        .layer(Extension(storage_client(&options.storage).await))
+        .layer(Extension(storage_client(&options.storage).await?))
         .layer(Extension(transcript))
         .layer(Extension(options.clone()));
 

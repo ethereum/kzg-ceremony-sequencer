@@ -162,7 +162,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
         let transcript = test_transcript();
         let contrbution = valid_contribution(&transcript, 1);
@@ -183,7 +183,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_invalid_contribution() {
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         *contributor_state.write().await =
@@ -213,7 +213,7 @@ mod tests {
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         let cfg = test_options();
-        let db = storage_client(&cfg.storage).await;
+        let db = storage_client(&cfg.storage).await.unwrap();
         let transcript = test_transcript();
         let contribution_1 = valid_contribution(&transcript, 1);
         let transcript_1 = {
