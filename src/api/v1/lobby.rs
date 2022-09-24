@@ -237,7 +237,7 @@ mod tests {
             Extension(test_options()),
         )
         .await
-        .ok();
+        .unwrap();
         let contribution_in_progress_response = try_contribute(
             session_id.clone(),
             Extension(contributor_state.clone()),

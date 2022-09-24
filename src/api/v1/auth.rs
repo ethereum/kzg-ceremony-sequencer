@@ -168,7 +168,7 @@ pub async fn auth_client_link(
 
     let redirect_uri = params
         .redirect_to
-        .and_then(|uri| RedirectUrl::new(uri).ok());
+        .and_then(|uri| RedirectUrl::new(uri).ok()); // TODO: Error handling?
 
     let auth_request = eth_client
         .authorize_url(|| csrf_token)
