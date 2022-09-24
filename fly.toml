@@ -12,13 +12,6 @@ processes = []
     source = "kzg_ceremony_sequencer_dev_data"
     destination = "/data"
 
-[env]
-    VEBOSE=3
-    SERVER="http://127.0.0.1:3000/"
-    DATABASE_URL="sqlite:///data/storage.sqlite"
-    TRANSCRIPT_FILE="/data/transcript.json"
-    TRANSCRIPT_IN_PROGRESS_FILE="/data/transcript.json.wip"
-
 # Secrets
 # - ETH_RPC_URL       (i.e. Alchemy)
 # - GH_CLIENT_ID      (Register at <https://github.com/settings/applications/new>)
@@ -30,17 +23,14 @@ processes = []
     allowed_public_ports = []
     auto_rollback = true
 
-[[services]]
-    http_checks = []
-    internal_port = 3000
-    processes = ["app"]
-    protocol = "tcp"
-    script_checks = []
+[metrics]
+    # Prometheus metrics server. See PROMETHEUS env var.
+    port = 9998
+    path = "/metrics"
 
-    [services.concurrency]
-        hard_limit = 25
-        soft_limit = 20
-        type = "connections"
+[[services]]
+    internal_port = 8080
+    protocol = "tcp"
 
     [[services.ports]]
         force_https = true
@@ -50,9 +40,3 @@ processes = []
     [[services.ports]]
         handlers = ["tls", "http"]
         port = 443
-
-    [[services.tcp_checks]]
-        grace_period = "1s"
-        interval = "15s"
-        restart_limit = 0
-        timeout = "2s"

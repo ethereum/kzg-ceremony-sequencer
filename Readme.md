@@ -78,3 +78,6 @@ fly secrets set GH_CLIENT_ID="..."
 fly secrets set GH_CLIENT_SECRET="..."
 fly volumes create kzg_ceremony_sequencer_dev_data --size 5
 ```
+
+* Fly server: <https://kzg-ceremony-sequencer-dev.fly.dev/>
+* Fly dashboard: <https://fly.io/apps/kzg-ceremony-sequencer-dev>
