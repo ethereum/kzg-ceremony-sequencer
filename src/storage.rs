@@ -13,6 +13,7 @@ use sqlx::{
     pool::PoolOptions,
     Any, Executor, Pool, Row,
 };
+use thiserror::Error;
 use tracing::{error, info, warn};
 
 // Statically link in migration files
@@ -45,9 +46,10 @@ pub struct Options {
 #[derive(Clone)]
 pub struct PersistentStorage(Pool<Any>);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum StorageError {
-    DatabaseError(sqlx::error::Error),
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] sqlx::error::Error),
 }
 
 pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage> {
@@ -151,34 +153,35 @@ impl IntoResponse for StorageError {
 impl PersistentStorage {
     pub async fn has_contributed(&self, uid: &str) -> Result<bool, StorageError> {
         let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1)";
-        self.0
+        let result = self
+            .0
             .fetch_one(sqlx::query(sql).bind(uid))
             .await
-            .map(|row| row.get(0))
-            .map_err(StorageError::DatabaseError)
+            .map(|row| row.get(0))?;
+        Ok(result)
     }
 
-    pub async fn insert_contributor(&self, uid: &str) {
+    pub async fn insert_contributor(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "INSERT INTO contributors (uid, started_at) VALUES (?1, ?2)";
         self.0
             .execute(sqlx::query(sql).bind(uid).bind(Utc::now()))
-            .await
-            .ok();
+            .await?;
+        Ok(())
     }
 
-    pub async fn finish_contribution(&self, uid: &str) {
+    pub async fn finish_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET finished_at = ?1 WHERE uid = ?2";
         self.0
             .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
-            .await
-            .ok();
+            .await?;
+        Ok(())
     }
 
-    pub async fn expire_contribution(&self, uid: &str) {
+    pub async fn expire_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET expired_at = ?1 WHERE uid = ?2";
         self.0
             .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
-            .await
-            .ok();
+            .await?;
+        Ok(())
     }
 }

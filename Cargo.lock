@@ -1503,6 +1503,7 @@ dependencies = [
  "small-powers-of-tau",
  "sqlx",
  "tempfile",
+ "thiserror",
  "tokio",
  "tokio-util 0.7.4",
  "tower",
