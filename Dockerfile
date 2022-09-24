@@ -45,11 +45,11 @@ ENV TRANSCRIPT_FILE="/data/transcript.json"
 ENV TRANSCRIPT_IN_PROGRESS_FILE="/data/transcript.json.wip"
 
 # Metrics server
-ENV PROMETHEUS="http://127.0.0.1:9998/metrics"
+ENV PROMETHEUS="http://0.0.0.0:9998/metrics"
 EXPOSE 9998
 
 # API Server
-ENV SERVER="http://127.0.0.1:8080/"
+ENV SERVER="http://0.0.0.0:8080/"
 EXPOSE 8080
 
 # Executable
