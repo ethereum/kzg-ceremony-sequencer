@@ -11,8 +11,7 @@ use sqlx::{
     any::AnyKind,
     migrate::{Migrate, MigrateDatabase, Migrator},
     pool::PoolOptions,
-    sqlite::SqlitePoolOptions,
-    Any, Executor, Pool, Row, Sqlite,
+    Any, Executor, Pool, Row,
 };
 use tracing::{error, info, warn};
 

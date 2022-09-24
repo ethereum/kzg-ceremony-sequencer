@@ -4,3 +4,4 @@ publickey.pem
 transcript.json
 .idea
 *.iml
+storage.db*

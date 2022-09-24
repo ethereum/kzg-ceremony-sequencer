@@ -31,7 +31,7 @@ pub struct GhUser {
     pub created_at: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AuthState {
     github_users: Arc<RwLock<HashMap<u64, GhUser>>>,
 }

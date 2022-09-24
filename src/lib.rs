@@ -92,6 +92,7 @@ pub struct Options {
     pub storage: storage::Options,
 }
 
+#[allow(clippy::missing_errors_doc)]
 pub async fn async_main(options: Options) -> EyreResult<()> {
     let addr = options.server.clone();
     let server = start_server(options).await?;
@@ -100,6 +101,7 @@ pub async fn async_main(options: Options) -> EyreResult<()> {
     Ok(())
 }
 
+#[allow(clippy::missing_errors_doc)]
 pub async fn start_server(
     options: Options,
 ) -> EyreResult<Server<AddrIncoming, IntoMakeService<Router>>> {

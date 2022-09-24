@@ -5,6 +5,7 @@ use tokio::time::Instant;
 use crate::{jwt, sessions::SessionInfo, Options};
 use clap::Parser;
 
+#[must_use]
 pub fn test_jwt(exp: u64) -> jwt::IdToken {
     jwt::IdToken {
         sub: String::from("foo"),
@@ -14,6 +15,7 @@ pub fn test_jwt(exp: u64) -> jwt::IdToken {
     }
 }
 
+#[must_use]
 pub fn create_test_session_info(exp: u64) -> SessionInfo {
     SessionInfo {
         token:                 test_jwt(exp),
@@ -22,6 +24,7 @@ pub fn create_test_session_info(exp: u64) -> SessionInfo {
     }
 }
 
+#[must_use]
 pub fn test_options() -> Options {
     let args: Vec<&str> = vec![
         "kzg-ceremony-sequencer",
