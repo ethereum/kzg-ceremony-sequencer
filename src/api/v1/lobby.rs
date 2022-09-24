@@ -247,7 +247,7 @@ mod tests {
             Extension(test_options()),
         )
         .await;
-        dbg!(&contribution_in_progress_response);
+        dbg!(&db, &contribution_in_progress_response);
         assert!(matches!(
             contribution_in_progress_response,
             Err(TryContributeError::AnotherContributionInProgress)

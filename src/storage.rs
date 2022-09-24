@@ -46,7 +46,7 @@ pub struct Options {
     pub database_max_connections: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PersistentStorage(Pool<Any>);
 
 #[derive(Debug, Error)]
