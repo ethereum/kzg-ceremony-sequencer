@@ -13,8 +13,11 @@ use sqlx::{
     pool::PoolOptions,
     Any, Executor, Pool, Row,
 };
+use std::time::Duration;
 use thiserror::Error;
 use tracing::{error, info, warn};
+
+const POOL_TIMEOUT: Duration = Duration::from_secs(30);
 
 // Statically link in migration files
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -64,6 +67,7 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
     // Create a connection pool
     let pool = PoolOptions::<Any>::new()
         .max_connections(options.database_max_connections)
+        .acquire_timeout(POOL_TIMEOUT)
         .connect(options.database_url.as_str())
         .await
         .wrap_err("error connecting to database")?;
