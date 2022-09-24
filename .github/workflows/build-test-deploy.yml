@@ -94,8 +94,8 @@ jobs:
           cargo test --locked --all-features --doc -- --help
       - name: Run tests
         run: |
-          cargo test --locked --all-features --all-targets -- --nocapture --test-threads 1
-          cargo test --locked --all-features --doc -- --nocapture --test-threads 1
+          cargo test --locked --all-features --all-targets -- --nocapture
+          cargo test --locked --all-features --doc -- --nocapture
 
   codecov:
     # See <https://doc.rust-lang.org/nightly/unstable-book/compiler-flags/source-based-code-coverage.html>
