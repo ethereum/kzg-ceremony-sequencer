@@ -16,8 +16,10 @@ keywords = ["cryptography"]
 categories = ["cryptography::cryptocurrencies"]
 
 [features]
-default = []
+default = [ "sqlite" ]
 mimalloc = ["cli-batteries/mimalloc"]
+postgres = [ "sqlx/postgres" ]
+sqlite = [ "sqlx/sqlite" ]
 
 # Dummy lib target so we can run doc tests
 [lib]
@@ -51,7 +53,7 @@ headers = "0.3"
 chrono = "0.4"
 http = "0.2"
 async-session = "3.0.0"
-sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "any", "chrono"] }
 small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-tau" }
 ethers-signers = "0.17.0"
 ethers-core = "0.17.0"
@@ -69,6 +71,7 @@ reqwest = { version = "0.11", default-features = false, features = [
     "rustls-tls",
     "json",
 ] }
+thiserror = "1.0.35"
 
 
 [build-dependencies]

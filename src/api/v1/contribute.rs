@@ -3,7 +3,7 @@ use crate::{
     keys::{SharedKeys, Signature, SignatureError},
     lobby::{clear_current_contributor, SharedContributorState},
     receipt::Receipt,
-    storage::PersistentStorage,
+    storage::{PersistentStorage, StorageError},
     Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 use axum::{
@@ -16,9 +16,10 @@ use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, G2};
 use serde::Serialize;
 use serde_json::json;
 use std::sync::atomic::Ordering;
+use thiserror::Error;
 
 #[derive(Serialize)]
-pub struct ContributeReceipt<T: Serialize> {
+pub struct ContributeReceipt<T> {
     receipt:   Receipt<T>,
     signature: Signature,
 }
@@ -29,10 +30,16 @@ impl<T: Serialize> IntoResponse for ContributeReceipt<T> {
     }
 }
 
+#[derive(Debug, Error)]
 pub enum ContributeError {
+    #[error("not your turn to participate")]
     NotUsersTurn,
-    InvalidContribution(CeremoniesError),
+    #[error("contribution invalid: {0}")]
+    InvalidContribution(#[from] CeremoniesError),
+    #[error("signature error: {0}")]
     Signature(SignatureError),
+    #[error("storage error: {0}")]
+    StorageError(#[from] StorageError),
 }
 
 impl IntoResponse for ContributeError {
@@ -47,6 +54,7 @@ impl IntoResponse for ContributeError {
                 (StatusCode::BAD_REQUEST, body)
             }
             Self::Signature(err) => return err.into_response(),
+            Self::StorageError(err) => return err.into_response(),
         };
 
         (status, body).into_response()
@@ -91,7 +99,7 @@ pub async fn contribute(
         clear_current_contributor(contributor_state).await;
         storage
             .expire_contribution(id_token.unique_identifier())
-            .await;
+            .await?;
         return Err(e);
     }
 
@@ -122,7 +130,7 @@ pub async fn contribute(
     };
 
     clear_current_contributor(contributor_state).await;
-    storage.finish_contribution(&uid).await;
+    storage.finish_contribution(&uid).await?;
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
     Ok(ContributeReceipt { receipt, signature })
@@ -140,7 +148,7 @@ mod tests {
         lobby::SharedContributorState,
         storage::storage_client,
         test_util::{create_test_session_info, test_options},
-        tests::{invalid_contribution, test_transcript, valid_contribution},
+        tests::{invalid_contribution, test_transcript, valid_contribution, DB_TEST_MUTEX},
         Keys, SessionId,
     };
     use axum::{Extension, Json};
@@ -149,15 +157,16 @@ mod tests {
     use std::sync::{atomic::AtomicUsize, Arc};
     use tokio::sync::RwLock;
 
-    async fn shared_keys() -> SharedKeys {
+    fn shared_keys() -> SharedKeys {
         let options = keys::Options::parse_from(Vec::<&str>::new());
-        Arc::new(Keys::new(&options).await.unwrap())
+        Arc::new(Keys::new(&options).unwrap())
     }
 
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
+        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
         let transcript = test_transcript();
         let contrbution = valid_contribution(&transcript, 1);
@@ -169,7 +178,7 @@ mod tests {
             Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
-            Extension(shared_keys().await),
+            Extension(shared_keys()),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
@@ -177,8 +186,9 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_contribution() {
+        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         *contributor_state.write().await =
@@ -193,7 +203,7 @@ mod tests {
             Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
-            Extension(shared_keys().await),
+            Extension(shared_keys()),
         )
         .await;
         assert!(matches!(
@@ -204,11 +214,12 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
-        let keys = shared_keys().await;
+        let _guard = DB_TEST_MUTEX.lock().await;
+        let keys = shared_keys();
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         let cfg = test_options();
-        let db = storage_client(&cfg.storage).await;
+        let db = storage_client(&cfg.storage).await.unwrap();
         let transcript = test_transcript();
         let contribution_1 = valid_contribution(&transcript, 1);
         let transcript_1 = {

@@ -4,7 +4,7 @@ use crate::{
         clear_current_contributor, set_current_contributor, SharedContributorState,
         SharedLobbyState,
     },
-    storage::PersistentStorage,
+    storage::{PersistentStorage, StorageError},
     SessionId, SharedTranscript,
 };
 use axum::{
@@ -15,13 +15,19 @@ use http::StatusCode;
 use kzg_ceremony_crypto::BatchContribution;
 use serde::Serialize;
 use serde_json::json;
+use thiserror::Error;
 use tokio::time::Instant;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TryContributeError {
+    #[error("unknown session id")]
     UnknownSessionId,
+    #[error("call came too early. rate limited")]
     RateLimited,
+    #[error("another contribution in progress")]
     AnotherContributionInProgress,
+    #[error("error in storage layer: {0}")]
+    StorageError(#[from] StorageError),
 }
 
 impl IntoResponse for TryContributeError {
@@ -47,6 +53,7 @@ impl IntoResponse for TryContributeError {
                 }));
                 (StatusCode::OK, body)
             }
+            Self::StorageError(err) => return err.into_response(),
         };
 
         (status, body).into_response()
@@ -106,7 +113,7 @@ pub async fn try_contribute(
 
     // If this insertion fails, worst case we allow multiple contributions from the
     // same participant
-    storage.insert_contributor(&uid).await;
+    storage.insert_contributor(&uid).await?;
     set_current_contributor(contributor_state.clone(), lobby_state, session_id.clone()).await;
 
     // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
@@ -118,7 +125,8 @@ pub async fn try_contribute(
             uid,
             options.lobby,
         )
-        .await;
+        .await
+        .unwrap(); // TODO: Handle error
     });
 
     let transcript = transcript.read().await;
@@ -136,7 +144,7 @@ pub async fn remove_participant_on_deadline(
     session_id: SessionId,
     uid: String,
     options: lobby::Options,
-) {
+) -> Result<(), StorageError> {
     tokio::time::sleep(options.compute_deadline).await;
 
     {
@@ -147,10 +155,10 @@ pub async fn remove_participant_on_deadline(
             if participant_session_id != &session_id {
                 // Abort, this means that the participant has already contributed and
                 // the /contribute endpoint has removed them from the contribution spot
-                return;
+                return Ok(());
             }
         } else {
-            return;
+            return Ok(());
         }
     }
 
@@ -159,31 +167,32 @@ pub async fn remove_participant_on_deadline(
         &session_id.to_string()
     );
 
-    storage.expire_contribution(&uid).await;
+    storage.expire_contribution(&uid).await?;
     clear_current_contributor(contributor_state).await;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use tokio::sync::RwLock;
-
     use super::*;
     use crate::{
         api::v1::lobby::TryContributeError,
         storage::storage_client,
         test_util::{create_test_session_info, test_options},
-        tests::test_transcript,
+        tests::{test_transcript, DB_TEST_MUTEX},
     };
     use std::{sync::Arc, time::Duration};
+    use tokio::sync::RwLock;
 
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn lobby_try_contribute_test() {
+        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
         let contributor_state = SharedContributorState::default();
         let lobby_state = SharedLobbyState::default();
         let transcript = Arc::new(RwLock::new(test_transcript()));
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
 
         let session_id = SessionId::new();
         let other_session_id = SessionId::new();
@@ -227,7 +236,7 @@ mod tests {
             Extension(test_options()),
         )
         .await
-        .ok();
+        .unwrap();
         let contribution_in_progress_response = try_contribute(
             session_id.clone(),
             Extension(contributor_state.clone()),

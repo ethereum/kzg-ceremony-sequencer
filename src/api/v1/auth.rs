@@ -18,6 +18,7 @@ use oauth2::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
+use thiserror::Error;
 use tokio::time::Instant;
 
 // These are the providers that are supported
@@ -36,15 +37,24 @@ impl AuthProvider {
     }
 }
 
+#[derive(Debug, Error)]
 pub enum AuthError {
+    #[error("lobby is full")]
     LobbyIsFull,
+    #[error("user already contributed")]
     UserAlreadyContributed,
+    #[error("invalid csrf token")]
     InvalidCsrf,
+    #[error("invalid auth code")]
     InvalidAuthCode,
+    #[error("could not fetch user data from auth server")]
     FetchUserDataError,
+    #[error("could not extract user data from auth server")]
     CouldNotExtractUserData,
+    #[error("user created after deadline")]
     UserCreatedAfterDeadline,
-    Storage(StorageError),
+    #[error("storage error: {0}")]
+    Storage(#[from] StorageError),
 }
 
 pub struct UserVerified {
@@ -153,7 +163,7 @@ pub async fn auth_client_link(
 
     let redirect_uri = params
         .redirect_to
-        .and_then(|uri| RedirectUrl::new(uri).ok());
+        .and_then(|uri| RedirectUrl::new(uri).ok()); // TODO: Error handling?
 
     let auth_request = eth_client
         .authorize_url(|| csrf_token)

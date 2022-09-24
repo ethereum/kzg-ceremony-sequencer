@@ -10,6 +10,7 @@ use http::StatusCode;
 use serde::Serialize;
 use serde_json::json;
 use std::sync::Arc;
+use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -25,10 +26,13 @@ pub struct Options {
 #[derive(Serialize)]
 pub struct Signature(String);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SignatureError {
+    #[error("couldn't sign the receipt")]
     SignatureCreation,
+    #[error("signature is not a valid hex string")]
     InvalidToken,
+    #[error("couldn't create signature from string")]
     InvalidSignature,
 }
 
@@ -62,7 +66,7 @@ pub struct Keys {
 pub type SharedKeys = Arc<Keys>;
 
 impl Keys {
-    pub async fn new(options: &Options) -> Result<Self> {
+    pub fn new(options: &Options) -> Result<Self> {
         let phrase = options.mnemonic.as_ref();
         let wallet = MnemonicBuilder::<English>::default()
             .phrase(phrase)
@@ -117,7 +121,7 @@ mod tests {
         };
 
         let options = Options::parse_from(Vec::<&str>::new());
-        let keys = Keys::new(&options).await.unwrap();
+        let keys = Keys::new(&options).unwrap();
 
         let message = serde_json::to_string(&t).unwrap();
         let signature = keys.sign(&message).await.unwrap();
