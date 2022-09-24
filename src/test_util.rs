@@ -1,13 +1,16 @@
 #![cfg(test)]
 
-use crate::{jwt, sessions::SessionInfo, Options};
+use crate::{
+    sessions::{IdToken, SessionInfo},
+    Options,
+};
 use clap::Parser;
 use tokio::time::Instant;
 use uuid::Uuid;
 
 #[must_use]
-pub fn test_jwt(exp: u64) -> jwt::IdToken {
-    jwt::IdToken {
+pub fn test_jwt(exp: u64) -> IdToken {
+    IdToken {
         sub: Uuid::new_v4().to_string(),
         nickname: String::from("foo"),
         provider: String::from("foo"),

@@ -55,8 +55,10 @@ http = "0.2"
 async-session = "3.0.0"
 sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "any", "chrono"] }
 small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-tau" }
+ethers-signers = "0.17.0"
+ethers-core = "0.17.0"
+k256 = "0.11.5"
 kzg-ceremony-crypto = { path = "./crypto", features = ["arkworks"] }
-jsonwebtoken = { version = "8.0", features = ["use_pem"] }
 once_cell = "1.8"
 indexmap = "1.9.1"
 clap = { version = "3.2.21", features = ["derive"] }

@@ -1,8 +1,8 @@
 use crate::{
     io::write_json_file,
-    jwt::{errors::JwtError, Receipt},
-    keys::SharedKeys,
+    keys::{SharedKeys, Signature, SignatureError},
     lobby::{clear_current_contributor, SharedContributorState},
+    receipt::Receipt,
     storage::{PersistentStorage, StorageError},
     Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
@@ -10,19 +10,23 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
+use axum_extra::response::ErasedJson;
 use http::StatusCode;
-use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
+use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, G2};
+use serde::Serialize;
 use serde_json::json;
 use std::sync::atomic::Ordering;
 use thiserror::Error;
 
-pub struct ContributeReceipt {
-    encoded_receipt_token: String,
+#[derive(Serialize)]
+pub struct ContributeReceipt<T> {
+    receipt:   Receipt<T>,
+    signature: Signature,
 }
 
-impl IntoResponse for ContributeReceipt {
+impl<T: Serialize> IntoResponse for ContributeReceipt<T> {
     fn into_response(self) -> Response {
-        (StatusCode::OK, self.encoded_receipt_token).into_response()
+        (StatusCode::OK, ErasedJson::pretty(self)).into_response()
     }
 }
 
@@ -32,8 +36,8 @@ pub enum ContributeError {
     NotUsersTurn,
     #[error("contribution invalid: {0}")]
     InvalidContribution(#[from] CeremoniesError),
-    #[error("jwt error: {0}")]
-    Auth(#[from] JwtError),
+    #[error("signature error: {0}")]
+    Signature(SignatureError),
     #[error("storage error: {0}")]
     StorageError(#[from] StorageError),
 }
@@ -49,7 +53,7 @@ impl IntoResponse for ContributeError {
                 let body = Json(json!({ "error": format!("contribution invalid: {}", e) }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            Self::Auth(err) => return err.into_response(),
+            Self::Signature(err) => return err.into_response(),
             Self::StorageError(err) => return err.into_response(),
         };
 
@@ -67,7 +71,7 @@ pub async fn contribute(
     Extension(storage): Extension<PersistentStorage>,
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
-) -> Result<ContributeReceipt, ContributeError> {
+) -> Result<ContributeReceipt<Vec<G2>>, ContributeError> {
     // 1. Check if this person should be contributing
     let id_token = {
         let active_contributor = contributor_state.read().await;
@@ -99,14 +103,15 @@ pub async fn contribute(
         return Err(e);
     }
 
-    let receipt = {
-        Receipt {
-            id_token,
-            witness: contribution.receipt(),
-        }
+    let receipt = Receipt {
+        id_token,
+        witness: contribution.receipt(),
     };
 
-    let encoded_receipt_token = receipt.encode(&keys).map_err(ContributeError::Auth)?;
+    let signature = receipt
+        .sign(&keys)
+        .await
+        .map_err(ContributeError::Signature)?;
 
     write_json_file(
         options.transcript_file,
@@ -128,9 +133,7 @@ pub async fn contribute(
     storage.finish_contribution(&uid).await?;
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
-    Ok(ContributeReceipt {
-        encoded_receipt_token,
-    })
+    Ok(ContributeReceipt { receipt, signature })
 }
 
 #[cfg(test)]
@@ -149,22 +152,14 @@ mod tests {
         Keys, SessionId,
     };
     use axum::{Extension, Json};
+    use clap::Parser;
     use kzg_ceremony_crypto::BatchTranscript;
-    use std::{
-        path::PathBuf,
-        sync::{atomic::AtomicUsize, Arc},
-    };
+    use std::sync::{atomic::AtomicUsize, Arc};
     use tokio::sync::RwLock;
 
-    async fn shared_keys() -> SharedKeys {
-        Arc::new(
-            Keys::new(&keys::Options {
-                private_key: PathBuf::from("private.key"),
-                public_key:  PathBuf::from("publickey.pem"),
-            })
-            .await
-            .unwrap(),
-        )
+    fn shared_keys() -> SharedKeys {
+        let options = keys::Options::parse_from(Vec::<&str>::new());
+        Arc::new(Keys::new(&options).unwrap())
     }
 
     #[tokio::test]
@@ -183,7 +178,7 @@ mod tests {
             Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
-            Extension(shared_keys().await),
+            Extension(shared_keys()),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
@@ -208,7 +203,7 @@ mod tests {
             Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
-            Extension(shared_keys().await),
+            Extension(shared_keys()),
         )
         .await;
         assert!(matches!(
@@ -220,7 +215,7 @@ mod tests {
     #[tokio::test]
     async fn accepts_valid_contribution() {
         let _guard = DB_TEST_MUTEX.lock().await;
-        let keys = shared_keys().await;
+        let keys = shared_keys();
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
         let cfg = test_options();

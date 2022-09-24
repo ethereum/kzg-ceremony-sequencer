@@ -10,7 +10,7 @@ use crate::{
     api::v1::{
         auth::{auth_client_link, eth_callback, github_callback},
         contribute::contribute,
-        info::{current_state, jwt_info, status},
+        info::{current_state, status},
         lobby::try_contribute,
     },
     io::{read_or_create_transcript, CeremonySizes},
@@ -45,10 +45,10 @@ use url::Url;
 
 mod api;
 pub mod io;
-mod jwt;
 mod keys;
 mod lobby;
 mod oauth;
+mod receipt;
 mod sessions;
 mod storage;
 #[cfg(test)]
@@ -107,7 +107,7 @@ pub async fn start_server(
 ) -> EyreResult<Server<AddrIncoming, IntoMakeService<Router>>> {
     info!(size=?options.ceremony_sizes, "Starting sequencer for KZG ceremony.");
 
-    let keys = Arc::new(Keys::new(&options.keys).await?);
+    let keys = Arc::new(Keys::new(&options.keys)?);
 
     let transcript = read_or_create_transcript(
         options.transcript_file.clone(),
@@ -139,7 +139,6 @@ pub async fn start_server(
         .route("/lobby/try_contribute", post(try_contribute))
         .route("/contribute", post(contribute))
         .route("/info/status", get(status))
-        .route("/info/jwt", get(jwt_info))
         .route("/info/current_state", get(current_state))
         .layer(Extension(active_contributor_state))
         .layer(Extension(lobby_state))

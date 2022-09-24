@@ -1,10 +1,9 @@
 use crate::{
-    jwt::{errors::JwtError, IdToken},
-    keys::SharedKeys,
     lobby::SharedLobbyState,
     oauth::{EthOAuthClient, GithubOAuthClient, SharedAuthState},
+    sessions::IdToken,
     storage::{PersistentStorage, StorageError},
-    EthAuthOptions, Keys, Options, SessionId, SessionInfo,
+    EthAuthOptions, Options, SessionId, SessionInfo,
 };
 use axum::{
     extract::Query,
@@ -46,8 +45,6 @@ pub enum AuthError {
     UserAlreadyContributed,
     #[error("invalid csrf token")]
     InvalidCsrf,
-    #[error("jwt error: {0}")]
-    Jwt(#[from] JwtError),
     #[error("invalid auth code")]
     InvalidAuthCode,
     #[error("could not fetch user data from auth server")]
@@ -61,7 +58,7 @@ pub enum AuthError {
 }
 
 pub struct UserVerified {
-    id_token:   String,
+    id_token:   IdToken,
     session_id: String,
 }
 
@@ -111,8 +108,6 @@ impl IntoResponse for AuthError {
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
-            Self::Jwt(jwt_err) => return jwt_err.into_response(),
-
             Self::LobbyIsFull => {
                 let body = Json(json!({
                     "error": "lobby is full",
@@ -237,7 +232,6 @@ pub async fn github_callback(
     Extension(storage): Extension<PersistentStorage>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = gh_oauth_client
@@ -266,15 +260,7 @@ pub async fn github_callback(
         uid:      format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
-    post_authenticate(
-        auth_state,
-        lobby_state,
-        storage,
-        user,
-        AuthProvider::Github,
-        &keys,
-    )
-    .await
+    post_authenticate(auth_state, lobby_state, storage, user, AuthProvider::Github).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -301,7 +287,6 @@ pub async fn eth_callback(
     Extension(storage): Extension<PersistentStorage>,
     Extension(oauth_client): Extension<EthOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = oauth_client
@@ -352,7 +337,6 @@ pub async fn eth_callback(
         storage,
         user_data,
         AuthProvider::Ethereum,
-        &keys,
     )
     .await
 }
@@ -400,7 +384,6 @@ async fn post_authenticate(
     storage: PersistentStorage,
     user_data: AuthenticatedUser,
     auth_provider: AuthProvider,
-    keys: &Keys,
 ) -> Result<UserVerified, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
@@ -432,19 +415,17 @@ async fn post_authenticate(
         exp:      u64::MAX,
     };
 
-    let id_token_encoded = id_token.encode(keys).map_err(AuthError::Jwt)?;
-
     {
         let mut lobby = lobby_state.write().await;
         lobby.participants.insert(session_id.clone(), SessionInfo {
-            token:                 id_token,
+            token:                 id_token.clone(),
             last_ping_time:        Instant::now(),
             is_first_ping_attempt: true,
         });
     }
 
     Ok(UserVerified {
-        id_token:   id_token_encoded,
+        id_token,
         session_id: session_id.to_string(),
     })
 }
