@@ -1,6 +1,7 @@
 use blst::{
     blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1, blst_p1_from_affine,
-    blst_p1_mult, blst_p1_uncompress, blst_p1s_to_affine, blst_scalar, blst_p1s_mult_pippenger, blst_p1s_mult_pippenger_scratch_sizeof, blst_p1_to_affine,
+    blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress, blst_p1s_mult_pippenger,
+    blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine, blst_scalar,
 };
 
 use crate::{ParseError, G1};
@@ -40,7 +41,7 @@ pub fn p1_from_affine(a: &blst_p1_affine) -> blst_p1 {
 pub fn p1_mult(p: &blst_p1, s: &blst_scalar) -> blst_p1 {
     unsafe {
         let mut out = blst_p1::default();
-        blst_p1_mult(&mut out, p, s.b.as_ptr(), 256);
+        blst_p1_mult(&mut out, p, s.b.as_ptr(), 255);
         out
     }
 }
@@ -63,15 +64,26 @@ pub fn p1s_to_affine(ps: &[blst_p1]) -> Vec<blst_p1_affine> {
 
 pub fn p1s_mult_pippenger(ps: &[blst_p1_affine], ss: &[blst_scalar]) -> blst_p1_affine {
     let npoints = ps.len();
-    let ps = ps.iter().map(|x| x as *const blst_p1_affine).collect::<Vec<_>>();
+    let ps = ps
+        .iter()
+        .map(|x| x as *const blst_p1_affine)
+        .collect::<Vec<_>>();
     let ss = ss.iter().map(|x| x.b.as_ptr()).collect::<Vec<_>>();
     let mut msm_result = blst_p1::default();
     let mut ret = blst_p1_affine::default();
 
     unsafe {
-        let mut scratch: Vec<u64> = Vec::with_capacity(blst_p1s_mult_pippenger_scratch_sizeof(npoints) / 8);
+        let mut scratch: Vec<u64> =
+            Vec::with_capacity(blst_p1s_mult_pippenger_scratch_sizeof(npoints) / 8);
         scratch.set_len(scratch.capacity());
-        blst_p1s_mult_pippenger(&mut msm_result, ps.as_ptr(), npoints, ss.as_ptr(), 256, &mut scratch[0]);
+        blst_p1s_mult_pippenger(
+            &mut msm_result,
+            ps.as_ptr(),
+            npoints,
+            ss.as_ptr(),
+            256,
+            &mut scratch[0],
+        );
         blst_p1_to_affine(&mut ret, &msm_result);
     }
 

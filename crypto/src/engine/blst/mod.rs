@@ -2,19 +2,24 @@ mod g1;
 mod g2;
 mod scalar;
 
-use blst::{blst_p1_affine, blst_p2_affine, blst_p2_affine_generator, blst_fp12, blst_miller_loop, blst_final_exp, p1_affines};
+use blst::{
+    blst_final_exp, blst_fp12, blst_miller_loop, blst_p1_affine, blst_p2_affine,
+    blst_p2_affine_generator,
+};
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
 };
 use std::iter;
 
-use crate::{CeremonyError, Engine, ParseError, G1, G2};
+use crate::{
+    CeremonyError, Engine, ParseError, G1, G2,
+};
 
 use self::{
-    g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_to_affine, pairing},
+    g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_to_affine},
     g2::{p2_affine_in_g2, p2_from_affine, p2_mult, p2s_to_affine},
-    scalar::{random_scalar, scalar_from_be_bytes, scalar_from_u64, scalar_mul},
+    scalar::{fr_mul, fr_one, random_fr, scalar_from_fr},
 };
 
 pub struct BLST;
@@ -24,12 +29,14 @@ impl Engine for BLST {
         entropy: [u8; 32],
         powers: &mut [crate::G1],
     ) -> Result<(), crate::CeremonyError> {
-        let tau = scalar_from_be_bytes(random_scalar(entropy));
-        let one = scalar_from_u64(1u64);
+        let tau = random_fr(entropy);
+        let one = fr_one();
 
-        let taus = iter::successors(Some(one), |x| Some(scalar_mul(x, &tau)))
+        let taus = iter::successors(Some(one), |x| Some(fr_mul(x, &tau)))
             .take(powers.len())
             .collect::<Vec<_>>();
+
+        let taus = taus.par_iter().map(scalar_from_fr).collect::<Vec<_>>();
 
         let powers_projective = powers
             .par_iter()
@@ -56,12 +63,14 @@ impl Engine for BLST {
         entropy: [u8; 32],
         powers: &mut [crate::G2],
     ) -> Result<(), crate::CeremonyError> {
-        let tau = scalar_from_be_bytes(random_scalar(entropy));
-        let one = scalar_from_u64(1u64);
+        let tau = random_fr(entropy);
+        let one = fr_one();
 
-        let taus = iter::successors(Some(one), |x| Some(scalar_mul(x, &tau)))
+        let taus = iter::successors(Some(one), |x| Some(fr_mul(x, &tau)))
             .take(powers.len())
             .collect::<Vec<_>>();
+
+        let taus = taus.par_iter().map(scalar_from_fr).collect::<Vec<_>>();
 
         let powers_projective = powers
             .par_iter()
@@ -151,3 +160,16 @@ fn pairing(p: &blst_p1_affine, q: &blst_p2_affine) -> blst_fp12 {
 
     out
 }
+
+// fn random_factors(n: usize) -> (Vec<blst_scalar>, blst_scalar) {
+//     let mut rng = rand::thread_rng();
+//     let mut sum = blst_scalar::default();
+//     let factors = iter::from_fn(|| {
+//         let r = Fr::rand(&mut rng);
+//         sum += r;
+//         Some(r.0)
+//     })
+//     .take(n)
+//     .collect::<Vec<_>>();
+//     (factors, sum)
+// }
