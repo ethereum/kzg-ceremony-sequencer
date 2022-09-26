@@ -42,7 +42,9 @@ pub fn test_options() -> Options {
         "--eth-client-id",
         "INVALID",
         "--database-url",
-        "sqlite://:memory:",
+        "sqlite://storage.test.db",
+        "--database-max-connections",
+        "1"
     ];
     Options::parse_from(args)
 }

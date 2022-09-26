@@ -113,14 +113,15 @@ pub async fn try_contribute(
 
     // If this insertion fails, worst case we allow multiple contributions from the
     // same participant
-    storage.insert_contributor(&uid).await?;
+    storage.clone().insert_contributor(&uid).await?;
     set_current_contributor(contributor_state.clone(), lobby_state, session_id.clone()).await;
 
     // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
+    let storage_clone = storage.clone();
     tokio::spawn(async move {
         remove_participant_on_deadline(
             contributor_state,
-            storage.clone(),
+            storage_clone,
             session_id,
             uid,
             options.lobby,
