@@ -96,7 +96,7 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
     let latest = MIGRATOR.migrations.last().unwrap().version;
     if options.database_migrate {
         info!(url = %&options.database_url, "Running database migrations if necessary");
-        MIGRATOR.run(&mut connection).await?;
+        MIGRATOR.run_direct(&mut connection).await?;
     }
 
     // Validate database schema version
