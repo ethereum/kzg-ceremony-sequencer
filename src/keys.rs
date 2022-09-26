@@ -3,13 +3,16 @@ use axum::{
     Json,
 };
 use clap::Parser;
-use ethers_core::{types::RecoveryMessage, utils::to_checksum};
+use ethers_core::{
+    types::{RecoveryMessage, H160},
+    utils::to_checksum,
+};
 use ethers_signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer};
 use eyre::Result;
 use http::StatusCode;
 use serde::Serialize;
 use serde_json::json;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 use thiserror::Error;
 use tracing::info;
 
@@ -66,6 +69,24 @@ pub struct Keys {
 
 pub type SharedKeys = Arc<Keys>;
 
+#[derive(Debug, Eq, PartialEq)]
+pub struct Address(H160);
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", to_checksum(&self.0, None))
+    }
+}
+
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&to_checksum(&self.0, None))
+    }
+}
+
 impl Keys {
     pub fn new(options: &Options) -> Result<Self> {
         let phrase = options.mnemonic.as_ref();
@@ -98,9 +119,8 @@ impl Keys {
             .map_err(|_| SignatureError::InvalidToken)
     }
 
-    pub fn address(&self) -> String {
-        let addr = self.wallet.address();
-        to_checksum(&addr, None)
+    pub fn address(&self) -> Address {
+        Address(self.wallet.address())
     }
 }
 
