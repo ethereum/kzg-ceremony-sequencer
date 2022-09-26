@@ -44,7 +44,7 @@ pub fn test_options() -> Options {
         "--database-url",
         "sqlite://:memory:",
         "--database-max-connections",
-        "1"
+        "1",
     ];
     Options::parse_from(args)
 }

@@ -8,13 +8,12 @@ use eyre::{eyre, WrapErr};
 use http::StatusCode;
 use serde_json::json;
 use sqlx::{
-    ConnectOptions,
-    any::{AnyKind, AnyConnectOptions},
+    any::{AnyConnectOptions, AnyKind},
     migrate::{Migrate, MigrateDatabase, Migrator},
     pool::PoolOptions,
-    Any, Executor, Pool, Row, AnyConnection,
+    Any, AnyConnection, ConnectOptions, Executor, Pool, Row,
 };
-use std::{sync::Arc, str::FromStr};
+use std::{str::FromStr, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
@@ -64,7 +63,9 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         Any::create_database(options.database_url.as_str()).await?;
     }
 
-    let mut connection = AnyConnectOptions::from_str(options.database_url.as_str())?.connect().await?;
+    let mut connection = AnyConnectOptions::from_str(options.database_url.as_str())?
+        .connect()
+        .await?;
 
     // Create a connection pool
     // let pool = PoolOptions::<Any>::new()
