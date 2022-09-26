@@ -9,6 +9,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::{Display, Formatter};
+use thiserror::Error;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -35,8 +36,9 @@ impl Display for SessionId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SessionError {
+    #[error("unknown session id")]
     InvalidSessionId,
 }
 
