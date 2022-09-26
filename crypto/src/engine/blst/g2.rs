@@ -1,9 +1,13 @@
 use blst::{
-    blst_p2, blst_p2_affine, blst_p2_affine_compress, blst_p2_affine_in_g2, blst_p2_from_affine,
-    blst_p2_mult, blst_p2_uncompress, blst_p2s_to_affine, blst_scalar, blst_p2_to_affine,
+    blst_fr, blst_p2, blst_p2_affine, blst_p2_affine_compress, blst_p2_affine_in_g2,
+    blst_p2_from_affine, blst_p2_mult, blst_p2_to_affine, blst_p2_uncompress,
+    blst_p2s_mult_pippenger, blst_p2s_mult_pippenger_scratch_sizeof, blst_p2s_to_affine,
+    blst_scalar,
 };
 
 use crate::{ParseError, G2};
+
+use super::scalar::scalar_from_fr;
 
 impl TryFrom<G2> for blst_p2_affine {
     type Error = ParseError;
@@ -30,7 +34,7 @@ impl TryFrom<blst_p2_affine> for G2 {
 }
 pub fn p2_from_affine(a: &blst_p2_affine) -> blst_p2 {
     unsafe {
-        let mut p  = blst_p2::default();
+        let mut p = blst_p2::default();
         blst_p2_from_affine(&mut p, a);
         p
     }
@@ -57,10 +61,7 @@ pub fn p2_affine_in_g2(p: &blst_p2_affine) -> bool {
 }
 
 pub fn p2s_to_affine(ps: &[blst_p2]) -> Vec<blst_p2_affine> {
-    let input = ps
-        .iter()
-        .map(|x| x as *const blst_p2)
-        .collect::<Vec<_>>();
+    let input = ps.iter().map(|x| x as *const blst_p2).collect::<Vec<_>>();
     let mut out = Vec::<blst_p2_affine>::with_capacity(ps.len());
 
     unsafe {
@@ -69,4 +70,35 @@ pub fn p2s_to_affine(ps: &[blst_p2]) -> Vec<blst_p2_affine> {
     }
 
     out
+}
+
+pub fn p2s_mult_pippenger(bases: &[blst_p2_affine], scalars: &[blst_fr]) -> blst_p2_affine {
+    let npoints = bases.len();
+    let bases = bases
+        .iter()
+        .map(|x| x as *const blst_p2_affine)
+        .collect::<Vec<_>>();
+    let scalars = scalars
+        .iter()
+        .map(|x| scalar_from_fr(x).b.as_ptr())
+        .collect::<Vec<_>>();
+    let mut msm_result = blst_p2::default();
+    let mut ret = blst_p2_affine::default();
+
+    unsafe {
+        let mut scratch: Vec<u64> =
+            Vec::with_capacity(blst_p2s_mult_pippenger_scratch_sizeof(npoints) / 8);
+        scratch.set_len(scratch.capacity());
+        blst_p2s_mult_pippenger(
+            &mut msm_result,
+            bases.as_ptr(),
+            npoints,
+            scalars.as_ptr(),
+            256,
+            &mut scratch[0],
+        );
+        blst_p2_to_affine(&mut ret, &msm_result);
+    }
+
+    ret
 }

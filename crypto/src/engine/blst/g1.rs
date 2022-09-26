@@ -73,13 +73,13 @@ pub fn p1s_to_affine(ps: &[blst_p1]) -> Vec<blst_p1_affine> {
     out
 }
 
-pub fn p1s_mult_pippenger(ps: &[blst_p1_affine], ss: &[blst_fr]) -> blst_p1_affine {
-    let npoints = ps.len();
-    let ps = ps
+pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst_p1_affine {
+    let npoints = bases.len();
+    let bases = bases
         .iter()
         .map(|x| x as *const blst_p1_affine)
         .collect::<Vec<_>>();
-    let ss = ss
+    let scalars = scalars
         .iter()
         .map(|x| scalar_from_fr(x).b.as_ptr())
         .collect::<Vec<_>>();
@@ -92,9 +92,9 @@ pub fn p1s_mult_pippenger(ps: &[blst_p1_affine], ss: &[blst_fr]) -> blst_p1_affi
         scratch.set_len(scratch.capacity());
         blst_p1s_mult_pippenger(
             &mut msm_result,
-            ps.as_ptr(),
+            bases.as_ptr(),
             npoints,
-            ss.as_ptr(),
+            scalars.as_ptr(),
             256,
             &mut scratch[0],
         );
