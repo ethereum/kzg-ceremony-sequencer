@@ -179,16 +179,14 @@ mod tests {
         api::v1::lobby::TryContributeError,
         storage::storage_client,
         test_util::{create_test_session_info, test_options},
-        tests::{test_transcript, DB_TEST_MUTEX},
+        tests::test_transcript,
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::RwLock;
 
-    #[ignore] // TODO: Fix this test (it's flaky, fails on CI)
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn lobby_try_contribute_test() {
-        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
         let contributor_state = SharedContributorState::default();
         let lobby_state = SharedLobbyState::default();

@@ -8,12 +8,13 @@ use eyre::{eyre, WrapErr};
 use http::StatusCode;
 use serde_json::json;
 use sqlx::{
-    any::AnyKind,
+    any::{AnyConnectOptions, AnyKind},
     migrate::{Migrate, MigrateDatabase, Migrator},
-    pool::PoolOptions,
-    Any, Executor, Pool, Row,
+    Any, AnyConnection, ConnectOptions, Executor, Row,
 };
+use std::{str::FromStr, sync::Arc};
 use thiserror::Error;
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 // Statically link in migration files
@@ -37,14 +38,10 @@ pub struct Options {
     /// up to date.
     #[clap(long, env, default_value = "true")]
     pub database_migrate: bool,
-
-    /// Maximum number of connections in the database connection pool
-    #[clap(long, env, default_value = "10")]
-    pub database_max_connections: u32,
 }
 
 #[derive(Clone, Debug)]
-pub struct PersistentStorage(Pool<Any>);
+pub struct PersistentStorage(Arc<Mutex<AnyConnection>>);
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -61,15 +58,13 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         Any::create_database(options.database_url.as_str()).await?;
     }
 
-    // Create a connection pool
-    let pool = PoolOptions::<Any>::new()
-        .max_connections(options.database_max_connections)
-        .connect(options.database_url.as_str())
-        .await
-        .wrap_err("error connecting to database")?;
+    // Create a database connection
+    let mut connection = AnyConnectOptions::from_str(options.database_url.as_str())?
+        .connect()
+        .await?;
 
     // Log DB version to test connection.
-    let sql = match pool.any_kind() {
+    let sql = match connection.kind() {
         #[cfg(feature = "sqlite")]
         AnyKind::Sqlite => "sqlite_version() || ' ' || sqlite_source_id()",
 
@@ -80,23 +75,23 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         #[allow(unreachable_patterns)]
         _ => "'unknown'",
     };
-    let version = pool
+    let version = connection
         .fetch_one(format!("SELECT {sql};", sql = sql).as_str())
         .await
         .wrap_err("error getting database version")?
         .get::<String, _>(0);
-    info!(url = %&options.database_url, kind = ?pool.any_kind(), ?version, "Connected to database");
+    info!(url = %&options.database_url, kind = ?connection.kind(), ?version, "Connected to database");
 
     // Run migrations if requested.
     let latest = MIGRATOR.migrations.last().unwrap().version;
     if options.database_migrate {
         info!(url = %&options.database_url, "Running database migrations if necessary");
-        MIGRATOR.run(&pool).await?;
+        MIGRATOR.run_direct(&mut connection).await?;
     }
 
     // Validate database schema version
     #[allow(deprecated)] // HACK: No good alternative to `version()`?
-    if let Some((version, dirty)) = pool.acquire().await?.version().await? {
+    if let Some((version, dirty)) = connection.version().await? {
         if dirty {
             error!(
                 url = %&options.database_url,
@@ -137,7 +132,7 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         return Err(eyre!("Could not get database version."));
     }
 
-    Ok(PersistentStorage(pool))
+    Ok(PersistentStorage(Arc::new(Mutex::new(connection))))
 }
 
 impl IntoResponse for StorageError {
@@ -155,6 +150,8 @@ impl PersistentStorage {
         let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1)";
         let result = self
             .0
+            .lock()
+            .await
             .fetch_one(sqlx::query(sql).bind(uid))
             .await
             .map(|row| row.get(0))?;
@@ -164,6 +161,8 @@ impl PersistentStorage {
     pub async fn insert_contributor(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "INSERT INTO contributors (uid, started_at) VALUES (?1, ?2)";
         self.0
+            .lock()
+            .await
             .execute(sqlx::query(sql).bind(uid).bind(Utc::now()))
             .await?;
         Ok(())
@@ -172,6 +171,8 @@ impl PersistentStorage {
     pub async fn finish_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET finished_at = ?1 WHERE uid = ?2";
         self.0
+            .lock()
+            .await
             .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
             .await?;
         Ok(())
@@ -180,6 +181,8 @@ impl PersistentStorage {
     pub async fn expire_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET expired_at = ?1 WHERE uid = ?2";
         self.0
+            .lock()
+            .await
             .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
             .await?;
         Ok(())
