@@ -1,4 +1,8 @@
-use crate::{keys::SharedKeys, lobby::SharedLobbyState, Options, SharedCeremonyStatus};
+use crate::{
+    keys::{Address, SharedKeys},
+    lobby::SharedLobbyState,
+    Options, SharedCeremonyStatus,
+};
 use axum::{
     body::StreamBody,
     response::{IntoResponse, Response},
@@ -14,7 +18,7 @@ use tokio_util::io::ReaderStream;
 pub struct StatusResponse {
     lobby_size:        usize,
     num_contributions: usize,
-    sequencer_address: String,
+    sequencer_address: Address,
 }
 
 impl IntoResponse for StatusResponse {

@@ -3,25 +3,24 @@ use axum::{
     Json,
 };
 use clap::Parser;
-use ethers_core::{types::RecoveryMessage, utils::to_checksum};
-use ethers_signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer};
+use ethers_core::{
+    rand::thread_rng,
+    types::{RecoveryMessage, H160},
+    utils::to_checksum,
+};
+use ethers_signers::{LocalWallet, Signer};
 use eyre::Result;
 use http::StatusCode;
 use serde::Serialize;
 use serde_json::json;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
-    #[clap(
-        long,
-        env,
-        default_value = "abandon abandon abandon abandon abandon abandon abandon abandon abandon \
-                         abandon abandon about"
-    )]
-    pub mnemonic: String,
+    #[clap(long, env)]
+    pub signing_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -66,14 +65,38 @@ pub struct Keys {
 
 pub type SharedKeys = Arc<Keys>;
 
+#[derive(Debug, Eq, PartialEq)]
+pub struct Address(H160);
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", to_checksum(&self.0, None))
+    }
+}
+
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&to_checksum(&self.0, None))
+    }
+}
+
 impl Keys {
     pub fn new(options: &Options) -> Result<Self> {
-        let phrase = options.mnemonic.as_ref();
-        let wallet = MnemonicBuilder::<English>::default()
-            .phrase(phrase)
-            .build()?;
-        info!(address = ?wallet.address(), "Wallet created");
-        Ok(Self { wallet })
+        match &options.signing_key {
+            Some(signing_key) => {
+                let wallet = signing_key.parse::<LocalWallet>()?;
+                info!(address = ?wallet.address(), "Wallet created from the provided signing key");
+                Ok(Self { wallet })
+            }
+            None => {
+                let wallet = LocalWallet::new(&mut thread_rng());
+                warn!(address = ?wallet.address(), "Random wallet created. Make sure to provide a signing key in prod!");
+                Ok(Self { wallet })
+            }
+        }
     }
 
     pub async fn sign(&self, message: &str) -> Result<Signature, SignatureError> {
@@ -98,9 +121,8 @@ impl Keys {
             .map_err(|_| SignatureError::InvalidToken)
     }
 
-    pub fn address(&self) -> String {
-        let addr = self.wallet.address();
-        to_checksum(&addr, None)
+    pub fn address(&self) -> Address {
+        Address(self.wallet.address())
     }
 }
 
