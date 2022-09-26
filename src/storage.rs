@@ -38,10 +38,6 @@ pub struct Options {
     /// up to date.
     #[clap(long, env, default_value = "true")]
     pub database_migrate: bool,
-
-    /// Maximum number of connections in the database connection pool
-    #[clap(long, env, default_value = "10")]
-    pub database_max_connections: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -62,16 +58,10 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         Any::create_database(options.database_url.as_str()).await?;
     }
 
+    // Create a database connection
     let mut connection = AnyConnectOptions::from_str(options.database_url.as_str())?
         .connect()
         .await?;
-
-    // Create a connection pool
-    // let pool = PoolOptions::<Any>::new()
-    //     .max_connections(options.database_max_connections)
-    //     .connect(options.database_url.as_str())
-    //     .await
-    //     .wrap_err("error connecting to database")?;
 
     // Log DB version to test connection.
     let sql = match connection.kind() {
@@ -156,7 +146,7 @@ impl IntoResponse for StorageError {
 }
 
 impl PersistentStorage {
-    pub async fn has_contributed(self, uid: &str) -> Result<bool, StorageError> {
+    pub async fn has_contributed(&self, uid: &str) -> Result<bool, StorageError> {
         let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1)";
         let result = self
             .0
@@ -168,7 +158,7 @@ impl PersistentStorage {
         Ok(result)
     }
 
-    pub async fn insert_contributor(self, uid: &str) -> Result<(), StorageError> {
+    pub async fn insert_contributor(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "INSERT INTO contributors (uid, started_at) VALUES (?1, ?2)";
         self.0
             .lock()
@@ -178,7 +168,7 @@ impl PersistentStorage {
         Ok(())
     }
 
-    pub async fn finish_contribution(self, uid: &str) -> Result<(), StorageError> {
+    pub async fn finish_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET finished_at = ?1 WHERE uid = ?2";
         self.0
             .lock()
@@ -188,7 +178,7 @@ impl PersistentStorage {
         Ok(())
     }
 
-    pub async fn expire_contribution(self, uid: &str) -> Result<(), StorageError> {
+    pub async fn expire_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET expired_at = ?1 WHERE uid = ?2";
         self.0
             .lock()
