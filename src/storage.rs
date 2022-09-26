@@ -13,7 +13,9 @@ use sqlx::{
     pool::PoolOptions,
     Any, Executor, Pool, Row,
 };
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 // Statically link in migration files
@@ -44,7 +46,7 @@ pub struct Options {
 }
 
 #[derive(Clone, Debug)]
-pub struct PersistentStorage(Pool<Any>);
+pub struct PersistentStorage(Arc<Mutex<Pool<Any>>>);
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -137,7 +139,7 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         return Err(eyre!("Could not get database version."));
     }
 
-    Ok(PersistentStorage(pool))
+    Ok(PersistentStorage(Arc::new(Mutex::new(pool))))
 }
 
 impl IntoResponse for StorageError {
@@ -155,6 +157,8 @@ impl PersistentStorage {
         let sql = "SELECT EXISTS(SELECT 1 FROM contributors WHERE uid = ?1)";
         let result = self
             .0
+            .lock()
+            .await
             .fetch_one(sqlx::query(sql).bind(uid))
             .await
             .map(|row| row.get(0))?;
@@ -164,6 +168,8 @@ impl PersistentStorage {
     pub async fn insert_contributor(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "INSERT INTO contributors (uid, started_at) VALUES (?1, ?2)";
         self.0
+            .lock()
+            .await
             .execute(sqlx::query(sql).bind(uid).bind(Utc::now()))
             .await?;
         Ok(())
@@ -172,6 +178,8 @@ impl PersistentStorage {
     pub async fn finish_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET finished_at = ?1 WHERE uid = ?2";
         self.0
+            .lock()
+            .await
             .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
             .await?;
         Ok(())
@@ -180,6 +188,8 @@ impl PersistentStorage {
     pub async fn expire_contribution(&self, uid: &str) -> Result<(), StorageError> {
         let sql = "UPDATE contributors SET expired_at = ?1 WHERE uid = ?2";
         self.0
+            .lock()
+            .await
             .execute(sqlx::query(sql).bind(Utc::now()).bind(uid))
             .await?;
         Ok(())

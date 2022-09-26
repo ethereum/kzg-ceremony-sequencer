@@ -168,10 +168,6 @@ async fn hello_world() -> Html<&'static str> {
 mod tests {
     use super::*;
     use kzg_ceremony_crypto::{BatchContribution, BatchTranscript, G2};
-    use once_cell::sync::Lazy;
-    use tokio::sync::Mutex;
-
-    pub static DB_TEST_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     pub fn test_transcript() -> BatchTranscript {
         BatchTranscript::new(&[(4, 2)])

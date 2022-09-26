@@ -148,7 +148,7 @@ mod tests {
         lobby::SharedContributorState,
         storage::storage_client,
         test_util::{create_test_session_info, test_options},
-        tests::{invalid_contribution, test_transcript, valid_contribution, DB_TEST_MUTEX},
+        tests::{invalid_contribution, test_transcript, valid_contribution},
         Keys, SessionId,
     };
     use axum::{Extension, Json};
@@ -164,7 +164,6 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
-        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
         let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
@@ -186,7 +185,6 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_contribution() {
-        let _guard = DB_TEST_MUTEX.lock().await;
         let opts = test_options();
         let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
@@ -214,7 +212,6 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
-        let _guard = DB_TEST_MUTEX.lock().await;
         let keys = shared_keys();
         let contributor_state = SharedContributorState::default();
         let participant = SessionId::new();
