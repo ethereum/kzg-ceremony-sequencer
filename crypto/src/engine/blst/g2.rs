@@ -1,6 +1,6 @@
 use blst::{
     blst_p2, blst_p2_affine, blst_p2_affine_compress, blst_p2_affine_in_g2, blst_p2_from_affine,
-    blst_p2_mult, blst_p2_uncompress, blst_p2s_to_affine, blst_scalar,
+    blst_p2_mult, blst_p2_uncompress, blst_p2s_to_affine, blst_scalar, blst_p2_to_affine,
 };
 
 use crate::{ParseError, G2};
@@ -32,6 +32,14 @@ pub fn p2_from_affine(a: &blst_p2_affine) -> blst_p2 {
     unsafe {
         let mut p  = blst_p2::default();
         blst_p2_from_affine(&mut p, a);
+        p
+    }
+}
+
+pub fn p2_to_affine(a: &blst_p2) -> blst_p2_affine {
+    unsafe {
+        let mut p = blst_p2_affine::default();
+        blst_p2_to_affine(&mut p, a);
         p
     }
 }

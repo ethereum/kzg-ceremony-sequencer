@@ -1,10 +1,13 @@
 use blst::{
-    blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1, blst_p1_from_affine,
-    blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress, blst_p1s_mult_pippenger,
-    blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine, blst_scalar,
+    blst_fr, blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1,
+    blst_p1_from_affine, blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress,
+    blst_p1s_mult_pippenger, blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine,
+    blst_scalar,
 };
 
 use crate::{ParseError, G1};
+
+use super::scalar::{scalar_from_fr};
 
 impl TryFrom<G1> for blst_p1_affine {
     type Error = ParseError;
@@ -38,6 +41,14 @@ pub fn p1_from_affine(a: &blst_p1_affine) -> blst_p1 {
     }
 }
 
+pub fn p1_to_affine(a: &blst_p1) -> blst_p1_affine {
+    unsafe {
+        let mut p = blst_p1_affine::default();
+        blst_p1_to_affine(&mut p, a);
+        p
+    }
+}
+
 pub fn p1_mult(p: &blst_p1, s: &blst_scalar) -> blst_p1 {
     unsafe {
         let mut out = blst_p1::default();
@@ -62,13 +73,16 @@ pub fn p1s_to_affine(ps: &[blst_p1]) -> Vec<blst_p1_affine> {
     out
 }
 
-pub fn p1s_mult_pippenger(ps: &[blst_p1_affine], ss: &[blst_scalar]) -> blst_p1_affine {
+pub fn p1s_mult_pippenger(ps: &[blst_p1_affine], ss: &[blst_fr]) -> blst_p1_affine {
     let npoints = ps.len();
     let ps = ps
         .iter()
         .map(|x| x as *const blst_p1_affine)
         .collect::<Vec<_>>();
-    let ss = ss.iter().map(|x| x.b.as_ptr()).collect::<Vec<_>>();
+    let ss = ss
+        .iter()
+        .map(|x| scalar_from_fr(x).b.as_ptr())
+        .collect::<Vec<_>>();
     let mut msm_result = blst_p1::default();
     let mut ret = blst_p1_affine::default();
 

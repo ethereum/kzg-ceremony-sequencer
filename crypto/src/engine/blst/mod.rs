@@ -3,22 +3,21 @@ mod g2;
 mod scalar;
 
 use blst::{
-    blst_final_exp, blst_fp12, blst_miller_loop, blst_p1_affine, blst_p2_affine,
-    blst_p2_affine_generator,
+    blst_final_exp, blst_fp12, blst_fr, blst_fr_add, blst_miller_loop, blst_p1_affine,
+    blst_p2_affine, blst_p2_affine_generator, blst_p2_generator,
 };
+use rand::Rng;
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
 };
 use std::iter;
 
-use crate::{
-    CeremonyError, Engine, ParseError, G1, G2,
-};
+use crate::{CeremonyError, Engine, ParseError, G1, G2};
 
 use self::{
-    g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_to_affine},
-    g2::{p2_affine_in_g2, p2_from_affine, p2_mult, p2s_to_affine},
+    g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_mult_pippenger, p1s_to_affine},
+    g2::{p2_affine_in_g2, p2_from_affine, p2_mult, p2_to_affine, p2s_to_affine},
     scalar::{fr_mul, fr_one, random_fr, scalar_from_fr},
 };
 
@@ -138,12 +137,29 @@ impl Engine for BLST {
     }
 
     fn verify_g1(powers: &[crate::G1], tau: crate::G2) -> Result<(), crate::CeremonyError> {
-        // let powers = powers
-        //     .into_par_iter()
-        //     .map(|p| blst_p1_affine::try_from(*p))
-        //     .collect::<Result<Vec<_>, _>>()?;
-        // let tau = blst_p2_affine::try_from(tau)?;
-        todo!()
+        let powers = powers
+            .into_par_iter()
+            .map(|p| blst_p1_affine::try_from(*p))
+            .collect::<Result<Vec<_>, _>>()?;
+        let tau = blst_p2_affine::try_from(tau)?;
+        let tau = p2_from_affine(&tau);
+
+        let (factors, sum) = random_factors(powers.len() - 1);
+
+        let lhs_g1 = p1s_mult_pippenger(&powers[1..], &factors[..]);
+        let g2 = unsafe { *blst_p2_generator() };
+        let lhs_g2 = p2_mult(&g2, &scalar_from_fr(&sum));
+        let lhs_g2 = p2_to_affine(&lhs_g2);
+
+        let rhs_g1 = p1s_mult_pippenger(&powers[..factors.len()], &factors[..]);
+        let rhs_g2 = p2_mult(&tau, &scalar_from_fr(&sum));
+        let rhs_g2 = p2_to_affine(&rhs_g2);
+
+        if pairing(&lhs_g1, &lhs_g2) != pairing(&rhs_g1, &rhs_g2) {
+            return Err(CeremonyError::G1PairingFailed);
+        }
+
+        Ok(())
     }
 
     fn verify_g2(g1: &[crate::G1], g2: &[crate::G2]) -> Result<(), crate::CeremonyError> {
@@ -161,15 +177,18 @@ fn pairing(p: &blst_p1_affine, q: &blst_p2_affine) -> blst_fp12 {
     out
 }
 
-// fn random_factors(n: usize) -> (Vec<blst_scalar>, blst_scalar) {
-//     let mut rng = rand::thread_rng();
-//     let mut sum = blst_scalar::default();
-//     let factors = iter::from_fn(|| {
-//         let r = Fr::rand(&mut rng);
-//         sum += r;
-//         Some(r.0)
-//     })
-//     .take(n)
-//     .collect::<Vec<_>>();
-//     (factors, sum)
-// }
+fn random_factors(n: usize) -> (Vec<blst_fr>, blst_fr) {
+    let mut rng = rand::thread_rng();
+    let mut entropy = [0u8; 32];
+    rng.fill(&mut entropy);
+
+    let mut sum = blst_fr::default();
+    let factors = iter::from_fn(|| {
+        let r = random_fr(entropy);
+        unsafe { blst_fr_add(&mut sum, &sum, &r) };
+        Some(r)
+    })
+    .take(n)
+    .collect::<Vec<_>>();
+    (factors, sum)
+}
