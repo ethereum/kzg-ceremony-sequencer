@@ -10,8 +10,7 @@ use serde_json::json;
 use sqlx::{
     any::{AnyConnectOptions, AnyKind},
     migrate::{Migrate, MigrateDatabase, Migrator},
-    pool::PoolOptions,
-    Any, AnyConnection, ConnectOptions, Executor, Pool, Row,
+    Any, AnyConnection, ConnectOptions, Executor, Row,
 };
 use std::{str::FromStr, sync::Arc};
 use thiserror::Error;
