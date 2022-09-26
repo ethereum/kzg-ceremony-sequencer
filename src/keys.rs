@@ -3,7 +3,7 @@ use axum::{
     Json,
 };
 use clap::Parser;
-use ethers_core::types::RecoveryMessage;
+use ethers_core::{types::RecoveryMessage, utils::to_checksum};
 use ethers_signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer};
 use eyre::Result;
 use http::StatusCode;
@@ -99,8 +99,8 @@ impl Keys {
     }
 
     pub fn address(&self) -> String {
-        let adr = self.wallet.address();
-        hex::encode(adr)
+        let addr = self.wallet.address();
+        to_checksum(&addr, None)
     }
 }
 
