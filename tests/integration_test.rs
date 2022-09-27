@@ -1,10 +1,11 @@
 #![cfg(test)]
 
 use ethers_core::types::{Address, Signature};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use http::StatusCode;
 use serde_json::Value;
+use tokio::task::JoinHandle;
 use url::Url;
 
 use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
@@ -402,9 +403,37 @@ async fn test_double_contribution() {
     )
 }
 
-// async fn well_behaved_participant()
-//
-// async fn test_large_lobby() {
-//     let harness = run_test_harness().await;
-//     tokio::time::pause();
-// }
+async fn well_behaved_participant(harness: &Harness, client: &reqwest::Client, name: String) {
+    let session_id = login_gh_user(harness, client, name.clone()).await;
+    let try_contribute_response = request_try_contribute(harness, client, &session_id).await;
+    println!(
+        "{:?}: {:?}",
+        try_contribute_response.status(),
+        try_contribute_response
+            .json::<Value>()
+            .await
+            .unwrap()
+            .get("message")
+    )
+}
+
+#[tokio::test]
+async fn test_large_lobby() {
+    let harness = Arc::new(run_test_harness().await);
+    let client = Arc::new(reqwest::Client::new());
+    // tokio::time::pause();
+    let handles = (0..10)
+        .into_iter()
+        .map(|i| {
+            let h = harness.clone();
+            let c = client.clone();
+            tokio::spawn(async move {
+                well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for handle in handles {
+        handle.await.unwrap()
+    }
+}
