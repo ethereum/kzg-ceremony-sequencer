@@ -1,19 +1,15 @@
 #![cfg(test)]
 
+use ethers_core::types::{Address, Signature};
 use std::collections::HashMap;
 
 use http::StatusCode;
 use serde_json::Value;
-use tower_http::follow_redirect::policy::PolicyExt;
 use url::Url;
 
-use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, Contribution, Transcript};
-use kzg_ceremony_sequencer::io::read_json_file;
+use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
 
-use crate::common::{
-    harness::{run_test_harness, Harness},
-    mock_auth_service::GhUser,
-};
+use crate::common::harness::{run_test_harness, Harness};
 
 mod common;
 
@@ -27,7 +23,7 @@ async fn get_and_validate_csrf_token(harness: &Harness) -> String {
         .send()
         .await
         .unwrap()
-        .json::<serde_json::Value>()
+        .json::<Value>()
         .await
         .unwrap();
 
@@ -155,11 +151,28 @@ async fn request_contribute(
         .unwrap()
 }
 
-async fn contribute(
+async fn get_sequencer_eth_address(harness: &Harness, http_client: &reqwest::Client) -> String {
+    http_client
+        .get(harness.app_path("/info/status"))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()
+        .get("sequencer_address")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+async fn contribute_successfully(
     harness: &Harness,
     http_client: &reqwest::Client,
     session_id: &str,
     contribution: &BatchContribution,
+    username: &str,
 ) {
     let response = request_contribute(harness, http_client, session_id, contribution).await;
 
@@ -169,7 +182,74 @@ async fn contribute(
         "Response must be successful"
     );
 
-    // TODO verify the receipt signature, after we switch to ETH sign.
+    let response_json = response
+        .json::<Value>()
+        .await
+        .expect("Must return valid JSON");
+
+    let receipt = response_json
+        .get("receipt")
+        .expect("must contain the receipt field")
+        .as_str()
+        .expect("receipt field must be a string");
+
+    let signature: Signature = response_json
+        .get("signature")
+        .expect("must contain signature")
+        .as_str()
+        .expect("signature must be a string")
+        .parse()
+        .expect("must be a valid signature");
+
+    let address: Address = get_sequencer_eth_address(harness, http_client)
+        .await
+        .parse()
+        .unwrap();
+
+    signature
+        .verify(receipt, address)
+        .expect("must be valid signature");
+
+    let receipt_contents =
+        serde_json::from_str::<Value>(receipt).expect("receipt must be a JSON-encoded string");
+    let id_token = receipt_contents
+        .get("id_token")
+        .expect("must contain id_token");
+
+    assert_eq!(
+        id_token
+            .get("nickname")
+            .expect("must contain nickname")
+            .as_str()
+            .expect("nickname must be a string"),
+        username
+    );
+
+    assert_eq!(
+        id_token
+            .get("provider")
+            .expect("must contain provider")
+            .as_str()
+            .expect("provider must be a string"),
+        "Github"
+    );
+
+    let witness: Vec<G2> = serde_json::from_value(
+        receipt_contents
+            .get("witness")
+            .expect("must contain witness")
+            .clone(),
+    )
+    .expect("witness must be a vector of G2 points");
+
+    assert_eq!(
+        witness,
+        contribution
+            .contributions
+            .iter()
+            .map(|c| c.pubkey)
+            .collect::<Vec<_>>()
+    )
 }
 
 fn assert_includes_contribution(transcript: &BatchTranscript, contribution: &BatchContribution) {
@@ -216,7 +296,14 @@ async fn test_contribution_happy_path() {
         .add_entropy::<Arkworks>(entropy)
         .expect("Adding entropy must be possible");
 
-    contribute(&harness, &http_client, &session_id, &contribution).await;
+    contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution,
+        "kustosz",
+    )
+    .await;
 
     let transcript = harness.read_transcript_file().await;
 
@@ -277,7 +364,14 @@ async fn test_double_contribution() {
         .expect("Adding entropy must be possible");
 
     // First, successful contribution;
-    contribute(&harness, &http_client, &session_id, &contribution).await;
+    contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution,
+        "kustosz",
+    )
+    .await;
     let transcript_with_first_contrib = harness.read_transcript_file().await;
     assert_includes_contribution(&transcript_with_first_contrib, &contribution);
 
@@ -297,11 +391,9 @@ async fn test_double_contribution() {
 
     // Try logging in again – fails because the user is banned from further use of
     // the app.
-
     let new_csrf = get_and_validate_csrf_token(&harness).await;
     let gh_login_response = request_gh_callback(&harness, &http_client, auth_code, &new_csrf).await;
     assert_eq!(gh_login_response.status(), StatusCode::BAD_REQUEST);
-    println!("{:?}", gh_login_response.bytes().await);
 
     let transcript_after_attempts = harness.read_transcript_file().await;
     assert_eq!(
@@ -309,3 +401,10 @@ async fn test_double_contribution() {
         "must not change the transcript again"
     )
 }
+
+// async fn well_behaved_participant()
+//
+// async fn test_large_lobby() {
+//     let harness = run_test_harness().await;
+//     tokio::time::pause();
+// }

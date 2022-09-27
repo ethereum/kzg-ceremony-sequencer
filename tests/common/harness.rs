@@ -7,6 +7,7 @@ use kzg_ceremony_crypto::BatchTranscript;
 use kzg_ceremony_sequencer::{io::read_json_file, start_server, Options};
 use tempfile::{tempdir, TempDir};
 use tokio::sync::{broadcast, oneshot, Mutex, MutexGuard, OnceCell};
+use url::Url;
 
 fn test_options() -> Options {
     let args: Vec<&str> = vec![
@@ -59,6 +60,13 @@ impl Harness {
                 name,
             })
             .await
+    }
+
+    pub fn app_path(&self, path: &str) -> Url {
+        self.options
+            .server
+            .join(path)
+            .expect("must be a valid path")
     }
 }
 
