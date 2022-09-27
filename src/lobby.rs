@@ -1,7 +1,10 @@
 use crate::sessions::{SessionId, SessionInfo};
 use clap::Parser;
 use std::{collections::BTreeMap, num::ParseIntError, str::FromStr, sync::Arc, time::Duration};
-use tokio::{sync::RwLock, time::Instant};
+use tokio::{
+    sync::{RwLock, RwLockWriteGuard},
+    time::Instant,
+};
 
 fn duration_from_str(value: &str) -> Result<Duration, ParseIntError> {
     Ok(Duration::from_secs(u64::from_str(value)?))
@@ -89,7 +92,7 @@ pub async fn clear_current_contributor(contributor: SharedContributorState) {
 ///
 /// Panics if the user is not in the lobby.
 pub async fn set_current_contributor(
-    contributor: SharedContributorState,
+    mut contributor: RwLockWriteGuard<'_, ActiveContributor>,
     lobby_state: SharedLobbyState,
     session_id: SessionId,
 ) {
@@ -98,8 +101,7 @@ pub async fn set_current_contributor(
         lobby.participants.remove(&session_id).unwrap()
     };
 
-    let mut active_contributor = contributor.write().await;
-    *active_contributor = Some((session_id, session_info));
+    *contributor = Some((session_id, session_info));
 }
 
 #[tokio::test]

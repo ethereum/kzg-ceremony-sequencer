@@ -105,18 +105,17 @@ pub async fn try_contribute(
 
     {
         // Check if there is an existing contribution in progress
-        let contributor = contributor_state.read().await;
+        let contributor = contributor_state.write().await;
         if contributor.is_some() {
             return Err(TryContributeError::AnotherContributionInProgress);
         }
+        set_current_contributor(contributor, lobby_state, session_id.clone()).await;
     }
 
     // If this insertion fails, worst case we allow multiple contributions from the
     // same participant
     storage.insert_contributor(&uid).await?;
-    set_current_contributor(contributor_state.clone(), lobby_state, session_id.clone()).await;
 
-    let uid2 = uid.clone();
     // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
     tokio::spawn(async move {
         remove_participant_on_deadline(
@@ -131,8 +130,6 @@ pub async fn try_contribute(
     });
 
     let transcript = transcript.read().await;
-
-    println!("Gave it to {:?}", uid2);
 
     Ok(TryContributeResponse {
         contribution: transcript.contribution(),
