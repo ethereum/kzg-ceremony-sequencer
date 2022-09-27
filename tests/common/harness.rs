@@ -1,6 +1,10 @@
-use crate::common::{mock_auth_service, mock_auth_service::AuthState};
+use crate::common::{
+    mock_auth_service,
+    mock_auth_service::{AuthState, GhUser},
+};
 use clap::Parser;
-use kzg_ceremony_sequencer::{start_server, Options};
+use kzg_ceremony_crypto::BatchTranscript;
+use kzg_ceremony_sequencer::{io::read_json_file, start_server, Options};
 use tempfile::{tempdir, TempDir};
 use tokio::sync::{broadcast, oneshot, Mutex, MutexGuard, OnceCell};
 
@@ -43,6 +47,21 @@ pub struct Harness {
     temp_dir:        TempDir,
 }
 
+impl Harness {
+    pub async fn read_transcript_file(&self) -> BatchTranscript {
+        read_json_file(self.options.transcript_file.clone()).await
+    }
+
+    pub async fn create_valid_user(&self, name: String) -> u64 {
+        self.auth_state
+            .register_user(GhUser {
+                created_at: "2022-01-01T00:00:00Z".to_string(),
+                name,
+            })
+            .await
+    }
+}
+
 impl Drop for Harness {
     fn drop(&mut self) {
         self.shutdown_sender.send(()).unwrap();
@@ -58,7 +77,7 @@ async fn server_lock() -> &'static Mutex<()> {
 pub async fn run_test_harness() -> Harness {
     let lock = server_lock().await.lock().await;
     let temp_dir = tempdir().unwrap();
-    let transcript = temp_dir.path().join("../../transcript.json");
+    let transcript = temp_dir.path().join("transcript.json");
     let transcript_wip = temp_dir.path().join("transcript.json.next");
     let mut options = test_options();
     options.transcript_file = transcript;
