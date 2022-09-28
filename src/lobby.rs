@@ -1,8 +1,8 @@
-use crate::sessions::{SessionId, SessionInfo};
+use crate::{sessions::{SessionId, SessionInfo}, storage::PersistentStorage};
 use clap::Parser;
 use std::{collections::BTreeMap, num::ParseIntError, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
-    sync::{RwLock, RwLockWriteGuard},
+    sync::{RwLock, Mutex},
     time::Instant,
 };
 
@@ -33,10 +33,96 @@ pub struct LobbyState {
     pub participants: BTreeMap<SessionId, SessionInfo>,
 }
 
-pub type ActiveContributor = Option<(SessionId, SessionInfo)>;
+type Deadline = Instant;
+
+pub enum ActiveContributor {
+    None,
+    AwaitingContribution(SessionId, Deadline),
+    Contributing(SessionId, Deadline),
+}
+
+impl Default for ActiveContributor {
+    fn default() -> Self {
+        ActiveContributor::None
+    }
+}
+
+#[derive(Debug)]
+pub enum ActiveContributorError {
+    AnotherContributionInProgress,
+    NotUsersTurn,
+}
+
+#[derive(Clone, Default)]
+pub struct SharedContributorState {
+    inner: Arc<Mutex<ActiveContributor>>,
+}
+
+impl SharedContributorState {
+    pub async fn set_current_contributor(&self, participant: &SessionId, compute_deadline: Duration, storage: PersistentStorage) -> Result<(), ActiveContributorError> {
+        let mut state = self.inner.lock().await;
+        if matches!(*state, ActiveContributor::None) {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            *state = ActiveContributor::AwaitingContribution(participant.clone(), deadline);
+            
+            let inner = self.inner.clone();
+            let participant = participant.clone();
+
+            tokio::spawn(SharedContributorState::expire_current_contributor(inner, participant, compute_deadline, storage));
+
+            return Ok(())
+        }
+
+        Err(ActiveContributorError::AnotherContributionInProgress)
+    }
+
+    pub async fn begin_contributing(&self, participant: &SessionId) -> Result<(), ActiveContributorError> {
+        let mut state = self.inner.lock().await;
+
+        if !matches!(&*state, ActiveContributor::AwaitingContribution(x, _) if x == participant) {
+            return Err(ActiveContributorError::NotUsersTurn)
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        *state = ActiveContributor::Contributing(participant.clone(), deadline);
+
+        Ok(())
+    }
+
+    pub async fn clear(&self) {
+        let mut state = self.inner.lock().await;
+        *state = ActiveContributor::None;
+    }
+
+    async fn expire_current_contributor(
+        inner: Arc<Mutex<ActiveContributor>>,
+        participant: SessionId,
+        compute_deadline: Duration,
+        storage: PersistentStorage,
+    ) {
+        println!(
+            "{:?} starting timer for session id {}",
+            Instant::now(), &participant.to_string()
+        );
+
+        tokio::time::sleep(compute_deadline).await;
+
+        let mut state = inner.lock().await;
+
+        if matches!(&*state, ActiveContributor::AwaitingContribution(x, _) if x == &participant) {
+            println!(
+                "{:?} User with session id {} took too long to contribute",
+                Instant::now(), participant.to_string()
+            );
+            *state = ActiveContributor::None;
+            
+            drop(state);
+            storage.expire_contribution(&participant.0).await.unwrap();
+        }
+    }
+}
 
 pub type SharedLobbyState = Arc<RwLock<LobbyState>>;
-pub type SharedContributorState = Arc<RwLock<ActiveContributor>>;
 
 pub async fn clear_lobby_on_interval(state: SharedLobbyState, options: Options) {
     let max_diff = 100 * (options.lobby_checkin_frequency + options.lobby_checkin_tolerance);
@@ -82,28 +168,6 @@ async fn clear_lobby(state: SharedLobbyState, predicate: impl Fn(&SessionInfo) -
         println!("removing participant session {}", session_id);
         lobby_state.participants.remove(&session_id);
     }
-}
-
-pub async fn clear_current_contributor(contributor: SharedContributorState) {
-    let mut active_contributor = contributor.write().await;
-    *active_contributor = None;
-}
-
-/// # Panics
-///
-/// Panics if the user is not in the lobby.
-pub async fn set_current_contributor(
-    mut contributor: RwLockWriteGuard<'_, ActiveContributor>,
-    lobby_state: SharedLobbyState,
-    session_id: SessionId,
-) {
-    let session_info = {
-        let mut lobby = lobby_state.write().await;
-        println!("removing participant session {} in set_current_contributor", session_id);
-        lobby.participants.remove(&session_id).unwrap()
-    };
-
-    *contributor = Some((session_id, session_info));
 }
 
 #[tokio::test]
