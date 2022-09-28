@@ -457,14 +457,14 @@ async fn test_large_lobby() {
         })
         .collect::<Vec<_>>();
 
-    let mut contribs = vec![];
-
-    for handle in handles {
-        contribs.push(handle.await.unwrap());
-    }
+    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+        .await
+        .into_iter()
+        .map(|r| r.expect("must terminate successfully"))
+        .collect();
 
     let final_transcript = harness.read_transcript_file().await;
-    contribs
+    contributions
         .iter()
         .for_each(|c| assert_includes_contribution(&final_transcript, c));
 }

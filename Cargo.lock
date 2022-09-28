@@ -2023,6 +2023,7 @@ dependencies = [
  "ethers-core",
  "ethers-signers",
  "eyre",
+ "futures",
  "headers",
  "hex",
  "http",
