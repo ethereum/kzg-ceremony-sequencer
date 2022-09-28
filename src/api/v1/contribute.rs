@@ -1,9 +1,10 @@
 use crate::{
     io::write_json_file,
     keys::{SharedKeys, Signature, SignatureError},
+    lobby::{SharedContributorState, SharedLobbyState},
     receipt::Receipt,
     storage::{PersistentStorage, StorageError},
-    Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript, lobby::{SharedContributorState, SharedLobbyState},
+    Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 use axum::{
     response::{IntoResponse, Response},
@@ -14,7 +15,6 @@ use http::StatusCode;
 use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, G2};
 use serde::Serialize;
 use serde_json::json;
-use tokio::time::Instant;
 use std::sync::atomic::Ordering;
 use thiserror::Error;
 
@@ -73,8 +73,7 @@ pub async fn contribute(
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
 ) -> Result<ContributeReceipt<Vec<G2>>, ContributeError> {
-    
-    let active_contributor = contributor_state
+    contributor_state
         .begin_contributing(&session_id)
         .await
         .map_err(|_| ContributeError::NotUsersTurn)?;
@@ -83,11 +82,6 @@ pub async fn contribute(
         let mut lobby = lobby_state.write().await;
         lobby.participants.remove(&session_id).unwrap().token
     };
-
-    println!(
-        "{:?} User with session id {} posts contribution",
-        Instant::now(), &session_id.to_string()
-    );
 
     // 2. Check if the program state transition was correct
     let result = {
@@ -121,9 +115,9 @@ pub async fn contribute(
     )
     .await;
 
-    let uid = contributor_state.clear().await;
+    contributor_state.clear().await;
     storage.finish_contribution(&session_id.0).await?;
-    
+
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
     Ok(ContributeReceipt { receipt, signature })
@@ -133,7 +127,7 @@ pub async fn contribute(
 mod tests {
     use super::*;
     use crate::{
-        api::v1::{contribute::ContributeError, lobby},
+        api::v1::contribute::ContributeError,
         contribute,
         io::read_json_file,
         keys,
@@ -187,9 +181,14 @@ mod tests {
         let participant = SessionId::new();
         {
             let mut lobby = lobby_state.write().await;
-            lobby.participants.insert(participant.clone(), create_test_session_info(100));
+            lobby
+                .participants
+                .insert(participant.clone(), create_test_session_info(100));
         }
-        contributor_state.set_current_contributor(&participant, opts.lobby.compute_deadline, db.clone()).await.unwrap();
+        contributor_state
+            .set_current_contributor(&participant, opts.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
         let transcript = test_transcript();
         let contribution = invalid_contribution(&transcript, 1);
         let result = contribute(
@@ -239,9 +238,14 @@ mod tests {
 
         {
             let mut lobby = lobby_state.write().await;
-            lobby.participants.insert(participant.clone(), create_test_session_info(100));
+            lobby
+                .participants
+                .insert(participant.clone(), create_test_session_info(100));
         }
-        contributor_state.set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone()).await.unwrap();
+        contributor_state
+            .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
         let result = contribute(
             participant.clone(),
             Json(contribution_1),
@@ -260,9 +264,14 @@ mod tests {
         assert_eq!(transcript, transcript_1);
         {
             let mut lobby = lobby_state.write().await;
-            lobby.participants.insert(participant.clone(), create_test_session_info(100));
+            lobby
+                .participants
+                .insert(participant.clone(), create_test_session_info(100));
         }
-        contributor_state.set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone()).await.unwrap();
+        contributor_state
+            .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
         let result = contribute(
             participant.clone(),
             Json(contribution_2),

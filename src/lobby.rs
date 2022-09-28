@@ -1,8 +1,11 @@
-use crate::{sessions::{SessionId, SessionInfo}, storage::PersistentStorage};
+use crate::{
+    sessions::{SessionId, SessionInfo},
+    storage::PersistentStorage,
+};
 use clap::Parser;
 use std::{collections::BTreeMap, num::ParseIntError, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
-    sync::{RwLock, Mutex},
+    sync::{Mutex, RwLock},
     time::Instant,
 };
 
@@ -43,7 +46,7 @@ pub enum ActiveContributor {
 
 impl Default for ActiveContributor {
     fn default() -> Self {
-        ActiveContributor::None
+        Self::None
     }
 }
 
@@ -59,28 +62,41 @@ pub struct SharedContributorState {
 }
 
 impl SharedContributorState {
-    pub async fn set_current_contributor(&self, participant: &SessionId, compute_deadline: Duration, storage: PersistentStorage) -> Result<(), ActiveContributorError> {
+    pub async fn set_current_contributor(
+        &self,
+        participant: &SessionId,
+        compute_deadline: Duration,
+        storage: PersistentStorage,
+    ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
         if matches!(*state, ActiveContributor::None) {
             let deadline = Instant::now() + Duration::from_secs(10);
             *state = ActiveContributor::AwaitingContribution(participant.clone(), deadline);
-            
+
             let inner = self.inner.clone();
             let participant = participant.clone();
 
-            tokio::spawn(SharedContributorState::expire_current_contributor(inner, participant, compute_deadline, storage));
+            tokio::spawn(Self::expire_current_contributor(
+                inner,
+                participant,
+                compute_deadline,
+                storage,
+            ));
 
-            return Ok(())
+            return Ok(());
         }
 
         Err(ActiveContributorError::AnotherContributionInProgress)
     }
 
-    pub async fn begin_contributing(&self, participant: &SessionId) -> Result<(), ActiveContributorError> {
+    pub async fn begin_contributing(
+        &self,
+        participant: &SessionId,
+    ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
 
         if !matches!(&*state, ActiveContributor::AwaitingContribution(x, _) if x == participant) {
-            return Err(ActiveContributorError::NotUsersTurn)
+            return Err(ActiveContributorError::NotUsersTurn);
         }
 
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -100,22 +116,13 @@ impl SharedContributorState {
         compute_deadline: Duration,
         storage: PersistentStorage,
     ) {
-        println!(
-            "{:?} starting timer for session id {}",
-            Instant::now(), &participant.to_string()
-        );
-
         tokio::time::sleep(compute_deadline).await;
 
         let mut state = inner.lock().await;
 
         if matches!(&*state, ActiveContributor::AwaitingContribution(x, _) if x == &participant) {
-            println!(
-                "{:?} User with session id {} took too long to contribute",
-                Instant::now(), participant.to_string()
-            );
             *state = ActiveContributor::None;
-            
+
             drop(state);
             storage.expire_contribution(&participant.0).await.unwrap();
         }

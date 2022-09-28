@@ -1,8 +1,5 @@
 use crate::{
-    lobby::{
-        SharedContributorState,
-        SharedLobbyState,
-    },
+    lobby::{SharedContributorState, SharedLobbyState},
     storage::{PersistentStorage, StorageError},
     SessionId, SharedTranscript,
 };
@@ -102,24 +99,19 @@ pub async fn try_contribute(
         uid = info.token.unique_identifier().to_owned();
     }
 
-    println!(
-        "{:?} User with session id {} tries to contribute",
-        Instant::now(), &session_id.to_string()
-    );
-
-
-    match contributor_state.set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone()).await {
+    match contributor_state
+        .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
+        .await
+    {
         Ok(_) => {
             storage.insert_contributor(&uid).await?;
             let transcript = transcript.read().await;
 
             Ok(TryContributeResponse {
                 contribution: transcript.contribution(),
-            })        
-        },
-        Err(_) => {
-            Err(TryContributeError::AnotherContributionInProgress)
-        },
+            })
+        }
+        Err(_) => Err(TryContributeError::AnotherContributionInProgress),
     }
 }
 
