@@ -15,6 +15,7 @@ use http::StatusCode;
 use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
 use serde::Serialize;
 use serde_json::json;
+use tokio::time::Instant;
 use std::sync::atomic::Ordering;
 use thiserror::Error;
 
@@ -72,9 +73,11 @@ pub async fn contribute(
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
 ) -> Result<ContributeReceipt, ContributeError> {
+    let contributor_state_clone = contributor_state.clone();
+    let active_contributor = contributor_state_clone.read().await;
+
     // 1. Check if this person should be contributing
     let id_token = {
-        let active_contributor = contributor_state.read().await;
         let (id, session_info) = active_contributor
             .as_ref()
             .ok_or(ContributeError::NotUsersTurn)?;
@@ -83,6 +86,11 @@ pub async fn contribute(
         }
         session_info.token.clone()
     };
+
+    println!(
+        "{:?} User with session id {} posts contribution",
+        Instant::now(), &session_id.to_string()
+    );
 
     // We also know that if they were in the lobby
     // then they did not participate already because
@@ -96,6 +104,7 @@ pub async fn contribute(
             .map_err(ContributeError::InvalidContribution)
     };
     if let Err(e) = result {
+        drop(active_contributor);
         clear_current_contributor(contributor_state).await;
         storage
             .expire_contribution(id_token.unique_identifier())
@@ -121,17 +130,23 @@ pub async fn contribute(
     .await;
 
     let uid = {
-        let guard = contributor_state.read().await;
-        guard
+        active_contributor
             .as_ref()
             .expect("participant is guaranteed non-empty here")
             .0
             .to_string()
     };
 
+    drop(active_contributor);
     clear_current_contributor(contributor_state).await;
     storage.finish_contribution(&uid).await?;
     num_contributions.fetch_add(1, Ordering::Relaxed);
+
+    println!(
+        "{:?} contribution slot cleared",
+        Instant::now()
+    );
+
 
     Ok(ContributeReceipt {
         receipt: signed_msg,

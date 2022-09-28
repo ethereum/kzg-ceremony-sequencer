@@ -417,6 +417,7 @@ async fn post_authenticate(
 
     {
         let mut lobby = lobby_state.write().await;
+        println!("inserting session id {}", session_id);
         lobby.participants.insert(session_id.clone(), SessionInfo {
             token:                 id_token.clone(),
             last_ping_time:        Instant::now(),

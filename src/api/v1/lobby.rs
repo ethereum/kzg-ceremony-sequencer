@@ -103,6 +103,12 @@ pub async fn try_contribute(
         uid = info.token.unique_identifier().to_owned();
     }
 
+    println!(
+        "{:?} User with session id {} tries to contribute",
+        Instant::now(), &session_id.to_string()
+    );
+
+
     {
         // Check if there is an existing contribution in progress
         let contributor = contributor_state.write().await;
@@ -110,6 +116,12 @@ pub async fn try_contribute(
             return Err(TryContributeError::AnotherContributionInProgress);
         }
         set_current_contributor(contributor, lobby_state, session_id.clone()).await;
+        
+        println!(
+            "{:?} User with session id {} elected to contribute",
+            Instant::now(), &session_id.to_string()
+        );
+    
     }
 
     // If this insertion fails, worst case we allow multiple contributions from the
@@ -145,6 +157,11 @@ pub async fn remove_participant_on_deadline(
     uid: String,
     options: lobby::Options,
 ) -> Result<(), StorageError> {
+    println!(
+        "{:?} starting timer for session id {}",
+        Instant::now(), &session_id.to_string()
+    );
+
     tokio::time::sleep(options.compute_deadline).await;
     {
         // Check if the contributor has already left the position
@@ -162,8 +179,8 @@ pub async fn remove_participant_on_deadline(
     }
 
     println!(
-        "User with session id {} took too long to contribute",
-        &session_id.to_string()
+        "{:?} User with session id {} took too long to contribute",
+        Instant::now(), &session_id.to_string()
     );
 
     storage.expire_contribution(&uid).await?;

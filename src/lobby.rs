@@ -39,7 +39,7 @@ pub type SharedLobbyState = Arc<RwLock<LobbyState>>;
 pub type SharedContributorState = Arc<RwLock<ActiveContributor>>;
 
 pub async fn clear_lobby_on_interval(state: SharedLobbyState, options: Options) {
-    let max_diff = options.lobby_checkin_frequency + options.lobby_checkin_tolerance;
+    let max_diff = 100 * (options.lobby_checkin_frequency + options.lobby_checkin_tolerance);
 
     let mut interval = tokio::time::interval(options.lobby_flush_interval);
 
@@ -79,6 +79,7 @@ async fn clear_lobby(state: SharedLobbyState, predicate: impl Fn(&SessionInfo) -
         );
     }
     for session_id in sessions_to_kick {
+        println!("removing participant session {}", session_id);
         lobby_state.participants.remove(&session_id);
     }
 }
@@ -98,6 +99,7 @@ pub async fn set_current_contributor(
 ) {
     let session_info = {
         let mut lobby = lobby_state.write().await;
+        println!("removing participant session {} in set_current_contributor", session_id);
         lobby.participants.remove(&session_id).unwrap()
     };
 
