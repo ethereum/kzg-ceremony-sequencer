@@ -1,7 +1,6 @@
 use crate::{
-    lobby,
     lobby::{
-        clear_current_contributor, set_current_contributor, SharedContributorState,
+        SharedContributorState,
         SharedLobbyState,
     },
     storage::{PersistentStorage, StorageError},
@@ -103,73 +102,25 @@ pub async fn try_contribute(
         uid = info.token.unique_identifier().to_owned();
     }
 
-    {
-        // Check if there is an existing contribution in progress
-        let contributor = contributor_state.read().await;
-        if contributor.is_some() {
-            return Err(TryContributeError::AnotherContributionInProgress);
-        }
-    }
-
-    // If this insertion fails, worst case we allow multiple contributions from the
-    // same participant
-    storage.insert_contributor(&uid).await?;
-    set_current_contributor(contributor_state.clone(), lobby_state, session_id.clone()).await;
-
-    // Start a timer to remove this user if they go over the `COMPUTE_DEADLINE`
-    tokio::spawn(async move {
-        remove_participant_on_deadline(
-            contributor_state,
-            storage.clone(),
-            session_id,
-            uid,
-            options.lobby,
-        )
-        .await
-        .unwrap(); // TODO: Handle error
-    });
-
-    let transcript = transcript.read().await;
-
-    Ok(TryContributeResponse {
-        contribution: transcript.contribution(),
-    })
-}
-
-// Clears the contribution spot on `COMPUTE_DEADLINE` interval
-// We use the session_id to avoid needing a channel to check if
-pub async fn remove_participant_on_deadline(
-    contributor_state: SharedContributorState,
-    storage: PersistentStorage,
-    session_id: SessionId,
-    uid: String,
-    options: lobby::Options,
-) -> Result<(), StorageError> {
-    tokio::time::sleep(options.compute_deadline).await;
-
-    {
-        // Check if the contributor has already left the position
-        let contributor = contributor_state.read().await;
-        if let Some((participant_session_id, _)) = contributor.as_ref() {
-            //
-            if participant_session_id != &session_id {
-                // Abort, this means that the participant has already contributed and
-                // the /contribute endpoint has removed them from the contribution spot
-                return Ok(());
-            }
-        } else {
-            return Ok(());
-        }
-    }
-
     println!(
-        "User with session id {} took too long to contribute",
-        &session_id.to_string()
+        "{:?} User with session id {} tries to contribute",
+        Instant::now(), &session_id.to_string()
     );
 
-    storage.expire_contribution(&uid).await?;
-    clear_current_contributor(contributor_state).await;
-    Ok(())
+
+    match contributor_state.set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone()).await {
+        Ok(_) => {
+            storage.insert_contributor(&uid).await?;
+            let transcript = transcript.read().await;
+
+            Ok(TryContributeResponse {
+                contribution: transcript.contribution(),
+            })        
+        },
+        Err(_) => {
+            Err(TryContributeError::AnotherContributionInProgress)
+        },
+    }
 }
 
 #[cfg(test)]
@@ -269,10 +220,7 @@ mod tests {
         );
 
         // "other participant" finished contributing
-        {
-            let mut state = contributor_state.write().await;
-            *state = None;
-        }
+        contributor_state.clear().await;
 
         // call the endpoint too soon - rate limited, no one computing
         tokio::time::advance(Duration::from_secs(5)).await;
