@@ -1,12 +1,12 @@
 #![cfg(test)]
 
 use ethers_core::types::{Address, Signature};
-use std::{collections::HashMap, io::Read, sync::Arc, time::Duration};
+use std::{collections::HashMap, io::Read, sync::Arc};
 
 use http::StatusCode;
-use oauth2::reqwest::http_client;
+
 use serde_json::Value;
-use tokio::{sync::RwLock, task::JoinHandle};
+
 use url::Url;
 
 use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
@@ -443,6 +443,34 @@ async fn well_behaved_participant(
 
 #[tokio::test]
 async fn test_large_lobby() {
+    let harness = Arc::new(run_test_harness().await);
+    let client = Arc::new(reqwest::Client::new());
+
+    let handles = (0..100)
+        .into_iter()
+        .map(|i| {
+            let h = harness.clone();
+            let c = client.clone();
+            tokio::spawn(async move {
+                well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+        .await
+        .into_iter()
+        .map(|r| r.expect("must terminate successfully"))
+        .collect();
+
+    let final_transcript = harness.read_transcript_file().await;
+    contributions
+        .iter()
+        .for_each(|c| assert_includes_contribution(&final_transcript, c));
+}
+
+#[tokio::test]
+async fn test_large_lobby_with_misbehaving_users() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
 
