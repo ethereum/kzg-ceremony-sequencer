@@ -36,12 +36,10 @@ pub struct LobbyState {
     pub participants: BTreeMap<SessionId, SessionInfo>,
 }
 
-type Deadline = Instant;
-
 pub enum ActiveContributor {
     None,
-    AwaitingContribution(SessionId, Deadline),
-    Contributing(SessionId, Deadline),
+    AwaitingContribution(SessionId),
+    Contributing(SessionId),
 }
 
 impl Default for ActiveContributor {
@@ -70,8 +68,7 @@ impl SharedContributorState {
     ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
         if matches!(*state, ActiveContributor::None) {
-            let deadline = Instant::now() + Duration::from_secs(10);
-            *state = ActiveContributor::AwaitingContribution(participant.clone(), deadline);
+            *state = ActiveContributor::AwaitingContribution(participant.clone());
 
             let inner = self.inner.clone();
             let participant = participant.clone();
@@ -95,12 +92,11 @@ impl SharedContributorState {
     ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
 
-        if !matches!(&*state, ActiveContributor::AwaitingContribution(x, _) if x == participant) {
+        if !matches!(&*state, ActiveContributor::AwaitingContribution(x) if x == participant) {
             return Err(ActiveContributorError::NotUsersTurn);
         }
 
-        let deadline = Instant::now() + Duration::from_secs(10);
-        *state = ActiveContributor::Contributing(participant.clone(), deadline);
+        *state = ActiveContributor::Contributing(participant.clone());
 
         Ok(())
     }
@@ -120,7 +116,7 @@ impl SharedContributorState {
 
         let mut state = inner.lock().await;
 
-        if matches!(&*state, ActiveContributor::AwaitingContribution(x, _) if x == &participant) {
+        if matches!(&*state, ActiveContributor::AwaitingContribution(x) if x == &participant) {
             *state = ActiveContributor::None;
 
             drop(state);
