@@ -146,7 +146,6 @@ pub async fn remove_participant_on_deadline(
     options: lobby::Options,
 ) -> Result<(), StorageError> {
     tokio::time::sleep(options.compute_deadline).await;
-
     {
         // Check if the contributor has already left the position
         let contributor = contributor_state.read().await;

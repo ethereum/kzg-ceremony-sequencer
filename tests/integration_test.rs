@@ -1,11 +1,12 @@
 #![cfg(test)]
 
 use ethers_core::types::{Address, Signature};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, io::Read, sync::Arc, time::Duration};
 
 use http::StatusCode;
+use oauth2::reqwest::http_client;
 use serde_json::Value;
-use tokio::task::JoinHandle;
+use tokio::{sync::RwLock, task::JoinHandle};
 use url::Url;
 
 use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
@@ -403,25 +404,49 @@ async fn test_double_contribution() {
     )
 }
 
-async fn well_behaved_participant(harness: &Harness, client: &reqwest::Client, name: String) {
+async fn well_behaved_participant(
+    harness: &Harness,
+    client: &reqwest::Client,
+    name: String,
+) -> BatchContribution {
     let session_id = login_gh_user(harness, client, name.clone()).await;
-    let try_contribute_response = request_try_contribute(harness, client, &session_id).await;
-    println!(
-        "{:?}: {:?}",
-        try_contribute_response.status(),
-        try_contribute_response
-            .json::<Value>()
+    let mut contribution = loop {
+        let try_contribute_response = request_try_contribute(harness, client, &session_id).await;
+        assert_eq!(try_contribute_response.status(), StatusCode::OK);
+        let maybe_contribution = try_contribute_response
+            .json::<BatchContribution>()
             .await
-            .unwrap()
-            .get("message")
-    )
+            .ok();
+        if let Some(contrib) = maybe_contribution {
+            break contrib;
+        }
+
+        tokio::time::sleep(
+            harness.options.lobby.lobby_checkin_frequency
+                - harness.options.lobby.lobby_checkin_tolerance,
+        )
+        .await;
+    };
+
+    let entropy = format!("{} such an unguessable string, wow!", name)
+        .bytes()
+        .take(32)
+        .collect::<Vec<u8>>()
+        .try_into()
+        .unwrap();
+    contribution
+        .add_entropy::<Arkworks>(entropy)
+        .expect("Adding entropy must be possible");
+    contribute_successfully(harness, client, &session_id, &contribution, &name).await;
+    contribution
 }
 
 #[tokio::test]
 async fn test_large_lobby() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
-    // tokio::time::pause();
+    tokio::time::pause();
+
     let handles = (0..10)
         .into_iter()
         .map(|i| {
@@ -433,7 +458,14 @@ async fn test_large_lobby() {
         })
         .collect::<Vec<_>>();
 
+    let mut contribs = vec![];
+
     for handle in handles {
-        handle.await.unwrap()
+        contribs.push(handle.await.unwrap());
     }
+
+    let final_transcript = harness.read_transcript_file().await;
+    contribs
+        .iter()
+        .for_each(|c| assert_includes_contribution(&final_transcript, c));
 }
