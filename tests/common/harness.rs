@@ -32,8 +32,10 @@ fn test_options() -> Options {
         "INVALID",
         "--database-url",
         "sqlite::memory:",
+        "--lobby-checkin-frequency",
+        "1",
         "--lobby-checkin-tolerance",
-        "10",
+        "1",
     ];
     Options::parse_from(args)
 }

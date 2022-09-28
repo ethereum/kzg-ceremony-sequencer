@@ -445,9 +445,8 @@ async fn well_behaved_participant(
 async fn test_large_lobby() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
-    tokio::time::pause();
 
-    let handles = (0..10)
+    let handles = (0..100)
         .into_iter()
         .map(|i| {
             let h = harness.clone();

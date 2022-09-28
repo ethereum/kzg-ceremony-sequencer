@@ -163,7 +163,7 @@ pub async fn remove_participant_on_deadline(
 
     println!(
         "User with session id {} took too long to contribute",
-        &session_id.to_string()
+        &session_id.to_string(),
     );
 
     storage.expire_contribution(&uid).await?;
