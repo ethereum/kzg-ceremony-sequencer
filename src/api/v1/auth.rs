@@ -5,21 +5,21 @@ use crate::{
     storage::{PersistentStorage, StorageError},
     EthAuthOptions, Options, SessionId, SessionInfo,
 };
+use async_session::base64;
 use axum::{
-    extract::Query,
-    response::{IntoResponse, Response},
+    async_trait,
+    extract::{FromRequest, Query, RequestParts},
+    response::{IntoResponse, Redirect, Response},
     Extension, Json,
 };
 use chrono::DateTime;
 use http::StatusCode;
-use oauth2::{
-    reqwest::async_http_client, AuthorizationCode, CsrfToken, RedirectUrl, Scope, TokenResponse,
-};
+use oauth2::{reqwest::async_http_client, AuthorizationCode, CsrfToken, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::borrow::Cow;
+use serde_json::{json, Map, Value};
 use thiserror::Error;
 use tokio::time::Instant;
+use url::Url;
 
 // These are the providers that are supported
 // via oauth
@@ -57,9 +57,10 @@ pub enum AuthError {
     Storage(#[from] StorageError),
 }
 
-pub struct UserVerified {
-    id_token:   IdToken,
-    session_id: String,
+pub struct UserVerifiedResponse {
+    id_token:       IdToken,
+    session_id:     String,
+    as_redirect_to: Option<String>,
 }
 
 pub struct AuthUrl {
@@ -77,13 +78,28 @@ impl IntoResponse for AuthUrl {
     }
 }
 
-impl IntoResponse for UserVerified {
+impl IntoResponse for UserVerifiedResponse {
     fn into_response(self) -> Response {
-        Json(json!({
-            "id_token" : self.id_token,
-            "session_id" : self.session_id,
-        }))
-        .into_response()
+        // Handling URL parse error by ignoring it and returning without redirect – we
+        // have no better option here, since we don't know the frontend that called us.
+        let redirect_url = self.as_redirect_to.and_then(|r| Url::parse(&r).ok());
+        match redirect_url {
+            Some(mut redirect_url) => {
+                redirect_url
+                    .query_pairs_mut()
+                    .append_pair("session_id", &self.session_id)
+                    .append_pair("sub", &self.id_token.sub)
+                    .append_pair("nickname", &self.id_token.nickname)
+                    .append_pair("provider", &self.id_token.provider)
+                    .append_pair("exp", &self.id_token.exp.to_string());
+                Redirect::to(redirect_url.as_str()).into_response()
+            }
+            None => Json(json!({
+                "id_token" : self.id_token,
+                "session_id" : self.session_id,
+            }))
+            .into_response(),
+        }
     }
 }
 
@@ -139,6 +155,20 @@ pub struct AuthClientLinkQueryParams {
     redirect_to: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CsrfWithRedirect {
+    secret:   CsrfToken,
+    redirect: Option<String>,
+}
+
+impl CsrfWithRedirect {
+    fn encode_into_csrf(&self) -> CsrfToken {
+        let value = serde_json::to_string(self).unwrap();
+        let bytes = value.as_bytes();
+        CsrfToken::new(base64::encode_config(bytes, base64::URL_SAFE_NO_PAD))
+    }
+}
+
 // Returns the url that the user needs to call
 // in order to get an authorisation code
 pub async fn auth_client_link(
@@ -159,32 +189,23 @@ pub async fn auth_client_link(
         }
     }
 
-    let csrf_token = CsrfToken::new_random();
+    let csrf_secret = CsrfToken::new_random();
 
-    let redirect_uri = params
-        .redirect_to
-        .and_then(|uri| RedirectUrl::new(uri).ok()); // TODO: Error handling?
+    let csrf_with_redirect = CsrfWithRedirect {
+        secret:   csrf_secret.clone(),
+        redirect: params.redirect_to,
+    }
+    .encode_into_csrf();
 
-    let auth_request = eth_client
-        .authorize_url(|| csrf_token)
+    let eth_auth_request = eth_client
+        .authorize_url(|| csrf_with_redirect)
         .add_scope(Scope::new("openid".to_string()));
 
-    let redirected_auth_request = if let Some(redirect) = &redirect_uri {
-        auth_request.set_redirect_uri(Cow::Borrowed(redirect))
-    } else {
-        auth_request
-    };
+    let (auth_url, csrf_with_redirect) = eth_auth_request.url();
 
-    let (auth_url, csrf_token) = redirected_auth_request.url();
+    let gh_auth_request = gh_client.client.authorize_url(|| csrf_with_redirect);
 
-    let gh_auth_request = gh_client.client.authorize_url(|| csrf_token);
-    let redirected_gh_auth_request = if let Some(redirect) = &redirect_uri {
-        gh_auth_request.set_redirect_uri(Cow::Borrowed(redirect))
-    } else {
-        gh_auth_request
-    };
-
-    let (gh_url, csrf_token) = redirected_gh_auth_request.url();
+    let (gh_url, _) = gh_auth_request.url();
 
     // Store CSRF token
     // TODO These should be cleaned periodically
@@ -192,7 +213,7 @@ pub async fn auth_client_link(
         .write()
         .await
         .csrf_tokens
-        .insert(csrf_token.secret().clone());
+        .insert(csrf_secret.secret().clone());
 
     Ok(AuthUrl {
         eth_auth_url:    auth_url.to_string(),
@@ -206,9 +227,57 @@ pub async fn auth_client_link(
 // that we need to check that the user did indeed login with
 // an identity provider
 #[derive(Debug, Deserialize)]
-pub struct AuthPayload {
+pub struct RawAuthPayload {
     code:  String,
     state: String,
+}
+
+#[derive(Debug)]
+pub struct AuthPayload {
+    code:        String,
+    csrf:        CsrfToken,
+    redirect_to: Option<String>,
+}
+
+#[async_trait]
+impl<B> FromRequest<B> for AuthPayload
+where
+    B: Send,
+{
+    type Rejection = Response;
+
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let Query(raw): Query<RawAuthPayload> = Query::from_request(req)
+            .await
+            .map_err(|err| err.into_response())?;
+        let decoded_state =
+            base64::decode_config(raw.state, base64::URL_SAFE_NO_PAD).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(Value::Object(Map::from_iter([(
+                        "message".to_string(),
+                        Value::String("invalid base64 data in state parameter".to_string()),
+                    )]))),
+                )
+                    .into_response()
+            })?;
+        let json_decoded_state =
+            serde_json::from_slice::<CsrfWithRedirect>(decoded_state.as_slice()).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(Value::Object(Map::from_iter([(
+                        "message".to_string(),
+                        Value::String("invalid json in state parameter".to_string()),
+                    )]))),
+                )
+                    .into_response()
+            })?;
+        Ok(Self {
+            code:        raw.code,
+            csrf:        json_decoded_state.secret,
+            redirect_to: json_decoded_state.redirect,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -225,14 +294,14 @@ struct GhUserInfo {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn github_callback(
-    Query(payload): Query<AuthPayload>,
+    payload: AuthPayload,
     Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-) -> Result<UserVerified, AuthError> {
+) -> Result<UserVerifiedResponse, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = gh_oauth_client
         .exchange_code(AuthorizationCode::new(payload.code))
@@ -260,7 +329,15 @@ pub async fn github_callback(
         uid:      format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
-    post_authenticate(auth_state, lobby_state, storage, user, AuthProvider::Github).await
+    post_authenticate(
+        auth_state,
+        lobby_state,
+        storage,
+        user,
+        payload.redirect_to,
+        AuthProvider::Github,
+    )
+    .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -280,14 +357,14 @@ struct EthUserInfo {
 // say they did not
 #[allow(clippy::too_many_arguments)]
 pub async fn eth_callback(
-    Query(payload): Query<AuthPayload>,
+    payload: AuthPayload,
     Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(oauth_client): Extension<EthOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-) -> Result<UserVerified, AuthError> {
+) -> Result<UserVerifiedResponse, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = oauth_client
         .exchange_code(AuthorizationCode::new(payload.code))
@@ -336,6 +413,7 @@ pub async fn eth_callback(
         lobby_state,
         storage,
         user_data,
+        payload.redirect_to,
         AuthProvider::Ethereum,
     )
     .await
@@ -371,7 +449,7 @@ async fn get_tx_count(
 
 async fn verify_csrf(payload: &AuthPayload, store: &SharedAuthState) -> Result<(), AuthError> {
     let auth_state = store.read().await;
-    if auth_state.csrf_tokens.contains(&payload.state) {
+    if auth_state.csrf_tokens.contains(payload.csrf.secret()) {
         Ok(())
     } else {
         Err(AuthError::InvalidCsrf)
@@ -383,8 +461,9 @@ async fn post_authenticate(
     lobby_state: SharedLobbyState,
     storage: PersistentStorage,
     user_data: AuthenticatedUser,
+    redirect_to: Option<String>,
     auth_provider: AuthProvider,
-) -> Result<UserVerified, AuthError> {
+) -> Result<UserVerifiedResponse, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
         Err(error) => return Err(AuthError::Storage(error)),
@@ -424,8 +503,9 @@ async fn post_authenticate(
         });
     }
 
-    Ok(UserVerified {
+    Ok(UserVerifiedResponse {
         id_token,
         session_id: session_id.to_string(),
+        as_redirect_to: redirect_to,
     })
 }
