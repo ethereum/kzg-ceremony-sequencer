@@ -9,7 +9,7 @@
 use crate::{
     api::v1::{
         auth::{auth_client_link, eth_callback, github_callback},
-        contribute::contribute,
+        contribute::{contribute, contribute_abort},
         info::{current_state, status},
         lobby::try_contribute,
     },
@@ -138,6 +138,7 @@ pub async fn start_server(
         .route("/auth/callback/eth", get(eth_callback))
         .route("/lobby/try_contribute", post(try_contribute))
         .route("/contribute", post(contribute))
+        .route("/contribute/abort", post(contribute_abort))
         .route("/info/status", get(status))
         .route("/info/current_state", get(current_state))
         .layer(Extension(active_contributor_state))
