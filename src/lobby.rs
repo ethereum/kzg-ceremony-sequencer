@@ -1,7 +1,14 @@
-use crate::sessions::{SessionId, SessionInfo};
+use crate::{
+    sessions::{SessionId, SessionInfo},
+    storage::PersistentStorage,
+};
 use clap::Parser;
 use std::{collections::BTreeMap, num::ParseIntError, str::FromStr, sync::Arc, time::Duration};
-use tokio::{sync::RwLock, time::Instant};
+use thiserror::Error;
+use tokio::{
+    sync::{Mutex, RwLock},
+    time::Instant,
+};
 
 fn duration_from_str(value: &str) -> Result<Duration, ParseIntError> {
     Ok(Duration::from_secs(u64::from_str(value)?))
@@ -30,10 +37,98 @@ pub struct LobbyState {
     pub participants: BTreeMap<SessionId, SessionInfo>,
 }
 
-pub type ActiveContributor = Option<(SessionId, SessionInfo)>;
+pub enum ActiveContributor {
+    None,
+    AwaitingContribution(SessionId),
+    Contributing(SessionId),
+}
+
+impl Default for ActiveContributor {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ActiveContributorError {
+    #[error("another contribution in progress")]
+    AnotherContributionInProgress,
+    #[error("not user's turn")]
+    NotUsersTurn,
+}
+
+#[derive(Clone, Default)]
+pub struct SharedContributorState {
+    inner: Arc<Mutex<ActiveContributor>>,
+}
+
+impl SharedContributorState {
+    pub async fn set_current_contributor(
+        &self,
+        participant: &SessionId,
+        compute_deadline: Duration,
+        storage: PersistentStorage,
+    ) -> Result<(), ActiveContributorError> {
+        let mut state = self.inner.lock().await;
+        if matches!(*state, ActiveContributor::None) {
+            *state = ActiveContributor::AwaitingContribution(participant.clone());
+
+            let inner = self.inner.clone();
+            let participant = participant.clone();
+
+            tokio::spawn(Self::expire_current_contributor(
+                inner,
+                participant,
+                compute_deadline,
+                storage,
+            ));
+
+            return Ok(());
+        }
+
+        Err(ActiveContributorError::AnotherContributionInProgress)
+    }
+
+    pub async fn begin_contributing(
+        &self,
+        participant: &SessionId,
+    ) -> Result<(), ActiveContributorError> {
+        let mut state = self.inner.lock().await;
+
+        if !matches!(&*state, ActiveContributor::AwaitingContribution(x) if x == participant) {
+            return Err(ActiveContributorError::NotUsersTurn);
+        }
+
+        *state = ActiveContributor::Contributing(participant.clone());
+
+        Ok(())
+    }
+
+    pub async fn clear(&self) {
+        let mut state = self.inner.lock().await;
+        *state = ActiveContributor::None;
+    }
+
+    async fn expire_current_contributor(
+        inner: Arc<Mutex<ActiveContributor>>,
+        participant: SessionId,
+        compute_deadline: Duration,
+        storage: PersistentStorage,
+    ) {
+        tokio::time::sleep(compute_deadline).await;
+
+        let mut state = inner.lock().await;
+
+        if matches!(&*state, ActiveContributor::AwaitingContribution(x) if x == &participant) {
+            *state = ActiveContributor::None;
+
+            drop(state);
+            storage.expire_contribution(&participant.0).await.unwrap();
+        }
+    }
+}
 
 pub type SharedLobbyState = Arc<RwLock<LobbyState>>;
-pub type SharedContributorState = Arc<RwLock<ActiveContributor>>;
 
 pub async fn clear_lobby_on_interval(state: SharedLobbyState, options: Options) {
     let max_diff = options.lobby_checkin_frequency + options.lobby_checkin_tolerance;
@@ -78,28 +173,6 @@ async fn clear_lobby(state: SharedLobbyState, predicate: impl Fn(&SessionInfo) -
     for session_id in sessions_to_kick {
         lobby_state.participants.remove(&session_id);
     }
-}
-
-pub async fn clear_current_contributor(contributor: SharedContributorState) {
-    let mut active_contributor = contributor.write().await;
-    *active_contributor = None;
-}
-
-/// # Panics
-///
-/// Panics if the user is not in the lobby.
-pub async fn set_current_contributor(
-    contributor: SharedContributorState,
-    lobby_state: SharedLobbyState,
-    session_id: SessionId,
-) {
-    let session_info = {
-        let mut lobby = lobby_state.write().await;
-        lobby.participants.remove(&session_id).unwrap()
-    };
-
-    let mut active_contributor = contributor.write().await;
-    *active_contributor = Some((session_id, session_info));
 }
 
 #[tokio::test]
