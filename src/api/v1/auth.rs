@@ -5,7 +5,6 @@ use crate::{
     storage::{PersistentStorage, StorageError},
     EthAuthOptions, Options, SessionId, SessionInfo,
 };
-use async_session::base64;
 use axum::{
     async_trait,
     extract::{FromRequest, Query, RequestParts},
