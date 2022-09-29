@@ -4,18 +4,19 @@ use std::collections::HashMap;
 use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Contribution {
     #[serde(flatten)]
     pub powers: Powers,
 
-    pub pubkey: G2,
+    pub pot_pubkey: G2,
 }
 
 impl Contribution {
     /// Check if the contribution has any entropy added.
     #[must_use]
     pub fn has_entropy(&self) -> bool {
-        self.pubkey != G2::one()
+        self.pot_pubkey != G2::one()
     }
 
     /// Adds entropy to this contribution. Can be called multiple times.
@@ -27,14 +28,14 @@ impl Contribution {
         // Validate points
         E::validate_g1(&self.powers.g1)?;
         E::validate_g2(&self.powers.g2)?;
-        E::validate_g2(&[self.pubkey])?;
+        E::validate_g2(&[self.pot_pubkey])?;
 
         // Add entropy
         E::add_entropy_g1(entropy, &mut self.powers.g1)?;
         E::add_entropy_g2(entropy, &mut self.powers.g2)?;
-        let mut temp = [G2::zero(), self.pubkey];
+        let mut temp = [G2::zero(), self.pot_pubkey];
         E::add_entropy_g2(entropy, &mut temp)?;
-        self.pubkey = temp[1];
+        self.pot_pubkey = temp[1];
 
         Ok(())
     }
@@ -54,7 +55,7 @@ impl Contribution {
         }
 
         // Zero values are never allowed
-        if self.pubkey == G2::zero() {
+        if self.pot_pubkey == G2::zero() {
             return Err(CeremonyError::ZeroPubkey);
         }
         for (i, g1) in self.powers.g1.iter().enumerate() {
@@ -77,7 +78,7 @@ impl Contribution {
         }
 
         // If there is no entropy yet, all values must be one.
-        if self.pubkey == G2::one()
+        if self.pot_pubkey == G2::one()
             && self.powers.g1.iter().all(|g1| *g1 == G1::one())
             && self.powers.g2.iter().all(|g2| *g2 == G2::one())
         {
@@ -103,7 +104,7 @@ impl Contribution {
             if *g2 == G2::one() {
                 return Err(CeremonyError::InvalidG2One(i));
             }
-            if i > 1 && *g2 == self.pubkey {
+            if i > 1 && *g2 == self.pot_pubkey {
                 return Err(CeremonyError::InvalidG2Pubkey(i));
             }
             if let Some(j) = set.get(g2) {
@@ -123,8 +124,8 @@ mod test {
     #[test]
     fn contribution_json() {
         let value = Contribution {
-            powers: Powers::new(2, 4),
-            pubkey: G2::one(),
+            powers:     Powers::new(2, 4),
+            pot_pubkey: G2::one(),
         };
         let json = serde_json::to_value(&value).unwrap();
         assert_eq!(
@@ -144,7 +145,7 @@ mod test {
                 "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
                 ]
             },
-            "pubkey": "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
+            "potPubkey": "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
             })
         );
         let deser = serde_json::from_value::<Contribution>(json).unwrap();

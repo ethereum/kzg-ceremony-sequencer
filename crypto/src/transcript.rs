@@ -55,8 +55,8 @@ impl Transcript {
     #[must_use]
     pub fn contribution(&self) -> Contribution {
         Contribution {
-            powers: self.powers.clone(),
-            pubkey: G2::one(),
+            powers:     self.powers.clone(),
+            pot_pubkey: G2::one(),
         }
     }
 
@@ -93,13 +93,13 @@ impl Transcript {
         // Verify the contribution points (encoding and subgroup checks).
         E::validate_g1(&contribution.powers.g1)?;
         E::validate_g2(&contribution.powers.g2)?;
-        E::validate_g2(&[contribution.pubkey])?;
+        E::validate_g2(&[contribution.pot_pubkey])?;
 
         // Verify pairings.
         E::verify_pubkey(
             contribution.powers.g1[1],
             self.powers.g1[1],
-            contribution.pubkey,
+            contribution.pot_pubkey,
         )?;
         E::verify_g1(&contribution.powers.g1, contribution.powers.g2[1])?;
         E::verify_g2(
@@ -115,7 +115,7 @@ impl Transcript {
     /// verified.
     pub fn add(&mut self, contribution: Contribution) {
         self.witness.products.push(contribution.powers.g1[1]);
-        self.witness.pubkeys.push(contribution.pubkey);
+        self.witness.pubkeys.push(contribution.pot_pubkey);
         self.powers = contribution.powers;
     }
 
