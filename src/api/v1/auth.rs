@@ -248,7 +248,7 @@ where
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         let Query(raw): Query<RawAuthPayload> = Query::from_request(req)
             .await
-            .map_err(|err| err.into_response())?;
+            .map_err(IntoResponse::into_response)?;
         let decoded_state =
             base64::decode_config(raw.state, base64::URL_SAFE_NO_PAD).map_err(|_| {
                 (
