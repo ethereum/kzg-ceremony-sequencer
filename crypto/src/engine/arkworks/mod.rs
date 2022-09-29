@@ -172,7 +172,6 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
 }
 
 fn random_scalar(entropy: [u8; 32]) -> Fr {
-    // TODO: Use an explicit cryptographic rng.
     let mut rng = ChaCha20Rng::from_seed(entropy);
     Fr::rand(&mut rng)
 }
