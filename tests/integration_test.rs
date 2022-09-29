@@ -244,7 +244,7 @@ async fn contribute_successfully(
         contribution
             .contributions
             .iter()
-            .map(|c| c.pubkey)
+            .map(|c| c.pot_pubkey)
             .collect::<Vec<_>>()
     )
 }
@@ -256,7 +256,7 @@ fn assert_includes_contribution(transcript: &BatchTranscript, contribution: &Bat
         .zip(contribution.contributions.iter())
         .for_each(|(t, c)| {
             assert!(t.witness.products.contains(&c.powers.g1[0]));
-            assert!(t.witness.pubkeys.contains(&c.pubkey));
+            assert!(t.witness.pubkeys.contains(&c.pot_pubkey));
         })
 }
 
@@ -318,7 +318,7 @@ async fn test_contribution_happy_path() {
     let contrib_pubkeys = contribution
         .contributions
         .iter()
-        .map(|contribution| contribution.pubkey)
+        .map(|contribution| contribution.pot_pubkey)
         .collect::<Vec<_>>();
     let transcript_pubkeys = transcript
         .transcripts
