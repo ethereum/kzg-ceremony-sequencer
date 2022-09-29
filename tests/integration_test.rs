@@ -542,7 +542,7 @@ async fn test_large_lobby_with_misbehaving_users() {
             .all(|w| w[0].num_contributions() == w[1].num_contributions()),
         "all ceremonies should have the same number of contributions"
     );
-    assert!(final_transcript.transcripts.len() > 0);
+    assert!(!final_transcript.transcripts.is_empty());
     let actual_count = final_transcript.transcripts[0].num_contributions();
     assert_eq!(should_accept_count, actual_count);
 }
