@@ -182,7 +182,7 @@ mod tests {
 
     pub fn invalid_contribution(transcript: &BatchTranscript, no: u8) -> BatchContribution {
         let mut contribution = valid_contribution(transcript, no);
-        contribution.contributions[0].pot_pubkey = G2::zero();
+        contribution.contributions[0].pubkey = G2::zero();
         contribution
     }
 }
