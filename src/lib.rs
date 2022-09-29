@@ -24,7 +24,7 @@ use crate::{
     util::parse_url,
 };
 use axum::{
-    extract::Extension,
+    extract::{DefaultBodyLimit, Extension},
     response::Html,
     routing::{get, post, IntoMakeService},
     Router, Server,
@@ -150,7 +150,8 @@ pub async fn start_server(
         .layer(Extension(reqwest::Client::new()))
         .layer(Extension(storage_client(&options.storage).await?))
         .layer(Extension(transcript))
-        .layer(Extension(options.clone()));
+        .layer(Extension(options.clone()))
+        .layer(DefaultBodyLimit::disable());
 
     // Run the server
     let (addr, prefix) = parse_url(&options.server)?;
