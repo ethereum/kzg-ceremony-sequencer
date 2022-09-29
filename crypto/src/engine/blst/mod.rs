@@ -44,11 +44,11 @@ impl Engine for BLST {
             .par_iter()
             .zip(taus)
             .map(|(&p, tau)| {
-                let p = blst_p1_affine::try_from(p).unwrap(); // TODO
+                let p = blst_p1_affine::try_from(p)?;
                 let p = p1_from_affine(&p);
-                p1_mult(&p, &tau)
+                Ok(p1_mult(&p, &tau))
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, ParseError>>()?;
 
         let powers_affine = p1s_to_affine(&powers_projective);
 
@@ -78,11 +78,11 @@ impl Engine for BLST {
             .par_iter()
             .zip(taus)
             .map(|(&p, tau)| {
-                let p = blst_p2_affine::try_from(p).unwrap(); // TODO
+                let p = blst_p2_affine::try_from(p)?;
                 let p = p2_from_affine(&p);
-                p2_mult(&p, &tau)
+                Ok(p2_mult(&p, &tau))
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, ParseError>>()?;
 
         let powers_affine = p2s_to_affine(&powers_projective);
 
@@ -97,8 +97,8 @@ impl Engine for BLST {
 
     fn validate_g1(points: &[crate::G1]) -> Result<(), crate::CeremonyError> {
         points.into_par_iter().enumerate().try_for_each(|(i, &p)| {
-            let p = blst_p1_affine::try_from(p).unwrap(); // TODO
-            if p1_affine_in_g1(&p) {
+            let p = blst_p1_affine::try_from(p)?;
+            if !p1_affine_in_g1(&p) {
                 return Err(CeremonyError::InvalidG1Power(
                     i,
                     ParseError::InvalidSubgroup,
@@ -110,8 +110,8 @@ impl Engine for BLST {
 
     fn validate_g2(points: &[crate::G2]) -> Result<(), crate::CeremonyError> {
         points.into_par_iter().enumerate().try_for_each(|(i, &p)| {
-            let p = blst_p2_affine::try_from(p).unwrap(); // TODO
-            if p2_affine_in_g2(&p) {
+            let p = blst_p2_affine::try_from(p)?;
+            if !p2_affine_in_g2(&p) {
                 return Err(CeremonyError::InvalidG2Power(
                     i,
                     ParseError::InvalidSubgroup,
@@ -224,4 +224,15 @@ fn random_factors(n: usize) -> (Vec<blst_fr>, blst_fr) {
     .take(n)
     .collect::<Vec<_>>();
     (factors, sum)
+}
+
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench {
+    use super::{super::bench::bench_engine, *};
+    use criterion::Criterion;
+
+    pub fn group(criterion: &mut Criterion) {
+        bench_engine::<BLST>(criterion, "blst");
+    }
 }

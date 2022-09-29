@@ -15,6 +15,9 @@ use crate::{CeremonyError, G1, G2};
 #[cfg(feature = "arkworks")]
 pub use self::arkworks::Arkworks;
 
+#[cfg(feature = "blst")]
+pub use self::blst::BLST;
+
 pub trait Engine {
     /// Verifies that the given G1 points are valid.
     fn validate_g1(points: &[G1]) -> Result<(), CeremonyError>;
@@ -48,6 +51,8 @@ pub mod bench {
     pub fn group(criterion: &mut Criterion) {
         #[cfg(feature = "arkworks")]
         arkworks::bench::group(criterion);
+        #[cfg(feature = "blst")]
+        blst::bench::group(criterion);
     }
 
     pub(super) fn bench_engine<E: Engine>(criterion: &mut Criterion, name: &str) {
@@ -234,6 +239,8 @@ mod tests {
 
         assert_eq!(g_e1, g_e2);
     }
+
+
 }
 
 

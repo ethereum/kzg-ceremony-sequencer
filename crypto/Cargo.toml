@@ -15,12 +15,13 @@ license-file = "../mit-license.md"
 default = [ ]
 bench = [ "criterion" ]
 arkworks = [ "dep:ruint" ]
+blst = [ ]
 
 [[bench]]
 name = "criterion"
 harness = false
 path = "criterion.rs"
-required-features = [ "bench", "arkworks" ]
+required-features = [ "bench" ]
 
 [dependencies]
 criterion = { version = "0.4.0", optional = true } # Dev dep for bench
