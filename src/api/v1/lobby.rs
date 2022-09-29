@@ -188,6 +188,9 @@ mod tests {
             Extension(test_options()),
         )
         .await;
+
+        println!("contribution_in_progress_response is {:?}", contribution_in_progress_response);
+
         assert!(matches!(
             contribution_in_progress_response,
             Err(TryContributeError::AnotherContributionInProgress)
