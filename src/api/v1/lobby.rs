@@ -139,9 +139,6 @@ mod tests {
         let session_id = SessionId::new();
         let other_session_id = SessionId::new();
 
-        // manually control time in tests
-        tokio::time::pause();
-
         // no users in lobby
         let unknown_session_response = try_contribute(
             session_id.clone(),
@@ -196,7 +193,9 @@ mod tests {
             Err(TryContributeError::AnotherContributionInProgress)
         ));
 
-        // call the endpoint too soon - rate limited, other participant computing
+        tokio::time::pause();
+
+        // call the endpoint too soon - rate limited, other participant computing        
         tokio::time::advance(Duration::from_secs(5)).await;
         let too_soon_response = try_contribute(
             session_id.clone(),
