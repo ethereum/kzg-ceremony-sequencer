@@ -4,6 +4,7 @@ use crate::{
 };
 use clap::Parser;
 use std::{collections::BTreeMap, num::ParseIntError, str::FromStr, sync::Arc, time::Duration};
+use thiserror::Error;
 use tokio::{
     sync::{Mutex, RwLock},
     time::Instant,
@@ -48,9 +49,11 @@ impl Default for ActiveContributor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ActiveContributorError {
+    #[error("another contribution in progress")]
     AnotherContributionInProgress,
+    #[error("not user's turn")]
     NotUsersTurn,
 }
 
