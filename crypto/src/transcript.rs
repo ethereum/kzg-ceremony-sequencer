@@ -63,6 +63,21 @@ impl Transcript {
     /// Verifies a contribution.
     #[instrument(level = "info", skip_all, fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn verify<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
+        let (g1, g2) = self.verify_defer_pairing::<E>(contribution)?;
+        if !E::pairing_products_is_one(&g1, &g2)? {
+            return Err(CeremonyError::DeferredPairingFailed);
+        }
+        // Accept
+        Ok(())
+    }
+
+    /// Preparing inputs to a contribution verification; deferring pairing
+    /// check.
+    #[instrument(level = "info", skip_all, fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
+    fn verify_defer_pairing<E: Engine>(
+        &self,
+        contribution: &Contribution,
+    ) -> Result<(Vec<G1>, Vec<G2>), CeremonyError> {
         // Sanity checks
         self.sanity_check()?;
         if !contribution.has_entropy() {
@@ -95,20 +110,25 @@ impl Transcript {
         E::validate_g2(&contribution.powers.g2)?;
         E::validate_g2(&[contribution.pubkey])?;
 
-        // Verify pairings.
-        E::verify_pubkey(
+        // Verify public key, deferring pairing checks.
+        let (pk_g1, pk_g2) = E::verify_pubkey_defer_pairing(
             contribution.powers.g1[1],
             self.powers.g1[1],
             contribution.pubkey,
         )?;
-        E::verify_g1(&contribution.powers.g1, contribution.powers.g2[1])?;
-        E::verify_g2(
+
+        let (g1cont_g1, g1cont_g2) =
+            E::verify_g1_defer_pairing(&contribution.powers.g1, contribution.powers.g2[1])?;
+
+        let (g2cont_g1, g2cont_g2) = E::verify_g2_defer_pairing(
             &contribution.powers.g1[..contribution.powers.g2.len()],
             &contribution.powers.g2,
         )?;
 
-        // Accept
-        Ok(())
+        Ok((
+            [pk_g1, g1cont_g1, g2cont_g1].concat(),
+            [pk_g2, g1cont_g2, g2cont_g2].concat(),
+        ))
     }
 
     /// Adds a contribution to the transcript. The contribution must be

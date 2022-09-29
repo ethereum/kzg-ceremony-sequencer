@@ -31,19 +31,43 @@ pub trait Engine {
     /// from `previous` to `tau`.
     fn verify_pubkey(tau: G1, previous: G1, pubkey: G2) -> Result<(), CeremonyError>;
 
+    /// Verify that the pubkey contains the contribution added
+    /// from `previous` to `tau`.
+    ///
+    /// Deferring pairing product check.
+    fn verify_pubkey_defer_pairing(
+        tau: G1,
+        previous: G1,
+        pubkey: G2,
+    ) -> Result<(Vec<G1>, Vec<G2>), CeremonyError>;
+
     /// Verify that `powers` contains a sequence of powers of `tau`.
     fn verify_g1(powers: &[G1], tau: G2) -> Result<(), CeremonyError>;
 
+    /// Verify that `powers` contains a sequence of powers of `tau`.
+    ///
+    /// Deferring pairing product check.
+    fn verify_g1_defer_pairing(powers: &[G1], tau: G2)
+        -> Result<(Vec<G1>, Vec<G2>), CeremonyError>;
+
     /// Verify that `g1` and `g2` contain the same values.
     fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError>;
+
+    /// Verify that `g1` and `g2` contain the same values.
+    ///
+    /// Deferring pairing product check.
+    fn verify_g2_defer_pairing(g1: &[G1], g2: &[G2]) -> Result<(Vec<G1>, Vec<G2>), CeremonyError>;
 
     /// Derive a secret scalar $τ$ from the given entropy and multiply elements
     /// of `powers` by powers of $τ$.
     fn add_entropy_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError>;
 
-    /// Derive a secret scalar $τ4 from the given entropy and multiply elements
+    /// Derive a secret scalar $τ$ from the given entropy and multiply elements
     /// of `powers` by powers of $τ$.
     fn add_entropy_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError>;
+
+    /// Assert the pairing product of the inputs is one.
+    fn pairing_products_is_one(g1: &[G1], g2: &[G2]) -> Result<bool, CeremonyError>;
 }
 
 #[cfg(feature = "bench")]

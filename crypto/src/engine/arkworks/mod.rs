@@ -53,19 +53,76 @@ impl Engine for Arkworks {
 
     #[instrument(level = "info", skip_all)]
     fn verify_pubkey(tau: G1, previous: G1, pubkey: G2) -> Result<(), CeremonyError> {
-        let tau = G1Affine::try_from(tau)?;
-        let previous = G1Affine::try_from(previous)?;
-        let pubkey = G2Affine::try_from(pubkey)?;
-        if Bls12_381::pairing(tau, G2Affine::prime_subgroup_generator())
-            != Bls12_381::pairing(previous, pubkey)
-        {
+        let (g1, g2) = Self::verify_pubkey_defer_pairing(tau, previous, pubkey)?;
+
+        let pairing_inputs: Vec<_> = g1
+            .iter()
+            .zip(g2.iter())
+            .map(|(g1, g2)| {
+                (
+                    <Bls12_381 as PairingEngine>::G1Prepared::from(
+                        G1Affine::try_from(*g1).unwrap(),
+                    ),
+                    <Bls12_381 as PairingEngine>::G2Prepared::from(
+                        G2Affine::try_from(*g2).unwrap(),
+                    ),
+                )
+            })
+            .collect();
+
+        if !Bls12_381::product_of_pairings(pairing_inputs.as_slice()).is_one() {
             return Err(CeremonyError::PubKeyPairingFailed);
         }
         Ok(())
     }
 
+    #[instrument(level = "info", skip_all)]
+    fn verify_pubkey_defer_pairing(
+        tau: G1,
+        previous: G1,
+        pubkey: G2,
+    ) -> Result<(Vec<G1>, Vec<G2>), CeremonyError> {
+        let neg_tau = -G1Affine::try_from(tau)?;
+        Ok((
+            vec![
+                neg_tau.into(),
+                previous,
+            ],
+            vec![G2Affine::prime_subgroup_generator().into(), pubkey],
+        ))
+    }
+
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
     fn verify_g1(powers: &[G1], tau: G2) -> Result<(), CeremonyError> {
+        let (g1, g2) = Self::verify_g1_defer_pairing(powers, tau)?;
+
+        let pairing_inputs: Vec<_> = g1
+            .iter()
+            .zip(g2.iter())
+            .map(|(g1, g2)| {
+                (
+                    <Bls12_381 as PairingEngine>::G1Prepared::from(
+                        G1Affine::try_from(*g1).unwrap(),
+                    ),
+                    <Bls12_381 as PairingEngine>::G2Prepared::from(
+                        G2Affine::try_from(*g2).unwrap(),
+                    ),
+                )
+            })
+            .collect();
+
+        // Check pairing
+        if !Bls12_381::product_of_pairings(pairing_inputs.as_slice()).is_one() {
+            return Err(CeremonyError::G1PairingFailed);
+        }
+        Ok(())
+    }
+
+    #[instrument(level = "info", skip_all, fields(n=powers.len()))]
+    fn verify_g1_defer_pairing(
+        powers: &[G1],
+        tau: G2,
+    ) -> Result<(Vec<G1>, Vec<G2>), CeremonyError> {
         // Parse ZCash format
         let powers = powers
             .into_par_iter()
@@ -75,20 +132,46 @@ impl Engine for Arkworks {
 
         // Compute random linear combination
         let (factors, sum) = random_factors(powers.len() - 1);
-        let lhs_g1 = VariableBaseMSM::multi_scalar_mul(&powers[1..], &factors[..]);
-        let lhs_g2 = G2Affine::prime_subgroup_generator().mul(sum);
-        let rhs_g1 = VariableBaseMSM::multi_scalar_mul(&powers[..factors.len()], &factors[..]);
-        let rhs_g2 = tau.mul(sum);
+        let lhs_g1 =
+            -VariableBaseMSM::multi_scalar_mul(&powers[1..], &factors[..]).mul(sum.into_repr());
+        let lhs_g2 = G2Affine::prime_subgroup_generator();
+        let rhs_g1 = VariableBaseMSM::multi_scalar_mul(&powers[..factors.len()], &factors[..])
+            .mul(sum.into_repr());
+        let rhs_g2 = tau;
 
+        Ok((
+            vec![lhs_g1.into_affine().into(), rhs_g1.into_affine().into()],
+            vec![lhs_g2.into(), rhs_g2.into()],
+        ))
+    }
+
+    #[instrument(level = "info", skip_all, fields(n1=g1.len(), n2=g2.len()))]
+    fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError> {
+        let (g1, g2) = Self::verify_g2_defer_pairing(g1, g2)?;
+
+        let pairing_inputs: Vec<_> = g1
+            .iter()
+            .zip(g2.iter())
+            .map(|(g1, g2)| {
+                (
+                    <Bls12_381 as PairingEngine>::G1Prepared::from(
+                        G1Affine::try_from(*g1).unwrap(),
+                    ),
+                    <Bls12_381 as PairingEngine>::G2Prepared::from(
+                        G2Affine::try_from(*g2).unwrap(),
+                    ),
+                )
+            })
+            .collect();
         // Check pairing
-        if Bls12_381::pairing(lhs_g1, lhs_g2) != Bls12_381::pairing(rhs_g1, rhs_g2) {
-            return Err(CeremonyError::G1PairingFailed);
+        if !Bls12_381::product_of_pairings(pairing_inputs.as_slice()).is_one() {
+            return Err(CeremonyError::G2PairingFailed);
         }
         Ok(())
     }
 
     #[instrument(level = "info", skip_all, fields(n1=g1.len(), n2=g2.len()))]
-    fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError> {
+    fn verify_g2_defer_pairing(g1: &[G1], g2: &[G2]) -> Result<(Vec<G1>, Vec<G2>), CeremonyError> {
         assert!(g1.len() == g2.len());
 
         // Parse ZCash format
@@ -103,16 +186,15 @@ impl Engine for Arkworks {
 
         // Compute random linear combination
         let (factors, sum) = random_factors(g2.len());
-        let lhs_g1 = VariableBaseMSM::multi_scalar_mul(&g1, &factors[..]);
-        let lhs_g2 = G2Affine::prime_subgroup_generator().mul(sum);
+        let lhs_g1 = -VariableBaseMSM::multi_scalar_mul(&g1, &factors[..]).mul(sum.into_repr());
+        let lhs_g2 = G2Affine::prime_subgroup_generator();
         let rhs_g1 = G1Affine::prime_subgroup_generator().mul(sum);
         let rhs_g2 = VariableBaseMSM::multi_scalar_mul(&g2, &factors[..]);
 
-        // Check pairing
-        if Bls12_381::pairing(lhs_g1, lhs_g2) != Bls12_381::pairing(rhs_g1, rhs_g2) {
-            return Err(CeremonyError::G2PairingFailed);
-        }
-        Ok(())
+        Ok((
+            vec![lhs_g1.into_affine().into(), rhs_g1.into_affine().into()],
+            vec![lhs_g2.into(), rhs_g2.into_affine().into()],
+        ))
     }
 
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
@@ -154,6 +236,50 @@ impl Engine for Arkworks {
             *p = a.into_affine().into();
         }
         Ok(())
+    }
+
+    fn pairing_products_is_one(g1: &[G1], g2: &[G2]) -> Result<bool, CeremonyError> {
+        let len = g1.len();
+        assert_eq!(len, g2.len());
+        assert_eq!(len & 1, 0);
+        assert!(len >= 2);
+
+        // we may take more than 2 pairing products, for which we will need
+        // to use random linear combinations to randomize the inputs.
+        let mut rng = rand::thread_rng();
+        let mut randomizers = vec![Fr::one()];
+
+        randomizers.extend_from_slice(
+            (0..len - 1)
+                .map(|_| Fr::rand(&mut rng))
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+
+        let g1_proj = g1
+            .par_chunks(2)
+            .zip(randomizers.into_par_iter())
+            .map(|(g, r)| {
+                vec![
+                    G1Affine::try_from(g[0]).unwrap().mul(r.into_repr()),
+                    G1Affine::try_from(g[1]).unwrap().mul(r.into_repr()),
+                ]
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+        let g1_affine = G1Projective::batch_normalization_into_affine(g1_proj.as_slice());
+        let pairing_inputs = g1_affine
+            .iter()
+            .zip(g2.iter())
+            .map(|(&g1, &g2)| {
+                (
+                    <Bls12_381 as PairingEngine>::G1Prepared::from(g1),
+                    <Bls12_381 as PairingEngine>::G2Prepared::from(G2Affine::try_from(g2).unwrap()),
+                )
+            })
+            .collect::<Vec<_>>();
+        // Check pairing
+        Ok(Bls12_381::product_of_pairings(pairing_inputs.as_slice()).is_one())
     }
 }
 

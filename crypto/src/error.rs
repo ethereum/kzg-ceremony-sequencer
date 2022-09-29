@@ -42,6 +42,8 @@ pub enum CeremonyError {
     G1PairingFailed,
     #[error("G2 pairing check failed")]
     G2PairingFailed,
+    #[error("Deferred pairing check failed")]
+    DeferredPairingFailed,
     #[error("pubkey is zero")]
     ZeroPubkey,
     #[error("g1[{0}] is zero")]
