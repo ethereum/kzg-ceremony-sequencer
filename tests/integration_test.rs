@@ -486,10 +486,9 @@ async fn test_large_lobby() {
             tokio::spawn(async move {
                 well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
             })
-        })
-        .collect::<Vec<_>>();
+        });
 
-    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+    let contributions: Vec<_> = futures::future::join_all(handles)
         .await
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
@@ -520,10 +519,9 @@ async fn test_large_lobby_with_misbehaving_users() {
                     None
                 }
             })
-        })
-        .collect::<Vec<_>>();
+        });
 
-    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+    let contributions: Vec<_> = futures::future::join_all(handles)
         .await
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))

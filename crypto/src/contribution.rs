@@ -2,6 +2,7 @@ use crate::{CeremonyError, Engine, Powers, G1, G2};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::instrument;
+use zeroize::Zeroize;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Contribution {
@@ -19,8 +20,12 @@ impl Contribution {
     }
 
     /// Adds entropy to this contribution. Can be called multiple times.
+    /// The entropy is consumed and the blob is zeroized after use.
     #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
-    pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremonyError> {
+    pub fn add_entropy<E: Engine>(&mut self, entropy: &mut [u8; 32]) -> Result<(), CeremonyError> {
+        // make sure that the entropy passed in is not prior zeroized
+        assert_ne!(*entropy, [0; 32]);
+
         // Basic checks
         self.sanity_check()?;
 
@@ -30,11 +35,14 @@ impl Contribution {
         E::validate_g2(&[self.pubkey])?;
 
         // Add entropy
-        E::add_entropy_g1(entropy, &mut self.powers.g1)?;
-        E::add_entropy_g2(entropy, &mut self.powers.g2)?;
+        E::add_entropy_g1(*entropy, &mut self.powers.g1)?;
+        E::add_entropy_g2(*entropy, &mut self.powers.g2)?;
         let mut temp = [G2::zero(), self.pubkey];
-        E::add_entropy_g2(entropy, &mut temp)?;
+        E::add_entropy_g2(*entropy, &mut temp)?;
         self.pubkey = temp[1];
+
+        // zeroize the toxic waste
+        entropy.zeroize();
 
         Ok(())
     }

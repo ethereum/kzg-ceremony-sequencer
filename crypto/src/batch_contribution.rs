@@ -1,8 +1,10 @@
 use crate::{CeremoniesError, Contribution, Engine, G2};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
+use zeroize::Zeroize;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -17,17 +19,28 @@ impl BatchContribution {
     }
 
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
-    pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremoniesError> {
-        let entropies = derive_entropy(entropy, self.contributions.len());
-        self.contributions
+    pub fn add_entropy<E: Engine>(&mut self, mut entropy: [u8; 32]) -> Result<(), CeremoniesError> {
+        // make sure that the entropy passed in is not prior zeroized
+        assert_ne!(entropy, [0; 32]);
+
+        let mut entropies = derive_entropy(entropy, self.contributions.len());
+        let res = self
+            .contributions
             .par_iter_mut()
-            .zip(entropies)
+            .zip(&mut entropies)
             .enumerate()
             .try_for_each(|(i, (contribution, entropy))| {
-                contribution
+                let res = contribution
                     .add_entropy::<E>(entropy)
-                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
-            })
+                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e));
+                // make sure the entropy has been zeroized
+                assert_eq!(*entropy, [0; 32]);
+                res
+            });
+
+        // zeroize the toxic waste
+        entropy.zeroize();
+        res
     }
 
     // TODO: Sanity check the batch contribution. Besides checking the individual
@@ -37,6 +50,6 @@ impl BatchContribution {
 }
 
 fn derive_entropy(entropy: [u8; 32], size: usize) -> Vec<[u8; 32]> {
-    let mut rng = StdRng::from_seed(entropy);
+    let mut rng = ChaCha20Rng::from_seed(entropy);
     (0..size).map(|_| rng.gen()).collect()
 }
