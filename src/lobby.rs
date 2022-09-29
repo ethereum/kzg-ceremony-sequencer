@@ -112,15 +112,11 @@ impl SharedContributorState {
         compute_deadline: Duration,
         storage: PersistentStorage,
     ) {
-        println!("starting expiration timer for {}", participant);
-
         tokio::time::sleep(compute_deadline).await;
 
         let mut state = inner.lock().await;
 
         if matches!(&*state, ActiveContributor::AwaitingContribution(x) if x == &participant) {
-            println!("expiring {}", participant);
-
             *state = ActiveContributor::None;
 
             drop(state);

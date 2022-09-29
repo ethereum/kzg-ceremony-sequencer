@@ -186,8 +186,6 @@ mod tests {
         )
         .await;
 
-        println!("contribution_in_progress_response is {:?}", contribution_in_progress_response);
-
         assert!(matches!(
             contribution_in_progress_response,
             Err(TryContributeError::AnotherContributionInProgress)
@@ -195,7 +193,7 @@ mod tests {
 
         tokio::time::pause();
 
-        // call the endpoint too soon - rate limited, other participant computing        
+        // call the endpoint too soon - rate limited, other participant computing
         tokio::time::advance(Duration::from_secs(5)).await;
         let too_soon_response = try_contribute(
             session_id.clone(),
