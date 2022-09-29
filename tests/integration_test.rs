@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use ethers_core::types::{Address, Signature};
+use futures::StreamExt;
 use std::{collections::HashMap, io::Read, sync::Arc};
 
 use http::StatusCode;
@@ -441,12 +442,49 @@ async fn well_behaved_participant(
     contribution
 }
 
+async fn slow_compute_participant(harness: &Harness, client: &reqwest::Client, name: String) {
+    let session_id = login_gh_user(harness, client, name.clone()).await;
+    let mut contribution = loop {
+        let try_contribute_response = request_try_contribute(harness, client, &session_id).await;
+        assert_eq!(try_contribute_response.status(), StatusCode::OK);
+        let maybe_contribution = try_contribute_response
+            .json::<BatchContribution>()
+            .await
+            .ok();
+        if let Some(contrib) = maybe_contribution {
+            break contrib;
+        }
+
+        tokio::time::sleep(
+            harness.options.lobby.lobby_checkin_frequency
+                - harness.options.lobby.lobby_checkin_tolerance,
+        )
+        .await;
+    };
+
+    let entropy = format!("{} such an unguessable string, wow!", name)
+        .bytes()
+        .take(32)
+        .collect::<Vec<u8>>()
+        .try_into()
+        .unwrap();
+
+    tokio::time::sleep(harness.options.lobby.compute_deadline).await;
+
+    contribution
+        .add_entropy::<Arkworks>(entropy)
+        .expect("Adding entropy must be possible");
+
+    let response = request_contribute(harness, client, &session_id, &contribution).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn test_large_lobby() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
 
-    let handles = (0..100)
+    let handles = (0..20)
         .into_iter()
         .map(|i| {
             let h = harness.clone();
@@ -474,13 +512,19 @@ async fn test_large_lobby_with_misbehaving_users() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
 
-    let handles = (0..100)
+    let handles = (0..20)
         .into_iter()
         .map(|i| {
             let h = harness.clone();
             let c = client.clone();
+            let u = format!("user {i}");
             tokio::spawn(async move {
-                well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
+                if i % 2 == 0 {
+                    Some(well_behaved_participant(h.as_ref(), c.as_ref(), u).await)
+                } else {
+                    slow_compute_participant(h.as_ref(), c.as_ref(), u).await;
+                    None
+                }
             })
         })
         .collect::<Vec<_>>();
@@ -492,7 +536,19 @@ async fn test_large_lobby_with_misbehaving_users() {
         .collect();
 
     let final_transcript = harness.read_transcript_file().await;
-    contributions
-        .iter()
-        .for_each(|c| assert_includes_contribution(&final_transcript, c));
+    contributions.iter().for_each(|oc| {
+        oc.iter()
+            .for_each(|c| assert_includes_contribution(&final_transcript, c))
+    });
+
+    let should_accept_count = contributions.iter().filter(|e| e.is_some()).count();
+    assert!(
+        final_transcript.transcripts[..]
+            .windows(2)
+            .all(|w| w[0].num_contributions() == w[1].num_contributions()),
+        "all ceremonies should have the same number of contributions"
+    );
+    assert!(final_transcript.transcripts.len() > 0);
+    let actual_count = final_transcript.transcripts[0].num_contributions();
+    assert_eq!(should_accept_count, actual_count);
 }

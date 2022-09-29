@@ -1,3 +1,4 @@
+use std::time::Duration;
 use crate::common::{
     mock_auth_service,
     mock_auth_service::{AuthState, GhUser},
@@ -32,10 +33,6 @@ fn test_options() -> Options {
         "INVALID",
         "--database-url",
         "sqlite::memory:",
-        "--lobby-checkin-frequency",
-        "1",
-        "--lobby-checkin-tolerance",
-        "1",
     ];
     Options::parse_from(args)
 }
@@ -94,6 +91,9 @@ pub async fn run_test_harness() -> Harness {
     let mut options = test_options();
     options.transcript_file = transcript;
     options.transcript_in_progress_file = transcript_wip;
+    options.lobby.lobby_checkin_frequency = Duration::from_millis(200);
+    options.lobby.lobby_checkin_tolerance = Duration::from_millis(190);
+    options.lobby.compute_deadline = Duration::from_millis(800);
     let server_options = options.clone();
     let (shutdown_sender, mut app_shutdown_receiver) = broadcast::channel::<()>(1);
     let mut auth_shutdown_receiver = shutdown_sender.subscribe();
