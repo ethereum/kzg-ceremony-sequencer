@@ -1,18 +1,12 @@
 #![cfg(test)]
 
-use ethers_core::types::{Address, Signature};
-use futures::StreamExt;
-use std::{collections::HashMap, io::Read, sync::Arc};
-
-use http::StatusCode;
-
-use serde_json::Value;
-
-use url::Url;
-
-use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
-
 use crate::common::harness::{run_test_harness, Harness};
+use ethers_core::types::{Address, Signature};
+use http::StatusCode;
+use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
+use serde_json::Value;
+use std::{collections::HashMap, sync::Arc};
+use url::Url;
 
 mod common;
 

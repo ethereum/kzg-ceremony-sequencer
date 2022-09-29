@@ -1,4 +1,3 @@
-use std::time::Duration;
 use crate::common::{
     mock_auth_service,
     mock_auth_service::{AuthState, GhUser},
@@ -6,6 +5,7 @@ use crate::common::{
 use clap::Parser;
 use kzg_ceremony_crypto::BatchTranscript;
 use kzg_ceremony_sequencer::{io::read_json_file, start_server, Options};
+use std::time::Duration;
 use tempfile::{tempdir, TempDir};
 use tokio::sync::{broadcast, oneshot, Mutex, MutexGuard, OnceCell};
 use url::Url;
@@ -91,8 +91,8 @@ pub async fn run_test_harness() -> Harness {
     let mut options = test_options();
     options.transcript_file = transcript;
     options.transcript_in_progress_file = transcript_wip;
-    options.lobby.lobby_checkin_frequency = Duration::from_millis(200);
-    options.lobby.lobby_checkin_tolerance = Duration::from_millis(190);
+    options.lobby.lobby_checkin_frequency = Duration::from_millis(500);
+    options.lobby.lobby_checkin_tolerance = Duration::from_millis(490);
     options.lobby.compute_deadline = Duration::from_millis(800);
     let server_options = options.clone();
     let (shutdown_sender, mut app_shutdown_receiver) = broadcast::channel::<()>(1);
