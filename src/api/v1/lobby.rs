@@ -33,7 +33,7 @@ impl IntoResponse for TryContributeError {
                 let body = Json(json!({
                     "error": "unknown session id",
                 }));
-                (StatusCode::BAD_REQUEST, body)
+                (StatusCode::UNAUTHORIZED, body)
             }
 
             Self::RateLimited => {

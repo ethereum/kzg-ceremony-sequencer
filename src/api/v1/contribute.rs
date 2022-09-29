@@ -12,19 +12,19 @@ use axum::{
 };
 use axum_extra::response::ErasedJson;
 use http::StatusCode;
-use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, G2};
+use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
 use serde::Serialize;
 use serde_json::json;
 use std::sync::atomic::Ordering;
 use thiserror::Error;
 
 #[derive(Serialize)]
-pub struct ContributeReceipt<T> {
-    receipt:   Receipt<T>,
+pub struct ContributeReceipt {
+    receipt:   String,
     signature: Signature,
 }
 
-impl<T: Serialize> IntoResponse for ContributeReceipt<T> {
+impl IntoResponse for ContributeReceipt {
     fn into_response(self) -> Response {
         (StatusCode::OK, ErasedJson::pretty(self)).into_response()
     }
@@ -72,7 +72,7 @@ pub async fn contribute(
     Extension(storage): Extension<PersistentStorage>,
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
-) -> Result<ContributeReceipt<Vec<G2>>, ContributeError> {
+) -> Result<ContributeReceipt, ContributeError> {
     contributor_state
         .begin_contributing(&session_id)
         .await
@@ -103,7 +103,7 @@ pub async fn contribute(
         witness: contribution.receipt(),
     };
 
-    let signature = receipt
+    let (signed_msg, signature) = receipt
         .sign(&keys)
         .await
         .map_err(ContributeError::Signature)?;
@@ -120,7 +120,10 @@ pub async fn contribute(
 
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
-    Ok(ContributeReceipt { receipt, signature })
+    Ok(ContributeReceipt {
+        receipt: signed_msg,
+        signature,
+    })
 }
 
 #[cfg(test)]
