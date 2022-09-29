@@ -104,6 +104,18 @@ impl SharedContributorState {
         Ok(())
     }
 
+    pub async fn abort(&self, participant: &SessionId) -> Result<(), ActiveContributorError> {
+        let mut state = self.inner.lock().await;
+
+        if !matches!(&*state, ActiveContributor::AwaitingContribution(x) if x == participant) {
+            return Err(ActiveContributorError::NotUsersTurn);
+        }
+
+        *state = ActiveContributor::None;
+
+        Ok(())
+    }
+
     pub async fn clear(&self) {
         let mut state = self.inner.lock().await;
         *state = ActiveContributor::None;

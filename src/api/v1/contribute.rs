@@ -126,11 +126,33 @@ pub async fn contribute(
     })
 }
 
+pub async fn contribute_abort(
+    session_id: SessionId,
+    Extension(contributor_state): Extension<SharedContributorState>,
+    Extension(lobby_state): Extension<SharedLobbyState>,
+    Extension(storage): Extension<PersistentStorage>,
+) -> Result<(), ContributeError> {
+    contributor_state
+        .abort(&session_id)
+        .await
+        .map_err(|_| ContributeError::NotUsersTurn)?;
+
+    let mut lobby = lobby_state.write().await;
+    lobby.participants.remove(&session_id);
+
+    storage.expire_contribution(&session_id.0).await?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        api::v1::contribute::ContributeError,
+        api::v1::{
+            contribute::ContributeError,
+            lobby::{try_contribute, TryContributeError, TryContributeResponse},
+        },
         contribute,
         io::read_json_file,
         keys,
@@ -144,7 +166,10 @@ mod tests {
     use axum::{Extension, Json};
     use clap::Parser;
     use kzg_ceremony_crypto::BatchTranscript;
-    use std::sync::{atomic::AtomicUsize, Arc};
+    use std::{
+        sync::{atomic::AtomicUsize, Arc},
+        time::Duration,
+    };
     use tokio::sync::RwLock;
 
     fn shared_keys() -> SharedKeys {
@@ -291,5 +316,72 @@ mod tests {
         assert!(matches!(result, Ok(_)));
         let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
         assert_eq!(transcript, transcript_2);
+    }
+
+    #[tokio::test]
+    async fn aborts_contribution() {
+        let opts = test_options();
+        let contributor_state = SharedContributorState::default();
+        let lobby_state = SharedLobbyState::default();
+        let transcript = Arc::new(RwLock::new(test_transcript()));
+        let db = storage_client(&opts.storage).await.unwrap();
+
+        let session_id = SessionId::new();
+        let other_session_id = SessionId::new();
+
+        // add two participants to lobby
+        {
+            let mut state = lobby_state.write().await;
+            state
+                .participants
+                .insert(session_id.clone(), create_test_session_info(100));
+            state
+                .participants
+                .insert(other_session_id.clone(), create_test_session_info(100));
+        }
+
+        contributor_state
+            .set_current_contributor(&session_id, opts.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
+
+        let contribution_in_progress_response = try_contribute(
+            other_session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+
+        assert!(matches!(
+            contribution_in_progress_response,
+            Err(TryContributeError::AnotherContributionInProgress)
+        ));
+
+        contribute_abort(
+            session_id,
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+        )
+        .await
+        .unwrap();
+
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_secs(30)).await;
+
+        let success_response = try_contribute(
+            other_session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+
+        assert!(matches!(success_response, Ok(TryContributeResponse { .. })));
     }
 }
