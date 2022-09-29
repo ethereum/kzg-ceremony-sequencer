@@ -35,13 +35,22 @@ COPY --from=build-env --chown=0:10001 --chmod=040 \
 ENV SSL_CERT_FILE="/ca-certificates.crt"
 
 # Configure logging
-ENV LOG_FORMAT="json"
-ENV LOG_FILTER="info"
+ENV VEBOSE=3
+ENV LOG_FORMAT="tiny"
 
-# Link in keys through a volume
-VOLUME /jwt-key
-ENV PUBLIC_KEY="/jwt-key/publickey.pem"
-ENV PRIVATE_KEY="/jwt-key/private.key"
+# Volume for data
+VOLUME /data
+ENV DATABASE_URL="sqlite:///data/storage.sqlite"
+ENV TRANSCRIPT_FILE="/data/transcript.json"
+ENV TRANSCRIPT_IN_PROGRESS_FILE="/data/transcript.json.wip"
+
+# Metrics server
+ENV PROMETHEUS="http://0.0.0.0:9998/metrics"
+EXPOSE 9998
+
+# API Server
+ENV SERVER="http://0.0.0.0:8080/"
+EXPOSE 8080
 
 # Executable
 COPY --from=build-env --chown=0:10001 --chmod=010 /src/bin /bin

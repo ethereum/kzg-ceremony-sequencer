@@ -1,79 +1,138 @@
-use clap::Parser;
-use eyre::Result;
-use jsonwebtoken::{
-    decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
+use axum::{
+    response::{IntoResponse, Response},
+    Json,
 };
-use serde::{de::DeserializeOwned, Serialize};
-use std::{path::PathBuf, str::FromStr, sync::Arc};
-use tokio::try_join;
-use tracing::info;
+use clap::Parser;
+use ethers_core::{
+    rand::thread_rng,
+    types::{RecoveryMessage, H160},
+    utils::to_checksum,
+};
+use ethers_signers::{LocalWallet, Signer};
+use eyre::Result;
+use http::StatusCode;
+use serde::Serialize;
+use serde_json::json;
+use std::{fmt, sync::Arc};
+use thiserror::Error;
+use tracing::{info, warn};
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
-    /// Public key file (.pem) to use for JWT verification
-    #[clap(long, env, default_value = "publickey.pem")]
-    pub public_key: PathBuf,
+    #[clap(long, env)]
+    pub signing_key: Option<String>,
+}
 
-    /// Private key file (.key) to use for JWT verification
-    #[clap(long, env, default_value = "private.key")]
-    pub private_key: PathBuf,
+#[derive(Serialize)]
+pub struct Signature(String);
+
+#[derive(Debug, Error)]
+pub enum SignatureError {
+    #[error("couldn't sign the receipt")]
+    SignatureCreation,
+    #[error("signature is not a valid hex string")]
+    InvalidToken,
+    #[error("couldn't create signature from string")]
+    InvalidSignature,
+}
+
+impl IntoResponse for SignatureError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            Self::SignatureCreation => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "couldn't sign the receipt",
+            ),
+            Self::InvalidToken => (
+                StatusCode::BAD_REQUEST,
+                "signature is not a valid hex string",
+            ),
+            Self::InvalidSignature => (
+                StatusCode::BAD_REQUEST,
+                "couldn't create signature from string",
+            ),
+        };
+        let body = Json(json!({
+            "error": error_message,
+        }));
+        (status, body).into_response()
+    }
 }
 
 pub struct Keys {
-    encoding: EncodingKey,
-    decoding: DecodingKey,
-    pubkey:   String,
+    wallet: LocalWallet,
 }
 
 pub type SharedKeys = Arc<Keys>;
 
+#[derive(Debug, Eq, PartialEq)]
+pub struct Address(H160);
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", to_checksum(&self.0, None))
+    }
+}
+
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&to_checksum(&self.0, None))
+    }
+}
+
 impl Keys {
-    pub async fn new(options: &Options) -> Result<Self> {
-        info!(public_key = ?options.public_key, private_key=?options.private_key, "Loading JWT keys");
-        let (private_key, public_key) = try_join!(
-            tokio::fs::read(&options.private_key),
-            tokio::fs::read(&options.public_key)
-        )?;
-        Ok(Self {
-            encoding: EncodingKey::from_rsa_pem(&private_key)?,
-            decoding: DecodingKey::from_rsa_pem(&public_key)?,
-            pubkey:   String::from_utf8(public_key)?,
-        })
+    pub fn new(options: &Options) -> Result<Self> {
+        match &options.signing_key {
+            Some(signing_key) => {
+                let wallet = signing_key.parse::<LocalWallet>()?;
+                info!(address = ?wallet.address(), "Wallet created from the provided signing key");
+                Ok(Self { wallet })
+            }
+            None => {
+                let wallet = LocalWallet::new(&mut thread_rng());
+                warn!(address = ?wallet.address(), "Random wallet created. Make sure to provide a signing key in prod!");
+                Ok(Self { wallet })
+            }
+        }
     }
 
-    pub fn encode<T: Serialize>(&self, token: &T) -> Result<String, jsonwebtoken::errors::Error> {
-        encode(&Header::new(Self::alg()), token, &self.encoding)
+    pub async fn sign(&self, message: &str) -> Result<Signature, SignatureError> {
+        let signature = self
+            .wallet
+            .sign_message(message)
+            .await
+            .map_err(|_| SignatureError::SignatureCreation)?;
+        Ok(Signature(hex::encode::<Vec<u8>>(signature.into())))
     }
 
     #[allow(unused)]
-    pub fn decode<T: DeserializeOwned>(
-        &self,
-        token: &str,
-    ) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
-        decode::<T>(token, &self.decoding, &Validation::new(Self::alg()))
+    pub fn verify(&self, message: &str, signature: &Signature) -> Result<(), SignatureError> {
+        let h = hex::decode(&signature.0).map_err(|_| SignatureError::InvalidToken)?;
+        let signature = ethers_core::types::Signature::try_from(h.as_ref())
+            .map_err(|_| SignatureError::InvalidSignature)?;
+        signature
+            .verify(
+                RecoveryMessage::Data(message.as_bytes().to_owned()),
+                self.wallet.address(),
+            )
+            .map_err(|_| SignatureError::InvalidToken)
     }
 
-    pub const fn alg_str() -> &'static str {
-        "PS256"
-    }
-
-    fn alg() -> Algorithm {
-        Algorithm::from_str(Self::alg_str()).expect("unknown algorithm")
-    }
-
-    pub fn decode_key_to_string(&self) -> String {
-        self.pubkey.clone()
+    pub fn address(&self) -> Address {
+        Address(self.wallet.address())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
-    #[ignore] // Do not run this test by default due to dependency on files.
     #[tokio::test]
-    async fn encode_decode_pem() {
+    async fn sign_and_verify() {
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
         pub struct Token {
             foo: String,
@@ -85,16 +144,13 @@ mod tests {
             exp: 200_000_000_000,
         };
 
-        let keys = Keys::new(&Options {
-            public_key:  "../publickey.pem".into(),
-            private_key: "../private.key".into(),
-        })
-        .await
-        .unwrap();
-        let encoded_token = keys.encode(&t).unwrap();
-        let token_data = keys.decode::<Token>(&encoded_token).unwrap();
-        let got_token = token_data.claims;
+        let options = Options::parse_from(Vec::<&str>::new());
+        let keys = Keys::new(&options).unwrap();
 
-        assert_eq!(got_token, t);
+        let message = serde_json::to_string(&t).unwrap();
+        let signature = keys.sign(&message).await.unwrap();
+
+        let result = keys.verify(&message, &signature);
+        println!("result {:?}", result);
     }
 }

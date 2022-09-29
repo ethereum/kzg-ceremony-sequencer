@@ -1,7 +1,5 @@
-use std::sync::atomic::Ordering;
-
 use crate::{
-    keys::{Keys, SharedKeys},
+    keys::{Address, SharedKeys},
     lobby::SharedLobbyState,
     Options, SharedCeremonyStatus,
 };
@@ -10,9 +8,9 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
-use axum_extra::response::ErasedJson;
 use http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
@@ -20,6 +18,7 @@ use tokio_util::io::ReaderStream;
 pub struct StatusResponse {
     lobby_size:        usize,
     num_contributions: usize,
+    sequencer_address: Address,
 }
 
 impl IntoResponse for StatusResponse {
@@ -32,6 +31,7 @@ impl IntoResponse for StatusResponse {
 pub async fn status(
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(ceremony_status): Extension<SharedCeremonyStatus>,
+    Extension(keys): Extension<SharedKeys>,
 ) -> StatusResponse {
     let lobby_size = {
         let state = lobby_state.read().await;
@@ -39,10 +39,12 @@ pub async fn status(
     };
 
     let num_contributions = ceremony_status.load(Ordering::Relaxed);
+    let sequencer_address = keys.address();
 
     StatusResponse {
         lobby_size,
         num_contributions,
+        sequencer_address,
     }
 }
 
@@ -59,26 +61,4 @@ pub async fn current_state(Extension(options): Extension<Options>) -> impl IntoR
     let stream = ReaderStream::new(f);
     let body = StreamBody::new(stream);
     Ok((StatusCode::OK, body))
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JwtInfoResponse {
-    alg:         &'static str,
-    rsa_pem_key: String,
-}
-
-impl IntoResponse for JwtInfoResponse {
-    fn into_response(self) -> Response {
-        (StatusCode::OK, ErasedJson::pretty(self)).into_response()
-    }
-}
-
-#[allow(clippy::unused_async)]
-pub async fn jwt_info(Extension(keys): Extension<SharedKeys>) -> JwtInfoResponse {
-    let rsa_public_key_pem_as_string = keys.decode_key_to_string();
-
-    JwtInfoResponse {
-        alg:         Keys::alg_str(),
-        rsa_pem_key: rsa_public_key_pem_as_string,
-    }
 }

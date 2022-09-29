@@ -1,10 +1,9 @@
 use crate::{
-    jwt::{errors::JwtError, IdToken},
-    keys::SharedKeys,
     lobby::SharedLobbyState,
-    oauth::{GithubOAuthClient, SharedAuthState, SiweOAuthClient},
+    oauth::{EthOAuthClient, GithubOAuthClient, SharedAuthState},
+    sessions::IdToken,
     storage::{PersistentStorage, StorageError},
-    EthAuthOptions, Keys, Options, SessionId, SessionInfo,
+    EthAuthOptions, Options, SessionId, SessionInfo,
 };
 use axum::{
     extract::Query,
@@ -19,6 +18,7 @@ use oauth2::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
+use thiserror::Error;
 use tokio::time::Instant;
 
 // These are the providers that are supported
@@ -37,32 +37,40 @@ impl AuthProvider {
     }
 }
 
+#[derive(Debug, Error)]
 pub enum AuthError {
+    #[error("lobby is full")]
     LobbyIsFull,
+    #[error("user already contributed")]
     UserAlreadyContributed,
+    #[error("invalid csrf token")]
     InvalidCsrf,
-    Jwt(JwtError),
+    #[error("invalid auth code")]
     InvalidAuthCode,
+    #[error("could not fetch user data from auth server")]
     FetchUserDataError,
+    #[error("could not extract user data from auth server")]
     CouldNotExtractUserData,
+    #[error("user created after deadline")]
     UserCreatedAfterDeadline,
-    Storage(StorageError),
+    #[error("storage error: {0}")]
+    Storage(#[from] StorageError),
 }
 
 pub struct UserVerified {
-    id_token:   String,
+    id_token:   IdToken,
     session_id: String,
 }
 
 pub struct AuthUrl {
-    siwe_auth_url:   String,
+    eth_auth_url:    String,
     github_auth_url: String,
 }
 
 impl IntoResponse for AuthUrl {
     fn into_response(self) -> Response {
         Json(json!({
-            "auth_url": self.siwe_auth_url,
+            "eth_auth_url": self.eth_auth_url,
             "github_auth_url": self.github_auth_url,
         }))
         .into_response()
@@ -100,8 +108,6 @@ impl IntoResponse for AuthError {
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
-            Self::Jwt(jwt_err) => return jwt_err.into_response(),
-
             Self::LobbyIsFull => {
                 let body = Json(json!({
                     "error": "lobby is full",
@@ -140,7 +146,7 @@ pub async fn auth_client_link(
     Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
-    Extension(siwe_client): Extension<SiweOAuthClient>,
+    Extension(eth_client): Extension<EthOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
 ) -> Result<AuthUrl, AuthError> {
     // Fist check if the lobby is full before giving users an auth link
@@ -157,9 +163,9 @@ pub async fn auth_client_link(
 
     let redirect_uri = params
         .redirect_to
-        .and_then(|uri| RedirectUrl::new(uri).ok());
+        .and_then(|uri| RedirectUrl::new(uri).ok()); // TODO: Error handling?
 
-    let auth_request = siwe_client
+    let auth_request = eth_client
         .authorize_url(|| csrf_token)
         .add_scope(Scope::new("openid".to_string()));
 
@@ -189,7 +195,7 @@ pub async fn auth_client_link(
         .insert(csrf_token.secret().clone());
 
     Ok(AuthUrl {
-        siwe_auth_url:   auth_url.to_string(),
+        eth_auth_url:    auth_url.to_string(),
         github_auth_url: gh_url.to_string(),
     })
 }
@@ -226,7 +232,6 @@ pub async fn github_callback(
     Extension(storage): Extension<PersistentStorage>,
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = gh_oauth_client
@@ -236,7 +241,7 @@ pub async fn github_callback(
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
     let response = http_client
-        .get("https://api.github.com/user")
+        .get(options.github.gh_userinfo_url)
         .bearer_auth(token.access_token().secret())
         .header("User-Agent", "ethereum-kzg-ceremony-sequencer")
         .send()
@@ -248,26 +253,18 @@ pub async fn github_callback(
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
     let creation_time = DateTime::parse_from_rfc3339(&gh_user_info.created_at)
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
-    if creation_time > options.github.max_account_creation_time {
+    if creation_time > options.github.gh_max_account_creation_time {
         return Err(AuthError::UserCreatedAfterDeadline);
     }
     let user = AuthenticatedUser {
         uid:      format!("github | {}", gh_user_info.login),
         nickname: gh_user_info.login,
     };
-    post_authenticate(
-        auth_state,
-        lobby_state,
-        storage,
-        user,
-        AuthProvider::Github,
-        &keys,
-    )
-    .await
+    post_authenticate(auth_state, lobby_state, storage, user, AuthProvider::Github).await
 }
 
 #[derive(Debug, Deserialize)]
-struct SiweUserInfo {
+struct EthUserInfo {
     sub:                String,
     preferred_username: String,
 }
@@ -282,15 +279,14 @@ struct SiweUserInfo {
 // participated when they did not. Is this Okay? Maybe that person can then just
 // say they did not
 #[allow(clippy::too_many_arguments)]
-pub async fn siwe_callback(
+pub async fn eth_callback(
     Query(payload): Query<AuthPayload>,
     Extension(options): Extension<Options>,
     Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
-    Extension(oauth_client): Extension<SiweOAuthClient>,
+    Extension(oauth_client): Extension<EthOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
-    Extension(keys): Extension<SharedKeys>,
 ) -> Result<UserVerified, AuthError> {
     verify_csrf(&payload, &auth_state).await?;
     let token = oauth_client
@@ -300,18 +296,18 @@ pub async fn siwe_callback(
         .map_err(|_| AuthError::InvalidAuthCode)?;
 
     let response = http_client
-        .get("https://oidc.signinwithethereum.org/userinfo")
+        .get(&options.ethereum.eth_userinfo_url)
         .bearer_auth(token.access_token().secret())
         .send()
         .await
         .map_err(|_| AuthError::FetchUserDataError)?;
 
-    let siwe_user = response
-        .json::<SiweUserInfo>()
+    let eth_user = response
+        .json::<EthUserInfo>()
         .await
         .map_err(|_| AuthError::CouldNotExtractUserData)?;
 
-    let addr_parts: Vec<_> = siwe_user.sub.split(':').collect();
+    let addr_parts: Vec<_> = eth_user.sub.split(':').collect();
     let address = (*addr_parts
         .get(2)
         .ok_or(AuthError::CouldNotExtractUserData)?)
@@ -326,13 +322,13 @@ pub async fn siwe_callback(
     .await
     .ok_or(AuthError::CouldNotExtractUserData)?;
 
-    if tx_count < options.ethereum.min_nonce {
+    if tx_count < options.ethereum.eth_min_nonce {
         return Err(AuthError::UserCreatedAfterDeadline);
     }
 
     let user_data = AuthenticatedUser {
         uid:      format!("eth | {}", address),
-        nickname: siwe_user.preferred_username,
+        nickname: eth_user.preferred_username,
     };
 
     post_authenticate(
@@ -341,11 +337,11 @@ pub async fn siwe_callback(
         storage,
         user_data,
         AuthProvider::Ethereum,
-        &keys,
     )
     .await
 }
 
+// TODO: This has many failure modes and should return and eyre::Result.
 async fn get_tx_count(
     address: &str,
     at_block: &str,
@@ -360,7 +356,7 @@ async fn get_tx_count(
     });
 
     let rpc_response = client
-        .post(options.rpc_url.get_secret())
+        .post(options.eth_rpc_url.get_secret())
         .json(&rpc_payload)
         .send()
         .await
@@ -388,7 +384,6 @@ async fn post_authenticate(
     storage: PersistentStorage,
     user_data: AuthenticatedUser,
     auth_provider: AuthProvider,
-    keys: &Keys,
 ) -> Result<UserVerified, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
@@ -420,19 +415,17 @@ async fn post_authenticate(
         exp:      u64::MAX,
     };
 
-    let id_token_encoded = id_token.encode(keys).map_err(AuthError::Jwt)?;
-
     {
         let mut lobby = lobby_state.write().await;
         lobby.participants.insert(session_id.clone(), SessionInfo {
-            token:                 id_token,
+            token:                 id_token.clone(),
             last_ping_time:        Instant::now(),
             is_first_ping_attempt: true,
         });
     }
 
     Ok(UserVerified {
-        id_token:   id_token_encoded,
+        id_token,
         session_id: session_id.to_string(),
     })
 }

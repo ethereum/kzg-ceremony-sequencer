@@ -1,19 +1,21 @@
-use std::fmt::{Display, Formatter};
-
-use crate::jwt::{errors::JwtError, IdToken};
 use async_session::async_trait;
 use axum::{
     extract::{FromRequest, RequestParts},
-    TypedHeader,
+    response::{IntoResponse, Response},
+    Json, TypedHeader,
 };
 use headers::{authorization::Bearer, Authorization};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::fmt::{Display, Formatter};
+use thiserror::Error;
 use tokio::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Hash, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename = "session_id")]
-pub struct SessionId(String);
+pub struct SessionId(pub String);
 
 impl SessionId {
     // Create a random session id
@@ -34,6 +36,44 @@ impl Display for SessionId {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum SessionError {
+    #[error("unknown session id")]
+    InvalidSessionId,
+}
+
+impl IntoResponse for SessionError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            Self::InvalidSessionId => (StatusCode::BAD_REQUEST, "invalid Bearer token"),
+        };
+        let body = Json(json!({
+            "error": error_message,
+        }));
+        (status, body).into_response()
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct IdToken {
+    pub sub:      String,
+    pub nickname: String,
+    // The provider whom the client used to login with
+    // Example, Google, Ethereum, Facebook
+    pub provider: String,
+    pub exp:      u64,
+}
+
+impl IdToken {
+    // The sub field is used as a unique identifier
+    // For example, see: https://developers.google.com/identity/protocols/oauth2/openid-connect#obtainuserinfo
+    // We can use this to identify when a user signs in with the same
+    // login and signup
+    pub fn unique_identifier(&self) -> &str {
+        &self.sub
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub token:                 IdToken,
@@ -49,14 +89,14 @@ impl<B> FromRequest<B> for SessionId
 where
     B: Send,
 {
-    type Rejection = JwtError;
+    type Rejection = SessionError;
 
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         // Extract the token from the authorization header
         let TypedHeader(Authorization(bearer)) =
             TypedHeader::<Authorization<Bearer>>::from_request(req)
                 .await
-                .map_err(|_| JwtError::InvalidToken)?;
+                .map_err(|_| SessionError::InvalidSessionId)?;
 
         Ok(Self(bearer.token().to_owned()))
     }

@@ -1,38 +1,42 @@
-# fly.toml file generated for kzg-ceremony-poc on 2022-08-31T11:46:11+01:00
+# See <https://fly.io/docs/reference/configuration>
 
-app = "kzg-ceremony-poc"
+app = "kzg-ceremony-sequencer-dev"
 kill_signal = "SIGINT"
-kill_timeout = 5
+kill_timeout = 30 # Seconds
 processes = []
 
-[env]
+[build]
+    image = "remcob/kzg-ceremony-sequencer:latest"
+
+[[mounts]]
+    source = "kzg_ceremony_sequencer_dev_data"
+    destination = "/data"
+
+# Secrets
+# - ETH_RPC_URL       (i.e. Alchemy)
+# - GH_CLIENT_ID      (Register at <https://github.com/settings/applications/new>)
+# - GH_CLIENT_SECRET
+# - ETH_CLIENT_ID     (Register at <https://etherscan.io/myapikey>)
+# - ETH_CLIENT_SECRET
 
 [experimental]
-allowed_public_ports = []
-auto_rollback = true
+    allowed_public_ports = []
+    auto_rollback = true
+
+[metrics]
+    # Prometheus metrics server. See PROMETHEUS env var.
+    port = 9998
+    path = "/metrics"
 
 [[services]]
-http_checks = []
-internal_port = 3000
-processes = ["app"]
-protocol = "tcp"
-script_checks = []
-[services.concurrency]
-hard_limit = 25
-soft_limit = 20
-type = "connections"
+    internal_port = 8080
+    protocol = "tcp"
 
-[[services.ports]]
-force_https = true
-handlers = ["http"]
-port = 80
+    [[services.ports]]
+        force_https = true
+        handlers = ["http"]
+        port = 80
 
-[[services.ports]]
-handlers = ["tls", "http"]
-port = 443
-
-[[services.tcp_checks]]
-grace_period = "1s"
-interval = "15s"
-restart_limit = 0
-timeout = "2s"
+    [[services.ports]]
+        handlers = ["tls", "http"]
+        port = 443

@@ -1,34 +1,45 @@
 use crate::{
     io::write_json_file,
-    jwt::{errors::JwtError, Receipt},
-    keys::SharedKeys,
-    lobby::{clear_current_contributor, SharedContributorState},
-    storage::PersistentStorage,
+    keys::{SharedKeys, Signature, SignatureError},
+    lobby::{SharedContributorState, SharedLobbyState},
+    receipt::Receipt,
+    storage::{PersistentStorage, StorageError},
     Engine, Options, SessionId, SharedCeremonyStatus, SharedTranscript,
 };
 use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
+use axum_extra::response::ErasedJson;
 use http::StatusCode;
 use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
+use serde::Serialize;
 use serde_json::json;
 use std::sync::atomic::Ordering;
+use thiserror::Error;
 
+#[derive(Serialize)]
 pub struct ContributeReceipt {
-    encoded_receipt_token: String,
+    receipt:   String,
+    signature: Signature,
 }
 
 impl IntoResponse for ContributeReceipt {
     fn into_response(self) -> Response {
-        (StatusCode::OK, self.encoded_receipt_token).into_response()
+        (StatusCode::OK, ErasedJson::pretty(self)).into_response()
     }
 }
 
+#[derive(Debug, Error)]
 pub enum ContributeError {
+    #[error("not your turn to participate")]
     NotUsersTurn,
-    InvalidContribution(CeremoniesError),
-    Auth(JwtError),
+    #[error("contribution invalid: {0}")]
+    InvalidContribution(#[from] CeremoniesError),
+    #[error("signature error: {0}")]
+    Signature(SignatureError),
+    #[error("storage error: {0}")]
+    StorageError(#[from] StorageError),
 }
 
 impl IntoResponse for ContributeError {
@@ -42,7 +53,8 @@ impl IntoResponse for ContributeError {
                 let body = Json(json!({ "error": format!("contribution invalid: {}", e) }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            Self::Auth(err) => return err.into_response(),
+            Self::Signature(err) => return err.into_response(),
+            Self::StorageError(err) => return err.into_response(),
         };
 
         (status, body).into_response()
@@ -54,27 +66,22 @@ pub async fn contribute(
     session_id: SessionId,
     Json(contribution): Json<BatchContribution>,
     Extension(contributor_state): Extension<SharedContributorState>,
+    Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(options): Extension<Options>,
     Extension(shared_transcript): Extension<SharedTranscript>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
 ) -> Result<ContributeReceipt, ContributeError> {
-    // 1. Check if this person should be contributing
-    let id_token = {
-        let active_contributor = contributor_state.read().await;
-        let (id, session_info) = active_contributor
-            .as_ref()
-            .ok_or(ContributeError::NotUsersTurn)?;
-        if &session_id != id {
-            return Err(ContributeError::NotUsersTurn);
-        }
-        session_info.token.clone()
-    };
+    contributor_state
+        .begin_contributing(&session_id)
+        .await
+        .map_err(|_| ContributeError::NotUsersTurn)?;
 
-    // We also know that if they were in the lobby
-    // then they did not participate already because
-    // when we auth participants, this is checked
+    let id_token = {
+        let mut lobby = lobby_state.write().await;
+        lobby.participants.remove(&session_id).unwrap().token
+    };
 
     // 2. Check if the program state transition was correct
     let result = {
@@ -84,21 +91,22 @@ pub async fn contribute(
             .map_err(ContributeError::InvalidContribution)
     };
     if let Err(e) = result {
-        clear_current_contributor(contributor_state).await;
+        contributor_state.clear().await;
         storage
             .expire_contribution(id_token.unique_identifier())
-            .await;
+            .await?;
         return Err(e);
     }
 
-    let receipt = {
-        Receipt {
-            id_token,
-            witness: contribution.receipt(),
-        }
+    let receipt = Receipt {
+        id_token,
+        witness: contribution.receipt(),
     };
 
-    let encoded_receipt_token = receipt.encode(&keys).map_err(ContributeError::Auth)?;
+    let (signed_msg, signature) = receipt
+        .sign(&keys)
+        .await
+        .map_err(ContributeError::Signature)?;
 
     write_json_file(
         options.transcript_file,
@@ -107,29 +115,44 @@ pub async fn contribute(
     )
     .await;
 
-    let uid = {
-        let guard = contributor_state.read().await;
-        guard
-            .as_ref()
-            .expect("participant is guaranteed non-empty here")
-            .0
-            .to_string()
-    };
+    contributor_state.clear().await;
+    storage.finish_contribution(&session_id.0).await?;
 
-    clear_current_contributor(contributor_state).await;
-    storage.finish_contribution(&uid).await;
     num_contributions.fetch_add(1, Ordering::Relaxed);
 
     Ok(ContributeReceipt {
-        encoded_receipt_token,
+        receipt: signed_msg,
+        signature,
     })
+}
+
+pub async fn contribute_abort(
+    session_id: SessionId,
+    Extension(contributor_state): Extension<SharedContributorState>,
+    Extension(lobby_state): Extension<SharedLobbyState>,
+    Extension(storage): Extension<PersistentStorage>,
+) -> Result<(), ContributeError> {
+    contributor_state
+        .abort(&session_id)
+        .await
+        .map_err(|_| ContributeError::NotUsersTurn)?;
+
+    let mut lobby = lobby_state.write().await;
+    lobby.participants.remove(&session_id);
+
+    storage.expire_contribution(&session_id.0).await?;
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        api::v1::contribute::ContributeError,
+        api::v1::{
+            contribute::ContributeError,
+            lobby::{try_contribute, TryContributeError, TryContributeResponse},
+        },
         contribute,
         io::read_json_file,
         keys,
@@ -141,40 +164,37 @@ mod tests {
         Keys, SessionId,
     };
     use axum::{Extension, Json};
+    use clap::Parser;
     use kzg_ceremony_crypto::BatchTranscript;
     use std::{
-        path::PathBuf,
         sync::{atomic::AtomicUsize, Arc},
+        time::Duration,
     };
     use tokio::sync::RwLock;
 
-    async fn shared_keys() -> SharedKeys {
-        Arc::new(
-            Keys::new(&keys::Options {
-                private_key: PathBuf::from("private.key"),
-                public_key:  PathBuf::from("publickey.pem"),
-            })
-            .await
-            .unwrap(),
-        )
+    fn shared_keys() -> SharedKeys {
+        let options = keys::Options::parse_from(Vec::<&str>::new());
+        Arc::new(Keys::new(&options).unwrap())
     }
 
     #[tokio::test]
     async fn rejects_out_of_turn_contribution() {
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
+        let lobby_state = SharedLobbyState::default();
         let transcript = test_transcript();
         let contrbution = valid_contribution(&transcript, 1);
         let result = contribute(
             SessionId::new(),
             Json(contrbution),
             Extension(contributor_state),
+            Extension(lobby_state),
             Extension(opts),
             Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
-            Extension(shared_keys().await),
+            Extension(shared_keys()),
         )
         .await;
         assert!(matches!(result, Err(ContributeError::NotUsersTurn)));
@@ -183,22 +203,32 @@ mod tests {
     #[tokio::test]
     async fn rejects_invalid_contribution() {
         let opts = test_options();
-        let db = storage_client(&opts.storage).await;
+        let db = storage_client(&opts.storage).await.unwrap();
         let contributor_state = SharedContributorState::default();
+        let lobby_state = SharedLobbyState::default();
         let participant = SessionId::new();
-        *contributor_state.write().await =
-            Some((participant.clone(), create_test_session_info(100)));
+        {
+            let mut lobby = lobby_state.write().await;
+            lobby
+                .participants
+                .insert(participant.clone(), create_test_session_info(100));
+        }
+        contributor_state
+            .set_current_contributor(&participant, opts.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
         let transcript = test_transcript();
         let contribution = invalid_contribution(&transcript, 1);
         let result = contribute(
             participant,
             Json(contribution),
             Extension(contributor_state),
+            Extension(lobby_state),
             Extension(opts),
             Extension(Arc::new(RwLock::new(transcript))),
             Extension(db),
             Extension(Arc::new(AtomicUsize::new(0))),
-            Extension(shared_keys().await),
+            Extension(shared_keys()),
         )
         .await;
         assert!(matches!(
@@ -209,11 +239,12 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
-        let keys = shared_keys().await;
+        let keys = shared_keys();
         let contributor_state = SharedContributorState::default();
+        let lobby_state = SharedLobbyState::default();
         let participant = SessionId::new();
         let cfg = test_options();
-        let db = storage_client(&cfg.storage).await;
+        let db = storage_client(&cfg.storage).await.unwrap();
         let transcript = test_transcript();
         let contribution_1 = valid_contribution(&transcript, 1);
         let transcript_1 = {
@@ -233,12 +264,21 @@ mod tests {
         };
         let shared_transcript = Arc::new(RwLock::new(transcript));
 
-        *contributor_state.write().await =
-            Some((participant.clone(), create_test_session_info(100)));
+        {
+            let mut lobby = lobby_state.write().await;
+            lobby
+                .participants
+                .insert(participant.clone(), create_test_session_info(100));
+        }
+        contributor_state
+            .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
         let result = contribute(
             participant.clone(),
             Json(contribution_1),
             Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
@@ -250,13 +290,21 @@ mod tests {
         assert!(matches!(result, Ok(_)));
         let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
         assert_eq!(transcript, transcript_1);
-
-        *contributor_state.write().await =
-            Some((participant.clone(), create_test_session_info(100)));
+        {
+            let mut lobby = lobby_state.write().await;
+            lobby
+                .participants
+                .insert(participant.clone(), create_test_session_info(100));
+        }
+        contributor_state
+            .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
         let result = contribute(
             participant.clone(),
             Json(contribution_2),
             Extension(contributor_state.clone()),
+            Extension(lobby_state),
             Extension(cfg.clone()),
             Extension(shared_transcript.clone()),
             Extension(db.clone()),
@@ -268,5 +316,72 @@ mod tests {
         assert!(matches!(result, Ok(_)));
         let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
         assert_eq!(transcript, transcript_2);
+    }
+
+    #[tokio::test]
+    async fn aborts_contribution() {
+        let opts = test_options();
+        let contributor_state = SharedContributorState::default();
+        let lobby_state = SharedLobbyState::default();
+        let transcript = Arc::new(RwLock::new(test_transcript()));
+        let db = storage_client(&opts.storage).await.unwrap();
+
+        let session_id = SessionId::new();
+        let other_session_id = SessionId::new();
+
+        // add two participants to lobby
+        {
+            let mut state = lobby_state.write().await;
+            state
+                .participants
+                .insert(session_id.clone(), create_test_session_info(100));
+            state
+                .participants
+                .insert(other_session_id.clone(), create_test_session_info(100));
+        }
+
+        contributor_state
+            .set_current_contributor(&session_id, opts.lobby.compute_deadline, db.clone())
+            .await
+            .unwrap();
+
+        let contribution_in_progress_response = try_contribute(
+            other_session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+
+        assert!(matches!(
+            contribution_in_progress_response,
+            Err(TryContributeError::AnotherContributionInProgress)
+        ));
+
+        contribute_abort(
+            session_id,
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+        )
+        .await
+        .unwrap();
+
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_secs(30)).await;
+
+        let success_response = try_contribute(
+            other_session_id.clone(),
+            Extension(contributor_state.clone()),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+
+        assert!(matches!(success_response, Ok(TryContributeResponse { .. })));
     }
 }

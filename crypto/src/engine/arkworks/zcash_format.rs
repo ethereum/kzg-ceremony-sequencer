@@ -89,6 +89,12 @@ where
     let element_size = <<FieldOf<P> as Field>::BasePrimeField as PrimeField>::BigInt::NUM_LIMBS * 8;
     assert_eq!(N, element_size * ext_degree);
     let mut buf = [0u8; N];
+
+    if point.infinity {
+        buf[0] |= 0x80 | 0x40; // compressed & infinity
+        return buf;
+    }
+
     buf.chunks_exact_mut(element_size)
         .zip(point.x.base_field_iterator().rev())
         .for_each(|(chunk, element)| {
@@ -98,9 +104,7 @@ where
             chunk.reverse();
         });
     buf[0] |= 0x80; // compressed
-    if point.infinity {
-        buf[0] |= 0x40;
-    } else if point.y > -point.y {
+    if point.y > -point.y {
         buf[0] |= 0x20;
     }
     buf
@@ -193,11 +197,13 @@ pub fn parse_g<P: SWModelParameters, const N: usize>(
 }
 
 #[cfg(test)]
-pub mod test {
+mod test {
     use super::*;
+    use crate::engine::arkworks::test::{arb_g1, arb_g2};
     use ark_bls12_381::{G1Affine, G2Affine};
     use ark_ec::AffineCurve;
     use hex_literal::hex;
+    use proptest::proptest;
 
     #[test]
     fn test_parse_g1() {
@@ -221,6 +227,20 @@ pub mod test {
     fn test_write_g2() {
         assert_eq!(write_g(&G2Affine::zero()), hex!("c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
         assert_eq!(write_g(&G2Affine::prime_subgroup_generator()), hex!("93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"));
+    }
+
+    #[test]
+    fn test_parse_after_write_g1() {
+        proptest!(|(g in arb_g1())| {
+            assert_eq!(g, parse_g(write_g::<_, 48>(&g)).expect("must be able to parse"));
+        });
+    }
+
+    #[test]
+    fn test_parse_after_write_g2() {
+        proptest!(|(g in arb_g2())| {
+            assert_eq!(g, parse_g(write_g::<_, 96>(&g)).expect("must be able to parse"));
+        });
     }
 }
 

@@ -7,7 +7,7 @@ use blst::{
 
 use crate::{ParseError, G1};
 
-use super::scalar::{scalar_from_fr};
+use super::scalar::scalar_from_fr;
 
 impl TryFrom<G1> for blst_p1_affine {
     type Error = ParseError;

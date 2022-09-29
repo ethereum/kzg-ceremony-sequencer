@@ -1,5 +1,7 @@
 /target
 private.key
 publickey.pem
+transcript.json
 .idea
 *.iml
+storage.db*

@@ -5,16 +5,17 @@
 mod endomorphism;
 mod zcash_format;
 
-use std::iter;
-
 use self::endomorphism::{g1_mul_glv, g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
 use crate::{CeremonyError, ParseError, G1, G2};
-use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
-use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine};
-use ark_ff::{One, PrimeField, UniformRand, Zero, Field};
-use rand::{rngs::StdRng, SeedableRng, RngCore};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_ec::{
+    msm::VariableBaseMSM, wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve,
+};
+use ark_ff::{Field, One, PrimeField, UniformRand, Zero};
+use rand::{rngs::StdRng, RngCore, SeedableRng};
 use rayon::prelude::*;
+use std::iter;
 use tracing::instrument;
 
 /// Arkworks implementation of [`Engine`] with additional endomorphism
@@ -120,13 +121,16 @@ impl Engine for Arkworks {
         let taus = iter::successors(Some(Fr::one()), |x| Some(*x * tau))
             .take(powers.len())
             .collect::<Vec<_>>();
-        powers.par_iter_mut().zip(taus).try_for_each(|(p, tau)| {
-            let affine = G1Affine::try_from(*p)?;
-            let projective = g1_mul_glv(&affine, tau);
-            let affine = G1Affine::from(projective);
-            *p = affine.into();
-            Ok(())
-        })
+        let mut projective = powers
+            .par_iter()
+            .zip(taus)
+            .map(|(p, tau)| G1Affine::try_from(*p).map(|p| g1_mul_glv(&p, tau)))
+            .collect::<Result<Vec<_>, _>>()?;
+        G1Projective::batch_normalization(&mut projective);
+        for (p, a) in powers.iter_mut().zip(projective) {
+            *p = a.into_affine().into();
+        }
+        Ok(())
     }
 
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
@@ -135,13 +139,21 @@ impl Engine for Arkworks {
         let taus = iter::successors(Some(Fr::one()), |x| Some(*x * tau))
             .take(powers.len())
             .collect::<Vec<_>>();
-        powers.par_iter_mut().zip(taus).try_for_each(|(p, tau)| {
-            let affine = G2Affine::try_from(*p)?;
-            let projective = affine.mul(tau);
-            let affine = G2Affine::from(projective);
-            *p = affine.into();
-            Ok(())
-        })
+        let mut projective = powers
+            .par_iter()
+            .zip(taus)
+            .map(|(p, tau)| {
+                G2Affine::try_from(*p).map(|p| {
+                    let wnaf = WnafContext::new(5);
+                    wnaf.mul(p.into(), &tau)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        G2Projective::batch_normalization(&mut projective);
+        for (p, a) in powers.iter_mut().zip(projective) {
+            *p = a.into_affine().into();
+        }
+        Ok(())
     }
 }
 
