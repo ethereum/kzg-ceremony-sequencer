@@ -7,7 +7,10 @@
 
 #![allow(clippy::missing_errors_doc)] // TODO
 
+#[cfg(feature = "arkworks")]
 mod arkworks;
+
+#[cfg(feature = "blst")]
 mod blst;
 
 use crate::{CeremonyError, G1, G2};
@@ -225,8 +228,9 @@ pub mod bench {
     }
 }
 
+#[cfg(all(feature = "arkworks", feature = "blst"))]
 mod tests {
-    use super::{blst::BLST, *};
+    use crate::{engine::BLST, Arkworks, G1, Engine, G2};
 
     #[test]
     fn test_g1() {
