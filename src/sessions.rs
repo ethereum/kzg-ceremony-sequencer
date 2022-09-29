@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Hash, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename = "session_id")]
-pub struct SessionId(String);
+pub struct SessionId(pub String);
 
 impl SessionId {
     // Create a random session id
