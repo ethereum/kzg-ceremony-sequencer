@@ -37,7 +37,14 @@ impl AuthProvider {
 }
 
 #[derive(Debug, Error)]
-pub enum AuthError {
+#[error("{payload}")]
+pub struct AuthError {
+    redirect: Option<String>,
+    payload:  AuthErrorPayload,
+}
+
+#[derive(Debug, Error)]
+pub enum AuthErrorPayload {
     #[error("lobby is full")]
     LobbyIsFull,
     #[error("user already contributed")]
@@ -103,6 +110,23 @@ impl IntoResponse for UserVerifiedResponse {
 }
 
 impl IntoResponse for AuthError {
+    fn into_response(self) -> Response {
+        let redirect_url = self.redirect.and_then(|r| Url::parse(&r).ok());
+        match redirect_url {
+            Some(mut redirect_url) => {
+                redirect_url
+                    .query_pairs_mut()
+                    .append_pair("error", "")
+                    .append_pair("message", &format!("{}", self.payload));
+
+                Redirect::to(redirect_url.as_str()).into_response()
+            }
+            None => self.payload.into_response(),
+        }
+    }
+}
+
+impl IntoResponse for AuthErrorPayload {
     fn into_response(self) -> Response {
         let (status, body) = match self {
             Self::InvalidAuthCode => {
@@ -177,14 +201,14 @@ pub async fn auth_client_link(
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(eth_client): Extension<EthOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
-) -> Result<AuthUrl, AuthError> {
+) -> Result<AuthUrl, AuthErrorPayload> {
     // Fist check if the lobby is full before giving users an auth link
     // Note: we use CSRF tokens, so just copying the url will not work either
     //
     {
         let lobby_size = lobby_state.read().await.participants.len();
         if lobby_size >= options.lobby.max_lobby_size {
-            return Err(AuthError::LobbyIsFull);
+            return Err(AuthErrorPayload::LobbyIsFull);
         }
     }
 
@@ -306,7 +330,10 @@ pub async fn github_callback(
         .exchange_code(AuthorizationCode::new(payload.code))
         .request_async(async_http_client)
         .await
-        .map_err(|_| AuthError::InvalidAuthCode)?;
+        .map_err(|_| AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::InvalidAuthCode,
+        })?;
 
     let response = http_client
         .get(options.github.gh_userinfo_url)
@@ -314,15 +341,24 @@ pub async fn github_callback(
         .header("User-Agent", "ethereum-kzg-ceremony-sequencer")
         .send()
         .await
-        .map_err(|_| AuthError::FetchUserDataError)?;
-    let gh_user_info = response
-        .json::<GhUserInfo>()
-        .await
-        .map_err(|_| AuthError::CouldNotExtractUserData)?;
-    let creation_time = DateTime::parse_from_rfc3339(&gh_user_info.created_at)
-        .map_err(|_| AuthError::CouldNotExtractUserData)?;
+        .map_err(|_| AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::FetchUserDataError,
+        })?;
+    let gh_user_info = response.json::<GhUserInfo>().await.map_err(|_| AuthError {
+        redirect: payload.redirect_to.clone(),
+        payload:  AuthErrorPayload::CouldNotExtractUserData,
+    })?;
+    let creation_time =
+        DateTime::parse_from_rfc3339(&gh_user_info.created_at).map_err(|_| AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::CouldNotExtractUserData,
+        })?;
     if creation_time > options.github.gh_max_account_creation_time {
-        return Err(AuthError::UserCreatedAfterDeadline);
+        return Err(AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::UserCreatedAfterDeadline,
+        });
     }
     let user = AuthenticatedUser {
         uid:      format!("github | {}", gh_user_info.login),
@@ -369,24 +405,34 @@ pub async fn eth_callback(
         .exchange_code(AuthorizationCode::new(payload.code))
         .request_async(async_http_client)
         .await
-        .map_err(|_| AuthError::InvalidAuthCode)?;
+        .map_err(|_| AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::InvalidAuthCode,
+        })?;
 
     let response = http_client
         .get(&options.ethereum.eth_userinfo_url)
         .bearer_auth(token.access_token().secret())
         .send()
         .await
-        .map_err(|_| AuthError::FetchUserDataError)?;
+        .map_err(|_| AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::FetchUserDataError,
+        })?;
 
     let eth_user = response
         .json::<EthUserInfo>()
         .await
-        .map_err(|_| AuthError::CouldNotExtractUserData)?;
+        .map_err(|_| AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::CouldNotExtractUserData,
+        })?;
 
     let addr_parts: Vec<_> = eth_user.sub.split(':').collect();
-    let address = (*addr_parts
-        .get(2)
-        .ok_or(AuthError::CouldNotExtractUserData)?)
+    let address = (*addr_parts.get(2).ok_or(AuthError {
+        redirect: payload.redirect_to.clone(),
+        payload:  AuthErrorPayload::CouldNotExtractUserData,
+    })?)
     .to_string();
 
     let tx_count = get_tx_count(
@@ -396,10 +442,16 @@ pub async fn eth_callback(
         &options.ethereum,
     )
     .await
-    .ok_or(AuthError::CouldNotExtractUserData)?;
+    .ok_or(AuthError {
+        redirect: payload.redirect_to.clone(),
+        payload:  AuthErrorPayload::CouldNotExtractUserData,
+    })?;
 
     if tx_count < options.ethereum.eth_min_nonce {
-        return Err(AuthError::UserCreatedAfterDeadline);
+        return Err(AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::UserCreatedAfterDeadline,
+        });
     }
 
     let user_data = AuthenticatedUser {
@@ -451,7 +503,10 @@ async fn verify_csrf(payload: &AuthPayload, store: &SharedAuthState) -> Result<(
     if auth_state.csrf_tokens.contains(payload.csrf.secret()) {
         Ok(())
     } else {
-        Err(AuthError::InvalidCsrf)
+        Err(AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::InvalidCsrf,
+        })
     }
 }
 
@@ -465,8 +520,18 @@ async fn post_authenticate(
 ) -> Result<UserVerifiedResponse, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
-        Err(error) => return Err(AuthError::Storage(error)),
-        Ok(true) => return Err(AuthError::UserAlreadyContributed),
+        Err(error) => {
+            return Err(AuthError {
+                redirect: redirect_to.clone(),
+                payload:  AuthErrorPayload::Storage(error),
+            })
+        }
+        Ok(true) => {
+            return Err(AuthError {
+                redirect: redirect_to.clone(),
+                payload:  AuthErrorPayload::UserAlreadyContributed,
+            })
+        }
         Ok(false) => (),
     }
 
