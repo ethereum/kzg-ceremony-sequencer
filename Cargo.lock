@@ -2017,6 +2017,7 @@ dependencies = [
  "async-session",
  "axum",
  "axum-extra",
+ "base64 0.13.0",
  "chrono",
  "clap",
  "cli-batteries",
