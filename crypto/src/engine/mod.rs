@@ -228,29 +228,40 @@ pub mod bench {
     }
 }
 
-#[cfg(all(feature = "arkworks", feature = "blst"))]
+#[cfg(all(test, feature = "arkworks", feature = "blst"))]
 mod tests {
-    use crate::{engine::BLST, Arkworks, G1, Engine, G2};
+    use crate::{
+        engine::{
+            arkworks::test::{arb_g1, arb_g2},
+            BLST,
+        },
+        Arkworks, Engine, G1, G2,
+    };
+    use proptest::proptest;
 
     #[test]
-    fn test_g1() {
-        let g_e1 = &mut [G1::one(), G1::one(), G1::one()];
-        let g_e2 = &mut [G1::one(), G1::one(), G1::one()];
+    fn test_add_entropy_g1() {
+        proptest!(|(p in arb_g1())| {
+            let points1: &mut [G1] = &mut [p.into(); 16];
+            let points2: &mut [G1] = &mut [p.into(); 16];
 
-        BLST::add_entropy_g1([0; 32], g_e1).unwrap();
-        Arkworks::add_entropy_g1([0; 32], g_e2).unwrap();
+            BLST::add_entropy_g1([0; 32], points1).unwrap();
+            Arkworks::add_entropy_g1([0; 32], points2).unwrap();
 
-        assert_eq!(g_e1, g_e2);
+            assert_eq!(points1, points2);
+        });
     }
 
     #[test]
-    fn test_g2() {
-        let g_e1 = &mut [G2::one(), G2::one(), G2::one()];
-        let g_e2 = &mut [G2::one(), G2::one(), G2::one()];
+    fn test_add_entropy_g2() {
+        proptest!(|(p in arb_g2())| {
+            let points1: &mut [G2] = &mut [p.into(); 16];
+            let points2: &mut [G2] = &mut [p.into(); 16];
 
-        BLST::add_entropy_g2([0; 32], g_e1).unwrap();
-        Arkworks::add_entropy_g2([0; 32], g_e2).unwrap();
+            BLST::add_entropy_g2([0; 32], points1).unwrap();
+            Arkworks::add_entropy_g2([0; 32], points2).unwrap();
 
-        assert_eq!(g_e1, g_e2);
+            assert_eq!(points1, points2);
+        });
     }
 }
