@@ -131,7 +131,6 @@ pub async fn start_server(
     ));
 
     let app = Router::new()
-        .layer(TraceLayer::new_for_http())
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
@@ -151,7 +150,8 @@ pub async fn start_server(
         .layer(Extension(reqwest::Client::new()))
         .layer(Extension(storage_client(&options.storage).await?))
         .layer(Extension(transcript))
-        .layer(Extension(options.clone()));
+        .layer(Extension(options.clone()))
+        .layer(TraceLayer::new_for_http());
 
     // Run the server
     let (addr, prefix) = parse_url(&options.server)?;
