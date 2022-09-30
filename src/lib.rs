@@ -39,7 +39,7 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 use tokio::sync::RwLock;
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 use url::Url;
 
@@ -140,6 +140,7 @@ pub async fn start_server(
         .route("/contribute/abort", post(contribute_abort))
         .route("/info/status", get(status))
         .route("/info/current_state", get(current_state))
+        .layer(CorsLayer::permissive())
         .layer(Extension(active_contributor_state))
         .layer(Extension(lobby_state))
         .layer(Extension(auth_state))

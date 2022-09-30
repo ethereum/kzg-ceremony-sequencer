@@ -306,6 +306,33 @@ async fn test_gh_auth_with_custom_frontend_redirect() {
     assert_eq!(params["provider"], "Github");
     assert!(params.get("session_id").is_some());
     assert!(params.get("exp").is_some());
+    assert!(params.get("error").is_none());
+}
+
+#[tokio::test]
+async fn test_gh_auth_errors_with_custom_frontend_redirect() {
+    let harness = run_test_harness().await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let csrf =
+        get_and_validate_csrf_token(&harness, Some("https://my.magical.frontend/post-sign-in"))
+            .await;
+    let auth_response = request_gh_callback(&harness, &client, 12345, &csrf).await;
+    assert_eq!(auth_response.status(), StatusCode::SEE_OTHER);
+    let location_header = auth_response
+        .headers()
+        .get("location")
+        .expect("must carry the location header")
+        .to_str()
+        .expect("location must be a string");
+    let redirected_to = Url::parse(location_header).expect("location must be a valid url");
+    assert_eq!(redirected_to.host_str(), Some("my.magical.frontend"));
+    assert_eq!(redirected_to.path(), "/post-sign-in");
+    let params: HashMap<_, _> = redirected_to.query_pairs().into_owned().collect();
+    assert!(params.get("error").is_some());
+    assert!(params.get("message").is_some());
 }
 
 #[tokio::test]
