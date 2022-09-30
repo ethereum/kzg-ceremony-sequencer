@@ -13,7 +13,7 @@ pub struct BatchContribution {
 impl BatchContribution {
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
     pub fn receipt(&self) -> Vec<G2> {
-        self.contributions.iter().map(|c| c.pubkey).collect()
+        self.contributions.iter().map(|c| c.pot_pubkey).collect()
     }
 
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]

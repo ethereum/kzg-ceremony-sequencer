@@ -12,11 +12,16 @@ mod common;
 
 /// This function acts both as a test and a utility. This way, we'll test the
 /// behavior in a variety of different app states.
-async fn get_and_validate_csrf_token(harness: &Harness) -> String {
+async fn get_and_validate_csrf_token(harness: &Harness, redirect_url: Option<&str>) -> String {
     let client = reqwest::Client::new();
 
+    let mut url = harness.app_path("auth/request_link");
+    redirect_url.into_iter().for_each(|redirect| {
+        url.query_pairs_mut().append_pair("redirect_to", redirect);
+    });
+
     let response = client
-        .get(harness.options.server.join("auth/request_link").unwrap())
+        .get(url)
         .send()
         .await
         .unwrap()
@@ -93,7 +98,7 @@ async fn login_gh_user(harness: &Harness, http_client: &reqwest::Client, name: S
     // because it has nothing to do with this backend.
     let code = harness.create_valid_user(name).await;
 
-    let csrf = get_and_validate_csrf_token(harness).await;
+    let csrf = get_and_validate_csrf_token(harness, None).await;
 
     let callback_result = request_gh_callback(harness, http_client, code, &csrf).await;
 
@@ -244,7 +249,7 @@ async fn contribute_successfully(
         contribution
             .contributions
             .iter()
-            .map(|c| c.pubkey)
+            .map(|c| c.pot_pubkey)
             .collect::<Vec<_>>()
     )
 }
@@ -256,14 +261,14 @@ fn assert_includes_contribution(transcript: &BatchTranscript, contribution: &Bat
         .zip(contribution.contributions.iter())
         .for_each(|(t, c)| {
             assert!(t.witness.products.contains(&c.powers.g1[0]));
-            assert!(t.witness.pubkeys.contains(&c.pubkey));
+            assert!(t.witness.pubkeys.contains(&c.pot_pubkey));
         })
 }
 
 #[tokio::test]
 async fn test_auth_request_link() {
     let harness = run_test_harness().await;
-    get_and_validate_csrf_token(&harness).await;
+    get_and_validate_csrf_token(&harness, None).await;
 }
 
 #[tokio::test]
@@ -271,6 +276,36 @@ async fn test_gh_auth_happy_path() {
     let harness = run_test_harness().await;
     let http_client = reqwest::Client::new();
     login_gh_user(&harness, &http_client, "kustosz".to_string()).await;
+}
+
+#[tokio::test]
+async fn test_gh_auth_with_custom_frontend_redirect() {
+    let harness = run_test_harness().await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let csrf =
+        get_and_validate_csrf_token(&harness, Some("https://my.magical.frontend/post-sign-in"))
+            .await;
+    let code = harness.create_valid_user("kustosz".to_string()).await;
+    let auth_response = request_gh_callback(&harness, &client, code, &csrf).await;
+    assert_eq!(auth_response.status(), StatusCode::SEE_OTHER);
+    let location_header = auth_response
+        .headers()
+        .get("location")
+        .expect("must carry the location header")
+        .to_str()
+        .expect("location must be a string");
+    let redirected_to = Url::parse(location_header).expect("location must be a valid url");
+    assert_eq!(redirected_to.host_str(), Some("my.magical.frontend"));
+    assert_eq!(redirected_to.path(), "/post-sign-in");
+    let params: HashMap<_, _> = redirected_to.query_pairs().into_owned().collect();
+    assert_eq!(params["sub"], "github | kustosz");
+    assert_eq!(params["nickname"], "kustosz");
+    assert_eq!(params["provider"], "Github");
+    assert!(params.get("session_id").is_some());
+    assert!(params.get("exp").is_some());
 }
 
 #[tokio::test]
@@ -318,7 +353,7 @@ async fn test_contribution_happy_path() {
     let contrib_pubkeys = contribution
         .contributions
         .iter()
-        .map(|contribution| contribution.pubkey)
+        .map(|contribution| contribution.pot_pubkey)
         .collect::<Vec<_>>();
     let transcript_pubkeys = transcript
         .transcripts
@@ -341,7 +376,7 @@ async fn test_double_contribution() {
     let harness = run_test_harness().await;
     let http_client = reqwest::Client::new();
     let auth_code = harness.create_valid_user("kustosz".to_string()).await;
-    let csrf = get_and_validate_csrf_token(&harness).await;
+    let csrf = get_and_validate_csrf_token(&harness, None).await;
     let session_id = extract_session_id_from_auth_response(
         request_gh_callback(&harness, &http_client, auth_code, &csrf).await,
     )
@@ -388,7 +423,7 @@ async fn test_double_contribution() {
 
     // Try logging in again – fails because the user is banned from further use of
     // the app.
-    let new_csrf = get_and_validate_csrf_token(&harness).await;
+    let new_csrf = get_and_validate_csrf_token(&harness, None).await;
     let gh_login_response = request_gh_callback(&harness, &http_client, auth_code, &new_csrf).await;
     assert_eq!(gh_login_response.status(), StatusCode::BAD_REQUEST);
 
