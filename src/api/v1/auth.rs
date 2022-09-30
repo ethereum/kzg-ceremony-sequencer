@@ -42,8 +42,6 @@ pub enum AuthError {
     LobbyIsFull,
     #[error("user already contributed")]
     UserAlreadyContributed,
-    #[error("invalid csrf token")]
-    InvalidCsrf,
     #[error("invalid auth code")]
     InvalidAuthCode,
     #[error("could not fetch user data from auth server")]
@@ -129,12 +127,6 @@ impl IntoResponse for AuthError {
                 }));
                 (StatusCode::SERVICE_UNAVAILABLE, body)
             }
-            Self::InvalidCsrf => {
-                let body = Json(json!({
-                    "error": "invalid csrf token",
-                }));
-                (StatusCode::BAD_REQUEST, body)
-            }
             Self::UserAlreadyContributed => {
                 let body = Json(json!({ "error": "user has already contributed" }));
                 (StatusCode::BAD_REQUEST, body)
@@ -156,7 +148,6 @@ pub struct AuthClientLinkQueryParams {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CsrfWithRedirect {
-    secret:   CsrfToken,
     redirect: Option<String>,
 }
 
@@ -173,7 +164,6 @@ impl CsrfWithRedirect {
 pub async fn auth_client_link(
     Query(params): Query<AuthClientLinkQueryParams>,
     Extension(options): Extension<Options>,
-    Extension(auth_state): Extension<SharedAuthState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(eth_client): Extension<EthOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
@@ -188,10 +178,7 @@ pub async fn auth_client_link(
         }
     }
 
-    let csrf_secret = CsrfToken::new_random();
-
     let csrf_with_redirect = CsrfWithRedirect {
-        secret:   csrf_secret.clone(),
         redirect: params.redirect_to,
     }
     .encode_into_csrf();
@@ -205,14 +192,6 @@ pub async fn auth_client_link(
     let gh_auth_request = gh_client.client.authorize_url(|| csrf_with_redirect);
 
     let (gh_url, _) = gh_auth_request.url();
-
-    // Store CSRF token
-    // TODO These should be cleaned periodically
-    auth_state
-        .write()
-        .await
-        .csrf_tokens
-        .insert(csrf_secret.secret().clone());
 
     Ok(AuthUrl {
         eth_auth_url:    auth_url.to_string(),
@@ -234,7 +213,6 @@ pub struct RawAuthPayload {
 #[derive(Debug)]
 pub struct AuthPayload {
     code:        String,
-    csrf:        CsrfToken,
     redirect_to: Option<String>,
 }
 
@@ -273,7 +251,6 @@ where
             })?;
         Ok(Self {
             code:        raw.code,
-            csrf:        json_decoded_state.secret,
             redirect_to: json_decoded_state.redirect,
         })
     }
@@ -301,7 +278,6 @@ pub async fn github_callback(
     Extension(gh_oauth_client): Extension<GithubOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
 ) -> Result<UserVerifiedResponse, AuthError> {
-    verify_csrf(&payload, &auth_state).await?;
     let token = gh_oauth_client
         .exchange_code(AuthorizationCode::new(payload.code))
         .request_async(async_http_client)
@@ -364,7 +340,6 @@ pub async fn eth_callback(
     Extension(oauth_client): Extension<EthOAuthClient>,
     Extension(http_client): Extension<reqwest::Client>,
 ) -> Result<UserVerifiedResponse, AuthError> {
-    verify_csrf(&payload, &auth_state).await?;
     let token = oauth_client
         .exchange_code(AuthorizationCode::new(payload.code))
         .request_async(async_http_client)
@@ -444,15 +419,6 @@ async fn get_tx_count(
     let rpc_result = rpc_response_json.get("result")?.as_str()?;
 
     u64::from_str_radix(rpc_result.trim_start_matches("0x"), 16).ok()
-}
-
-async fn verify_csrf(payload: &AuthPayload, store: &SharedAuthState) -> Result<(), AuthError> {
-    let auth_state = store.read().await;
-    if auth_state.csrf_tokens.contains(payload.csrf.secret()) {
-        Ok(())
-    } else {
-        Err(AuthError::InvalidCsrf)
-    }
 }
 
 async fn post_authenticate(
