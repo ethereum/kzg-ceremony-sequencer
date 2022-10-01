@@ -33,7 +33,7 @@ impl Contribution {
         // Add entropy
         E::add_entropy_g1(entropy, &mut self.powers.g1)?;
         E::add_entropy_g2(entropy, &mut self.powers.g2)?;
-        let mut temp = [G2::zero(), self.pot_pubkey];
+        let mut temp = [G2::one(), self.pot_pubkey];
         E::add_entropy_g2(entropy, &mut temp)?;
         self.pot_pubkey = temp[1];
 
