@@ -16,10 +16,10 @@ keywords = ["cryptography"]
 categories = ["cryptography::cryptocurrencies"]
 
 [features]
-default = [ "sqlite" ]
+default = ["sqlite"]
 mimalloc = ["cli-batteries/mimalloc"]
-postgres = [ "sqlx/postgres" ]
-sqlite = [ "sqlx/sqlite" ]
+postgres = ["sqlx/postgres"]
+sqlite = ["sqlx/sqlite"]
 
 # Dummy lib target so we can run doc tests
 [lib]
@@ -39,6 +39,7 @@ cli-batteries = { version = "0.3.3", features = ["signals", "prometheus", "meter
 uuid = { version = "1.1.2", features = ["serde", "v4"] }
 axum = { version = "0.5.15", features = ["headers"] }
 axum-extra = { version = "0.3.7", features = ["erased-json"] }
+base64 = "0.13"
 hyper = "0.14"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
@@ -79,3 +80,4 @@ cli-batteries = "0.3.1"
 
 [dev-dependencies]
 tempfile = "3.3.0"
+futures = "0.3"

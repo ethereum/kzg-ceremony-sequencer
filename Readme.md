@@ -46,6 +46,10 @@ cargo fmt && cargo clippy --all-targets --all-features && cargo build --all-targ
 - kzg-ceremony-poc.fly.dev
 - You can use the endpoint `/hello_world` to check that the server is running
 
+## Registering for GitHub OAuth
+
+Register for Github OAuth access [here](https://github.com/settings/developers).
+
 ## Registering for Sign-in-with-Ethereum
 
 See the documentation [here](https://docs.login.xyz/servers/oidc-provider/hosted-oidc-provider).
@@ -55,7 +59,7 @@ To register, use the REST API:
 ```shell
 curl -X POST https://oidc.signinwithethereum.org/register \
    -H 'Content-Type: application/json' \
-   -d '{"redirect_uris": ["http://127.0.0.1:3000/auth/callback/eth"]}'
+   -d '{"redirect_uris": ["http://127.0.0.1:3000/auth/callback/eth", "https://kzg-ceremony-sequencer-dev.fly.dev/auth/callback/eth"]}'
 ```
 
 ```json
@@ -65,7 +69,8 @@ curl -X POST https://oidc.signinwithethereum.org/register \
   "registration_access_token": "....",
   "registration_client_uri": "https://oidc.signinwithethereum.org/client/9b49de48-d198-47e7-afff-7ee26cbcbc95",
   "redirect_uris": [
-    "http://127.0.0.1:3000/auth/callback/eth"
+    "http://127.0.0.1:3000/auth/callback/eth",
+    "https://kzg-ceremony-sequencer-dev.fly.dev/auth/callback/eth"
   ]
 }
 ```

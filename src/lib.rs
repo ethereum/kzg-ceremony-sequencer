@@ -9,7 +9,7 @@
 use crate::{
     api::v1::{
         auth::{auth_client_link, eth_callback, github_callback},
-        contribute::contribute,
+        contribute::{contribute, contribute_abort},
         info::{current_state, status},
         lobby::try_contribute,
     },
@@ -39,7 +39,7 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 use tokio::sync::RwLock;
-use tower_http::{limit::RequestBodyLimitLayer, trace::TraceLayer};
+use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 use tracing::info;
 use url::Url;
 
@@ -132,15 +132,16 @@ pub async fn start_server(
     ));
 
     let app = Router::new()
-        .layer(TraceLayer::new_for_http())
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/eth", get(eth_callback))
         .route("/lobby/try_contribute", post(try_contribute))
         .route("/contribute", post(contribute))
+        .route("/contribute/abort", post(contribute_abort))
         .route("/info/status", get(status))
         .route("/info/current_state", get(current_state))
+        .layer(CorsLayer::permissive())
         .layer(Extension(active_contributor_state))
         .layer(Extension(lobby_state))
         .layer(Extension(auth_state))
@@ -153,7 +154,8 @@ pub async fn start_server(
         .layer(Extension(transcript))
         .layer(Extension(options.clone()))
         .layer(DefaultBodyLimit::disable())
-        .layer(RequestBodyLimitLayer::new(MAX_CONTRIBUTION_SIZE));
+        .layer(RequestBodyLimitLayer::new(MAX_CONTRIBUTION_SIZE))
+        .layer(TraceLayer::new_for_http());
 
     // Run the server
     let (addr, prefix) = parse_url(&options.server)?;
@@ -184,7 +186,7 @@ mod tests {
 
     pub fn invalid_contribution(transcript: &BatchTranscript, no: u8) -> BatchContribution {
         let mut contribution = valid_contribution(transcript, no);
-        contribution.contributions[0].pubkey = G2::zero();
+        contribution.contributions[0].pot_pubkey = G2::zero();
         contribution
     }
 }
