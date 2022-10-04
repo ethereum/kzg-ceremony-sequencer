@@ -147,27 +147,7 @@ impl SharedLobbyState {
 
     pub async fn clear_lobby(&self, predicate: impl Fn(&SessionInfo) -> bool + Send) {
         let mut lobby_state = self.inner.lock().await;
-
-        // Iterate top `MAX_LOBBY_SIZE` participants and check if they have
-        let participants = lobby_state.participants.keys().cloned();
-        let mut sessions_to_kick = Vec::new();
-
-        for participant in participants {
-            // Check if they are over their ping deadline
-            lobby_state.participants.get(&participant).map_or_else(
-                ||
-                    // This should not be possible
-                    tracing::debug!("session id in queue but not a valid session"),
-                |session_info| {
-                    if predicate(session_info) {
-                        sessions_to_kick.push(participant);
-                    }
-                },
-            );
-        }
-        for session_id in sessions_to_kick {
-            lobby_state.participants.remove(&session_id);
-        }
+        lobby_state.participants.retain(|_, info| !predicate(info));
     }
 
     pub async fn modify_participant<R>(
