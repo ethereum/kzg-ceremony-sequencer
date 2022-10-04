@@ -192,14 +192,10 @@ pub async fn auth_client_link(
     Extension(eth_client): Extension<EthOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
 ) -> Result<AuthUrl, AuthErrorPayload> {
-    // Fist check if the lobby is full before giving users an auth link
-    // Note: we use CSRF tokens, so just copying the url will not work either
-    //
-    {
-        let lobby_size = lobby_state.read().await.participants.len();
-        if lobby_size >= options.lobby.max_lobby_size {
-            return Err(AuthErrorPayload::LobbyIsFull);
-        }
+    let lobby_size = lobby_state.get_lobby_size().await;
+
+    if lobby_size >= options.lobby.max_lobby_size {
+        return Err(AuthErrorPayload::LobbyIsFull);
     }
 
     let csrf_with_redirect = CsrfWithRedirect {
@@ -521,14 +517,13 @@ async fn post_authenticate(
         exp:      u64::MAX,
     };
 
-    {
-        let mut lobby = lobby_state.write().await;
-        lobby.participants.insert(session_id.clone(), SessionInfo {
+    lobby_state
+        .insert_participant(session_id.clone(), SessionInfo {
             token:                 id_token.clone(),
             last_ping_time:        Instant::now(),
             is_first_ping_attempt: true,
-        });
-    }
+        })
+        .await;
 
     Ok(UserVerifiedResponse {
         id_token,

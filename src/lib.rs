@@ -15,7 +15,7 @@ use crate::{
     },
     io::{read_or_create_transcript, CeremonySizes},
     keys::Keys,
-    lobby::{clear_lobby_on_interval, SharedContributorState, SharedLobbyState},
+    lobby::{clear_lobby_on_interval, SharedLobbyState},
     oauth::{
         eth_oauth_client, github_oauth_client, EthAuthOptions, GithubAuthOptions, SharedAuthState,
     },
@@ -117,8 +117,6 @@ pub async fn start_server(
     )
     .await?;
 
-    let active_contributor_state = SharedContributorState::default();
-
     // TODO: figure it out from the transcript
     let ceremony_status = Arc::new(AtomicUsize::new(0));
     let lobby_state = SharedLobbyState::default();
@@ -142,7 +140,6 @@ pub async fn start_server(
         .route("/info/status", get(status))
         .route("/info/current_state", get(current_state))
         .layer(CorsLayer::permissive())
-        .layer(Extension(active_contributor_state))
         .layer(Extension(lobby_state))
         .layer(Extension(auth_state))
         .layer(Extension(ceremony_status))
