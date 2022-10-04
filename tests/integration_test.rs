@@ -1,11 +1,14 @@
 #![cfg(test)]
 
-use crate::common::harness::{run_test_harness, Harness};
+use crate::common::{
+    harness,
+    harness::{run_test_harness, Harness},
+};
 use ethers_core::types::{Address, Signature};
 use http::StatusCode;
 use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
 use serde_json::Value;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use url::Url;
 
 mod common;
@@ -607,4 +610,40 @@ async fn test_large_lobby_with_misbehaving_users() {
     assert!(!final_transcript.transcripts.is_empty());
     let actual_count = final_transcript.transcripts[0].num_contributions();
     assert_eq!(should_accept_count, actual_count);
+}
+
+#[tokio::test]
+async fn test_contribution_after_lobby_cleanup() {
+    let harness = harness::Builder::new()
+        .set_compute_deadline(Duration::from_millis(2000))
+        .set_lobby_checkin_frequency(Duration::from_millis(50))
+        .set_lobby_checkin_tolerance(Duration::from_millis(50))
+        .set_lobby_flush_interval(Duration::from_millis(100))
+        .run()
+        .await;
+    let http_client = reqwest::Client::new();
+
+    let session_id = login_gh_user(&harness, &http_client, "kustosz".to_string()).await;
+
+    let mut contribution = try_contribute(&harness, &http_client, &session_id).await;
+
+    let entropy = "such an unguessable string, wow!"
+        .bytes()
+        .collect::<Vec<u8>>()
+        .try_into()
+        .unwrap();
+    contribution
+        .add_entropy::<Arkworks>(entropy)
+        .expect("Adding entropy must be possible");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution,
+        "kustosz",
+    )
+    .await;
 }
