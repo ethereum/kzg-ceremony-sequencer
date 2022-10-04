@@ -29,13 +29,9 @@ pub enum TryContributeError {
 impl From<ActiveContributorError> for TryContributeError {
     fn from(err: ActiveContributorError) -> Self {
         match err {
-            ActiveContributorError::AnotherContributionInProgress => {
-                TryContributeError::AnotherContributionInProgress
-            }
-            ActiveContributorError::UserNotInLobby => TryContributeError::UnknownSessionId,
-            ActiveContributorError::NotUsersTurn => {
-                TryContributeError::AnotherContributionInProgress
-            }
+            ActiveContributorError::AnotherContributionInProgress
+            | ActiveContributorError::NotUsersTurn => Self::AnotherContributionInProgress,
+            ActiveContributorError::UserNotInLobby => Self::UnknownSessionId,
         }
     }
 }

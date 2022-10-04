@@ -195,7 +195,7 @@ impl SharedLobbyState {
 
         let mut state = inner.lock().await;
 
-        if matches!(&state.active_contributor, ActiveContributor::AwaitingContribution(x) if &x.id == &participant)
+        if matches!(&state.active_contributor, ActiveContributor::AwaitingContribution(x) if x.id == participant)
         {
             state.active_contributor = ActiveContributor::None;
 
