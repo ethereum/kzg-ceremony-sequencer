@@ -13,7 +13,8 @@ use ark_ec::{
     msm::VariableBaseMSM, wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve,
 };
 use ark_ff::{One, PrimeField, UniformRand, Zero};
-use rand::{rngs::StdRng, SeedableRng};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 use std::iter;
 use tracing::instrument;
@@ -171,8 +172,7 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
 }
 
 fn random_scalar(entropy: [u8; 32]) -> Fr {
-    // TODO: Use an explicit cryptographic rng.
-    let mut rng = StdRng::from_seed(entropy);
+    let mut rng = ChaCha20Rng::from_seed(entropy);
     Fr::rand(&mut rng)
 }
 

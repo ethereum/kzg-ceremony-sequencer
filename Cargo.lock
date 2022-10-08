@@ -2001,6 +2001,7 @@ dependencies = [
  "hex-literal",
  "proptest",
  "rand",
+ "rand_chacha",
  "rayon",
  "ruint",
  "serde",
