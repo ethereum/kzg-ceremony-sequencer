@@ -190,6 +190,12 @@ pub fn parse_g<P: SWModelParameters, const N: usize>(
         GroupAffine::<P>::get_point_from_x(x, greatest).ok_or(ParseError::InvalidXCoordinate)?;
     debug_assert!(point.is_on_curve()); // Always true
 
+    // Subgroup check is expensive and therefore not done as part of parsing.
+    // TODO: A safer API to indicate whether the check is required.
+    // if !point.is_in_correct_subgroup_assuming_on_curve() {
+    //     return Err(ParseError::InvalidSubgroup);
+    // }
+
     Ok(point)
 }
 
