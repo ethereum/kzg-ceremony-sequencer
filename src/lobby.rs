@@ -153,7 +153,7 @@ impl SharedLobbyState {
     pub async fn modify_participant<R>(
         &self,
         session_id: &SessionId,
-        fun: impl FnOnce(&mut SessionInfo) -> R,
+        fun: impl FnOnce(&mut SessionInfo) -> R + Send,
     ) -> Option<R> {
         let mut lobby_state = self.inner.lock().await;
         lobby_state.participants.get_mut(session_id).map(fun)
