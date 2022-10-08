@@ -543,18 +543,15 @@ async fn test_large_lobby() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
 
-    let handles = (0..20)
-        .into_iter()
-        .map(|i| {
-            let h = harness.clone();
-            let c = client.clone();
-            tokio::spawn(async move {
-                well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
-            })
+    let handles = (0..20).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        tokio::spawn(async move {
+            well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
         })
-        .collect::<Vec<_>>();
+    });
 
-    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+    let contributions: Vec<_> = futures::future::join_all(handles)
         .await
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
@@ -571,24 +568,21 @@ async fn test_large_lobby_with_misbehaving_users() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
 
-    let handles = (0..20)
-        .into_iter()
-        .map(|i| {
-            let h = harness.clone();
-            let c = client.clone();
-            let u = format!("user {i}");
-            tokio::spawn(async move {
-                if i % 2 == 0 {
-                    Some(well_behaved_participant(h.as_ref(), c.as_ref(), u).await)
-                } else {
-                    slow_compute_participant(h.as_ref(), c.as_ref(), u).await;
-                    None
-                }
-            })
+    let handles = (0..20).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        let u = format!("user {i}");
+        tokio::spawn(async move {
+            if i % 2 == 0 {
+                Some(well_behaved_participant(h.as_ref(), c.as_ref(), u).await)
+            } else {
+                slow_compute_participant(h.as_ref(), c.as_ref(), u).await;
+                None
+            }
         })
-        .collect::<Vec<_>>();
+    });
 
-    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+    let contributions: Vec<_> = futures::future::join_all(handles)
         .await
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
