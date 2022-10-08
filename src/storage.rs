@@ -21,6 +21,7 @@ use tracing::{error, info, warn};
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
+#[group(skip)]
 pub struct Options {
     /// Database server connection string.
     ///

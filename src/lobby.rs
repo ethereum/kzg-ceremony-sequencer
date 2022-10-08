@@ -14,6 +14,7 @@ fn duration_from_str(value: &str) -> Result<Duration, ParseIntError> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
+#[group(skip)]
 pub struct Options {
     #[clap(long, env, value_parser=duration_from_str, default_value="180")]
     pub compute_deadline: Duration,

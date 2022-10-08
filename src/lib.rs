@@ -63,6 +63,7 @@ pub const DEFAULT_CEREMONY_SIZES: &str = "4096,65:8192,65:16384,65:32768,65";
 pub const MAX_CONTRIBUTION_SIZE: usize = 10_485_760; // 10MB
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
+#[group(skip)]
 pub struct Options {
     /// API Server url to bind
     #[clap(long, env, default_value = "http://127.0.0.1:3000/")]
@@ -83,7 +84,7 @@ pub struct Options {
     #[clap(long, env, default_value = "./transcript.json.next")]
     pub transcript_in_progress_file: PathBuf,
 
-    #[clap(long, env, value_parser=CeremonySizes::parse_from_cmd, default_value=DEFAULT_CEREMONY_SIZES, multiple(false))]
+    #[clap(long, env, value_parser=CeremonySizes::parse_from_cmd, default_value=DEFAULT_CEREMONY_SIZES)]
     pub ceremony_sizes: CeremonySizes,
 
     #[clap(flatten)]
