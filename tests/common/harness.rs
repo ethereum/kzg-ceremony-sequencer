@@ -77,6 +77,49 @@ impl Drop for Harness {
     }
 }
 
+impl Harness {
+    pub async fn run(mut options: Options) -> Harness {
+        let lock = server_lock().await.lock().await;
+        let temp_dir = tempdir().unwrap();
+        let transcript = temp_dir.path().join("transcript.json");
+        let transcript_wip = temp_dir.path().join("transcript.json.next");
+        options.transcript_file = transcript;
+        options.transcript_in_progress_file = transcript_wip;
+        let server_options = options.clone();
+        let (shutdown_sender, mut app_shutdown_receiver) = broadcast::channel::<()>(1);
+        let mut auth_shutdown_receiver = shutdown_sender.subscribe();
+        let (app_start_sender, app_start_receiver) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let server = start_server(server_options).await.unwrap();
+            app_start_sender.send(()).unwrap();
+            server
+                .with_graceful_shutdown(async move { app_shutdown_receiver.recv().await.unwrap() })
+                .await
+                .unwrap();
+        });
+        app_start_receiver.await.unwrap();
+        let (auth_start_sender, auth_start_receiver) = oneshot::channel::<()>();
+        let auth_state = AuthState::default();
+        let auth_state_for_server = auth_state.clone();
+        tokio::spawn(async move {
+            let server = mock_auth_service::start_server(auth_state_for_server);
+            auth_start_sender.send(()).unwrap();
+            server
+                .with_graceful_shutdown(async move { auth_shutdown_receiver.recv().await.unwrap() })
+                .await
+                .unwrap();
+        });
+        auth_start_receiver.await.unwrap();
+        Harness {
+            options: options.clone(),
+            auth_state,
+            shutdown_sender,
+            lock,
+            temp_dir,
+        }
+    }
+}
+
 static SERVER_LOCK: OnceCell<Mutex<()>> = OnceCell::const_new();
 
 async fn server_lock() -> &'static Mutex<()> {
@@ -84,46 +127,43 @@ async fn server_lock() -> &'static Mutex<()> {
 }
 
 pub async fn run_test_harness() -> Harness {
-    let lock = server_lock().await.lock().await;
-    let temp_dir = tempdir().unwrap();
-    let transcript = temp_dir.path().join("transcript.json");
-    let transcript_wip = temp_dir.path().join("transcript.json.next");
-    let mut options = test_options();
-    options.transcript_file = transcript;
-    options.transcript_in_progress_file = transcript_wip;
-    options.lobby.lobby_checkin_frequency = Duration::from_millis(2000);
-    options.lobby.lobby_checkin_tolerance = Duration::from_millis(2000);
-    options.lobby.compute_deadline = Duration::from_millis(800);
-    let server_options = options.clone();
-    let (shutdown_sender, mut app_shutdown_receiver) = broadcast::channel::<()>(1);
-    let mut auth_shutdown_receiver = shutdown_sender.subscribe();
-    let (app_start_sender, app_start_receiver) = oneshot::channel::<()>();
-    tokio::spawn(async move {
-        let server = start_server(server_options).await.unwrap();
-        app_start_sender.send(()).unwrap();
-        server
-            .with_graceful_shutdown(async move { app_shutdown_receiver.recv().await.unwrap() })
-            .await
-            .unwrap();
-    });
-    app_start_receiver.await.unwrap();
-    let (auth_start_sender, auth_start_receiver) = oneshot::channel::<()>();
-    let auth_state = AuthState::default();
-    let auth_state_for_server = auth_state.clone();
-    tokio::spawn(async move {
-        let server = mock_auth_service::start_server(auth_state_for_server);
-        auth_start_sender.send(()).unwrap();
-        server
-            .with_graceful_shutdown(async move { auth_shutdown_receiver.recv().await.unwrap() })
-            .await
-            .unwrap();
-    });
-    auth_start_receiver.await.unwrap();
-    Harness {
-        options: options.clone(),
-        auth_state,
-        shutdown_sender,
-        lock,
-        temp_dir,
+    Builder::new().run().await
+}
+
+pub struct Builder {
+    options: Options,
+}
+
+impl Builder {
+    pub fn new() -> Builder {
+        let mut options = test_options();
+        options.lobby.lobby_checkin_frequency = Duration::from_millis(2000);
+        options.lobby.lobby_checkin_tolerance = Duration::from_millis(2000);
+        options.lobby.compute_deadline = Duration::from_millis(800);
+        Self { options }
+    }
+
+    pub fn set_lobby_checkin_frequency(mut self, duration: Duration) -> Self {
+        self.options.lobby.lobby_checkin_frequency = duration;
+        self
+    }
+
+    pub fn set_lobby_checkin_tolerance(mut self, duration: Duration) -> Self {
+        self.options.lobby.lobby_checkin_tolerance = duration;
+        self
+    }
+
+    pub fn set_compute_deadline(mut self, duration: Duration) -> Self {
+        self.options.lobby.compute_deadline = duration;
+        self
+    }
+
+    pub fn set_lobby_flush_interval(mut self, duration: Duration) -> Self {
+        self.options.lobby.lobby_flush_interval = duration;
+        self
+    }
+
+    pub async fn run(self) -> Harness {
+        Harness::run(self.options).await
     }
 }

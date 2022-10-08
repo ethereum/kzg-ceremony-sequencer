@@ -1,5 +1,5 @@
 use crate::{
-    lobby::{SharedContributorState, SharedLobbyState},
+    lobby::{ActiveContributorError, SharedLobbyState},
     storage::{PersistentStorage, StorageError},
     SessionId, SharedTranscript,
 };
@@ -24,6 +24,16 @@ pub enum TryContributeError {
     AnotherContributionInProgress,
     #[error("error in storage layer: {0}")]
     StorageError(#[from] StorageError),
+}
+
+impl From<ActiveContributorError> for TryContributeError {
+    fn from(err: ActiveContributorError) -> Self {
+        match err {
+            ActiveContributorError::AnotherContributionInProgress
+            | ActiveContributorError::NotUsersTurn => Self::AnotherContributionInProgress,
+            ActiveContributorError::UserNotInLobby => Self::UnknownSessionId,
+        }
+    }
 }
 
 impl IntoResponse for TryContributeError {
@@ -69,50 +79,37 @@ impl<C: Serialize> IntoResponse for TryContributeResponse<C> {
 
 pub async fn try_contribute(
     session_id: SessionId,
-    Extension(contributor_state): Extension<SharedContributorState>,
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
     Extension(transcript): Extension<SharedTranscript>,
     Extension(options): Extension<crate::Options>,
 ) -> Result<TryContributeResponse<BatchContribution>, TryContributeError> {
-    let uid: String;
+    let uid = lobby_state
+        .modify_participant(&session_id, |mut info| {
+            let now = Instant::now();
+            let min_diff =
+                options.lobby.lobby_checkin_frequency - options.lobby.lobby_checkin_tolerance;
+            if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
+                return Err(TryContributeError::RateLimited);
+            }
+            info.is_first_ping_attempt = false;
+            info.last_ping_time = now;
+            Ok(info.token.unique_identifier().to_owned())
+        })
+        .await
+        .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
 
-    // 1. Check if this is a valid session. If so, we log the ping time
-    {
-        let mut lobby = lobby_state.write().await;
-        let info = lobby
-            .participants
-            .get_mut(&session_id)
-            .ok_or(TryContributeError::UnknownSessionId)?;
-
-        let min_diff =
-            options.lobby.lobby_checkin_frequency - options.lobby.lobby_checkin_tolerance;
-
-        let now = Instant::now();
-        if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
-            return Err(TryContributeError::RateLimited);
-        }
-
-        info.is_first_ping_attempt = false;
-        info.last_ping_time = now;
-
-        uid = info.token.unique_identifier().to_owned();
-    }
-
-    match contributor_state
+    lobby_state
         .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
         .await
-    {
-        Ok(_) => {
-            storage.insert_contributor(&uid).await?;
-            let transcript = transcript.read().await;
+        .map_err(TryContributeError::from)?;
 
-            Ok(TryContributeResponse {
-                contribution: transcript.contribution(),
-            })
-        }
-        Err(_) => Err(TryContributeError::AnotherContributionInProgress),
-    }
+    storage.insert_contributor(&uid).await?;
+    let transcript = transcript.read().await;
+
+    Ok(TryContributeResponse {
+        contribution: transcript.contribution(),
+    })
 }
 
 #[cfg(test)]
@@ -131,7 +128,6 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     async fn lobby_try_contribute_test() {
         let opts = test_options();
-        let contributor_state = SharedContributorState::default();
         let lobby_state = SharedLobbyState::default();
         let transcript = Arc::new(RwLock::new(test_transcript()));
         let db = storage_client(&opts.storage).await.unwrap();
@@ -142,7 +138,6 @@ mod tests {
         // no users in lobby
         let unknown_session_response = try_contribute(
             session_id.clone(),
-            Extension(contributor_state.clone()),
             Extension(lobby_state.clone()),
             Extension(db.clone()),
             Extension(transcript.clone()),
@@ -153,22 +148,16 @@ mod tests {
             unknown_session_response,
             Err(TryContributeError::UnknownSessionId)
         ));
-
-        // add two participants to lobby
-        {
-            let mut state = lobby_state.write().await;
-            state
-                .participants
-                .insert(session_id.clone(), create_test_session_info(100));
-            state
-                .participants
-                .insert(other_session_id.clone(), create_test_session_info(100));
-        }
+        lobby_state
+            .insert_participant(session_id.clone(), create_test_session_info(100))
+            .await;
+        lobby_state
+            .insert_participant(other_session_id.clone(), create_test_session_info(100))
+            .await;
 
         // "other participant" is contributing
         try_contribute(
             other_session_id.clone(),
-            Extension(contributor_state.clone()),
             Extension(lobby_state.clone()),
             Extension(db.clone()),
             Extension(transcript.clone()),
@@ -178,7 +167,6 @@ mod tests {
         .unwrap();
         let contribution_in_progress_response = try_contribute(
             session_id.clone(),
-            Extension(contributor_state.clone()),
             Extension(lobby_state.clone()),
             Extension(db.clone()),
             Extension(transcript.clone()),
@@ -197,7 +185,6 @@ mod tests {
         tokio::time::advance(Duration::from_secs(5)).await;
         let too_soon_response = try_contribute(
             session_id.clone(),
-            Extension(contributor_state.clone()),
             Extension(lobby_state.clone()),
             Extension(db.clone()),
             Extension(transcript.clone()),
@@ -212,13 +199,12 @@ mod tests {
         );
 
         // "other participant" finished contributing
-        contributor_state.clear().await;
+        lobby_state.clear_current_contributor().await;
 
         // call the endpoint too soon - rate limited, no one computing
         tokio::time::advance(Duration::from_secs(5)).await;
         let too_soon_response = try_contribute(
             session_id.clone(),
-            Extension(contributor_state.clone()),
             Extension(lobby_state.clone()),
             Extension(db.clone()),
             Extension(transcript.clone()),
@@ -234,7 +220,6 @@ mod tests {
         tokio::time::advance(Duration::from_secs(19)).await;
         let success_response = try_contribute(
             session_id.clone(),
-            Extension(contributor_state.clone()),
             Extension(lobby_state.clone()),
             Extension(db.clone()),
             Extension(transcript.clone()),

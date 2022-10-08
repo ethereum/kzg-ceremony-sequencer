@@ -15,7 +15,7 @@ use crate::{
     },
     io::{read_or_create_transcript, CeremonySizes},
     keys::Keys,
-    lobby::{clear_lobby_on_interval, SharedContributorState, SharedLobbyState},
+    lobby::{clear_lobby_on_interval, SharedLobbyState},
     oauth::{
         eth_oauth_client, github_oauth_client, EthAuthOptions, GithubAuthOptions, SharedAuthState,
     },
@@ -24,7 +24,7 @@ use crate::{
     util::parse_url,
 };
 use axum::{
-    extract::Extension,
+    extract::{DefaultBodyLimit, Extension},
     response::Html,
     routing::{get, post, IntoMakeService},
     Router, Server,
@@ -39,7 +39,7 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 use tokio::sync::RwLock;
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 use tracing::info;
 use url::Url;
 
@@ -60,6 +60,7 @@ pub type SharedTranscript = Arc<RwLock<BatchTranscript>>;
 pub type SharedCeremonyStatus = Arc<AtomicUsize>;
 
 pub const DEFAULT_CEREMONY_SIZES: &str = "4096,65:8192,65:16384,65:32768,65";
+pub const MAX_CONTRIBUTION_SIZE: usize = 10_485_760; // 10MB
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct Options {
@@ -116,8 +117,6 @@ pub async fn start_server(
     )
     .await?;
 
-    let active_contributor_state = SharedContributorState::default();
-
     // TODO: figure it out from the transcript
     let ceremony_status = Arc::new(AtomicUsize::new(0));
     let lobby_state = SharedLobbyState::default();
@@ -131,7 +130,6 @@ pub async fn start_server(
     ));
 
     let app = Router::new()
-        .layer(TraceLayer::new_for_http())
         .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
@@ -141,7 +139,7 @@ pub async fn start_server(
         .route("/contribute/abort", post(contribute_abort))
         .route("/info/status", get(status))
         .route("/info/current_state", get(current_state))
-        .layer(Extension(active_contributor_state))
+        .layer(CorsLayer::permissive())
         .layer(Extension(lobby_state))
         .layer(Extension(auth_state))
         .layer(Extension(ceremony_status))
@@ -151,7 +149,10 @@ pub async fn start_server(
         .layer(Extension(reqwest::Client::new()))
         .layer(Extension(storage_client(&options.storage).await?))
         .layer(Extension(transcript))
-        .layer(Extension(options.clone()));
+        .layer(Extension(options.clone()))
+        .layer(DefaultBodyLimit::disable())
+        .layer(RequestBodyLimitLayer::new(MAX_CONTRIBUTION_SIZE))
+        .layer(TraceLayer::new_for_http());
 
     // Run the server
     let (addr, prefix) = parse_url(&options.server)?;
@@ -182,7 +183,7 @@ mod tests {
 
     pub fn invalid_contribution(transcript: &BatchTranscript, no: u8) -> BatchContribution {
         let mut contribution = valid_contribution(transcript, no);
-        contribution.contributions[0].pubkey = G2::zero();
+        contribution.contributions[0].pot_pubkey = G2::zero();
         contribution
     }
 }

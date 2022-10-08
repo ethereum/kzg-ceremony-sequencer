@@ -39,6 +39,7 @@ cli-batteries = { version = "0.3.3", features = ["signals", "prometheus", "meter
 uuid = { version = "1.1.2", features = ["serde", "v4"] }
 axum = { version = "0.5.15", features = ["headers"] }
 axum-extra = { version = "0.3.7", features = ["erased-json"] }
+base64 = "0.13"
 hyper = "0.14"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
