@@ -71,11 +71,4 @@ impl BatchTranscript {
 
         Ok(())
     }
-
-    // TODO: Sanity check that the batch transcript. Besides checking the individual
-    // transcripts, we should also check that there are no repeated values between
-    // transcripts.
-    //
-    // In addtionn, while not strictly necessary, it we can also assert that each
-    // transcript has the same number of contributions.
 }

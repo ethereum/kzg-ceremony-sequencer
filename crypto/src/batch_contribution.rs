@@ -33,11 +33,6 @@ impl BatchContribution {
             });
         res
     }
-
-    // TODO: Sanity check the batch contribution. Besides checking the individual
-    // contributions, we should also check that there are no repeated values between
-    // contributions. This prevents problems where a participant contributes the
-    // same tau value for each contribution.
 }
 
 fn derive_taus<E: Engine>(entropy: &Entropy, size: usize) -> Vec<Tau> {

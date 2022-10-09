@@ -63,19 +63,6 @@ impl Transcript {
     /// Verifies a contribution.
     #[instrument(level = "info", skip_all, fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn verify<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
-        // Sanity checks
-        self.sanity_check()?;
-        if !contribution.has_entropy() {
-            return Err(CeremonyError::ContributionNoEntropy);
-        }
-        contribution.sanity_check()?;
-
-        // TODO: More sanity checks:
-        // - No values are zero.
-        // - All g1 values (both in transcript and contribution) must be unique
-        // - All g2 values (both in transcript and contribution) must be unique, except
-        //   for pubkey on the first contribution.
-
         // Compatibility checks
         if self.powers.g1.len() != contribution.powers.g1.len() {
             return Err(CeremonyError::UnexpectedNumG1Powers(
@@ -117,48 +104,6 @@ impl Transcript {
         self.witness.products.push(contribution.powers.g1[1]);
         self.witness.pubkeys.push(contribution.pot_pubkey);
         self.powers = contribution.powers;
-    }
-
-    /// Sanity checks based on equality constraints and zero/one values.
-    ///
-    /// Note that these checks require the point encoding to be a bijection.
-    /// This must be checked by the cryptographic [`Engine`].
-    #[instrument(level = "info", skip_all, , fields(
-        n1=self.powers.g1.len(),
-        n2=self.powers.g2.len(),
-        n=self.witness.products.len()
-    ))]
-    pub fn sanity_check(&self) -> Result<(), CeremonyError> {
-        // Sane number of powers and witness
-        if self.powers.g1.len() < 2 {
-            return Err(CeremonyError::UnsupportedNumG1Powers(self.powers.g1.len()));
-        }
-        if self.powers.g2.len() < 2 {
-            return Err(CeremonyError::UnsupportedNumG2Powers(self.powers.g2.len()));
-        }
-        if self.powers.g1.len() < self.powers.g2.len() {
-            return Err(CeremonyError::UnsupportedMoreG2Powers(
-                self.powers.g1.len(),
-                self.powers.g2.len(),
-            ));
-        }
-        if self.witness.products.len() != self.witness.pubkeys.len() {
-            return Err(CeremonyError::WitnessLengthMismatch(
-                self.witness.products.len(),
-                self.witness.pubkeys.len(),
-            ));
-        }
-
-        // If there is no entropy all values must be one.
-        if !self.has_entropy() {
-            // TODO
-        }
-
-        // Otherwise, the first values in powers and witness must be one, and all
-        // other values non-zero, non-one and unique (also unique between powers and
-        // witness, except for g2[1] == pubkey[1] when n=2 and g1[2] == product.last()).
-        // TODO
-        Ok(())
     }
 }
 
