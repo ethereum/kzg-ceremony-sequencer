@@ -15,36 +15,19 @@ docker run ghcr.io/ethereum/kzg-ceremony-sequencer:latest
 
 ## Setup
 
-### Generate keypair for signing
-
-```shell
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.key
-openssl rsa -in private.key -pubout -out publickey.pem
-```
-
 ### Build, lint, test, run
 
 ```shell
-cargo fmt && cargo clippy --all-targets --all-features && cargo build --all-targets --all-features && cargo test --all-targets --all-features && cargo run -- -vvv
+cargo fmt && cargo clippy --workspace --all-targets --all-features && cargo build --workspace --all-targets --all-features && cargo test --workspace --all-targets --all-features && cargo run -- -vvv
 ```
-
-### Database
-
-1. Run `cargo install sqlx-cli`
-2. Set `DATABASE_URL=sqlite:/path/to/sequencer.db`
-3. Run `sqlx database create`
-4. Migrations will be run automatically on server startup
 
 ## Requirements
 
 - OAuth Client App : Currently we require users to sign in with either Ethereum or Github, which requires an OAuth client application that the user gives read access to their profile to.
 
-- Keypair generation algorithm : The sequencer signs JWTs that can be verified by external parties. [Openssl is recommended](https://hackmd.io/PidEKWJEQpaYQ6qtTRALWQ?both).
-
 ## Live URL
 
-- kzg-ceremony-poc.fly.dev
-- You can use the endpoint `/hello_world` to check that the server is running
+- <https://kzg-ceremony-sequencer-dev.fly.dev/info/status>
 
 ## Registering for GitHub OAuth
 
