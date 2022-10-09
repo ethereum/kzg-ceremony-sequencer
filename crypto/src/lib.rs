@@ -36,7 +36,6 @@ pub mod bench {
     use criterion::Criterion;
 
     pub fn group(criterion: &mut Criterion) {
-        contribution::bench::group(criterion);
         engine::bench::group(criterion);
     }
 }

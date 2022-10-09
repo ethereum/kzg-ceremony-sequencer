@@ -1,6 +1,5 @@
-use crate::{CeremonyError, Engine, Powers, Tau, G1, G2};
+use crate::{CeremonyError, Engine, Powers, Tau, G2};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -23,10 +22,8 @@ impl Contribution {
     /// The entropy is consumed and the blob is zeroized after use.
     #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
     pub fn add_tau<E: Engine>(&mut self, tau: &Tau) -> Result<(), CeremonyError> {
-        // Basic checks
-        self.sanity_check()?;
-
         // Validate points
+        // TODO: Do this after we submit result to contribute faster.
         E::validate_g1(&self.powers.g1)?;
         E::validate_g2(&self.powers.g2)?;
         E::validate_g2(&[self.pot_pubkey])?;
@@ -37,82 +34,6 @@ impl Contribution {
         let mut temp = [G2::zero(), self.pot_pubkey];
         E::add_tau_g2(tau, &mut temp)?;
         self.pot_pubkey = temp[1];
-
-        Ok(())
-    }
-
-    /// Sanity checks based on equality constraints and zero/one values.
-    ///
-    /// Note that these checks require the point encoding to be a bijection.
-    /// This must be checked by the cryptographic [`Engine`].
-    #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
-    pub fn sanity_check(&self) -> Result<(), CeremonyError> {
-        // Check that the number of powers is sensible
-        if self.powers.g1.len() < 2 {
-            return Err(CeremonyError::UnsupportedNumG1Powers(self.powers.g1.len()));
-        }
-        if self.powers.g2.len() < 2 {
-            return Err(CeremonyError::UnsupportedNumG2Powers(self.powers.g2.len()));
-        }
-
-        // Zero values are never allowed
-        if self.pot_pubkey == G2::zero() {
-            return Err(CeremonyError::ZeroPubkey);
-        }
-        for (i, g1) in self.powers.g1.iter().enumerate() {
-            if *g1 == G1::zero() {
-                return Err(CeremonyError::ZeroG1(i));
-            }
-        }
-        for (i, g2) in self.powers.g2.iter().enumerate() {
-            if *g2 == G2::zero() {
-                return Err(CeremonyError::ZeroG2(i));
-            }
-        }
-
-        // First values must be the generator
-        if self.powers.g1[0] != G1::one() {
-            return Err(CeremonyError::InvalidG1FirstValue);
-        }
-        if self.powers.g2[0] != G2::one() {
-            return Err(CeremonyError::InvalidG2FirstValue);
-        }
-
-        // If there is no entropy yet, all values must be one.
-        if self.pot_pubkey == G2::one()
-            && self.powers.g1.iter().all(|g1| *g1 == G1::one())
-            && self.powers.g2.iter().all(|g2| *g2 == G2::one())
-        {
-            return Ok(());
-        }
-
-        // All g1 values must be unique
-        let mut set = HashMap::<G1, usize>::new();
-        for (i, g1) in self.powers.g1.iter().enumerate().skip(1) {
-            if *g1 == G1::one() {
-                return Err(CeremonyError::InvalidG1One(i));
-            }
-            if let Some(j) = set.get(g1) {
-                return Err(CeremonyError::DuplicateG1(*j, i));
-            }
-            set.insert(*g1, i);
-        }
-
-        // All g2 values must be unique, but if this is the first contribution, g2[1]
-        // may match pubkey.
-        let mut set = HashMap::<G2, usize>::new();
-        for (i, g2) in self.powers.g2.iter().enumerate().skip(1) {
-            if *g2 == G2::one() {
-                return Err(CeremonyError::InvalidG2One(i));
-            }
-            if i > 1 && *g2 == self.pot_pubkey {
-                return Err(CeremonyError::InvalidG2Pubkey(i));
-            }
-            if let Some(j) = set.get(g2) {
-                return Err(CeremonyError::DuplicateG2(*j, i));
-            }
-            set.insert(*g2, i);
-        }
 
         Ok(())
     }
@@ -151,36 +72,5 @@ mod test {
         );
         let deser = serde_json::from_value::<Contribution>(json).unwrap();
         assert_eq!(deser, value);
-    }
-}
-
-#[cfg(feature = "bench")]
-#[doc(hidden)]
-pub mod bench {
-    use crate::{Arkworks, Engine, Transcript};
-    use criterion::{BatchSize, Criterion};
-    use rand::Rng;
-    use secrecy::Secret;
-
-    pub fn group(criterion: &mut Criterion) {
-        bench_sanity_check(criterion);
-    }
-
-    fn bench_sanity_check(criterion: &mut Criterion) {
-        criterion.bench_function("contribution/sanity_check", |b| {
-            let mut rng = rand::thread_rng();
-            let transcript = Transcript::new(32768, 65);
-            b.iter_batched_ref(
-                || {
-                    let entropy = Secret::new(rng.gen());
-                    let tau = Arkworks::generate_tau(&entropy);
-                    let mut contribution = transcript.contribution();
-                    contribution.add_tau::<Arkworks>(&tau).unwrap();
-                    contribution
-                },
-                |contribution| contribution.sanity_check().unwrap(),
-                BatchSize::LargeInput,
-            );
-        });
     }
 }
