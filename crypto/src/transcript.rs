@@ -82,6 +82,11 @@ impl Transcript {
         E::validate_g2(&contribution.powers.g2)?;
         E::validate_g2(&[contribution.pot_pubkey])?;
 
+        // Non-zero check
+        if contribution.pot_pubkey == G2::zero() {
+            return Err(CeremonyError::ZeroPubkey);
+        }
+
         // Verify pairings.
         E::verify_pubkey(
             contribution.powers.g1[1],
