@@ -220,6 +220,19 @@ fn random_factors(n: usize) -> (Vec<blst_fr>, blst_fr) {
     (factors, sum)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::arkworks::bench::{rand_g1, rand_g2};
+
+    #[test]
+    fn test_verify_g1() {
+        let powers = [rand_g1().into()];
+        let tau = rand_g2().into();
+        BLST::verify_g1(&powers, tau);
+    }
+}
+
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {

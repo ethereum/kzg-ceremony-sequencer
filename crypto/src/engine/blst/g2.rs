@@ -75,6 +75,21 @@ pub fn p2s_to_affine(ps: &[blst_p2]) -> Vec<blst_p2_affine> {
 }
 
 pub fn p2s_mult_pippenger(bases: &[blst_p2_affine], scalars: &[blst_fr]) -> blst_p2_affine {
+    assert_eq!(bases.len(), scalars.len());
+    if bases.is_empty() {
+        // NOTE: Without this special case the `blst_p1s_mult_pippenger` will
+        // SIGSEGV.
+        return blst_p2_affine::default();
+    }
+    if bases.len() == 1 {
+        // NOTE: Without this special case the `blst_p1s_mult_pippenger` will
+        // SIGSEGV.
+        let base = p2_from_affine(&bases[0]);
+        let scalar = scalar_from_fr(&scalars[0]);
+        let result = p2_mult(&base, &scalar);
+        return p2_to_affine(&result);
+    }
+
     let npoints = bases.len();
     let bases = bases
         .iter()
