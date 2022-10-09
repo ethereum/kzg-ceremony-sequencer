@@ -1,6 +1,8 @@
-use crate::{CeremoniesError, Contribution, Engine, G2};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use crate::{CeremoniesError, Contribution, Engine, Entropy, Tau, G2};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -17,17 +19,19 @@ impl BatchContribution {
     }
 
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
-    pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremoniesError> {
-        let entropies = derive_entropy(entropy, self.contributions.len());
-        self.contributions
+    pub fn add_entropy<E: Engine>(&mut self, entropy: &Entropy) -> Result<(), CeremoniesError> {
+        let taus = derive_taus::<E>(entropy, self.contributions.len());
+        let res = self
+            .contributions
             .par_iter_mut()
-            .zip(entropies)
+            .zip(&taus)
             .enumerate()
-            .try_for_each(|(i, (contribution, entropy))| {
+            .try_for_each(|(i, (contribution, tau))| {
                 contribution
-                    .add_entropy::<E>(entropy)
+                    .add_tau::<E>(tau)
                     .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
-            })
+            });
+        res
     }
 
     // TODO: Sanity check the batch contribution. Besides checking the individual
@@ -36,7 +40,14 @@ impl BatchContribution {
     // same tau value for each contribution.
 }
 
-fn derive_entropy(entropy: [u8; 32], size: usize) -> Vec<[u8; 32]> {
-    let mut rng = StdRng::from_seed(entropy);
-    (0..size).map(|_| rng.gen()).collect()
+fn derive_taus<E: Engine>(entropy: &Entropy, size: usize) -> Vec<Tau> {
+    // TODO: ChaCha20Rng does not implement Zeroize.
+    let mut rng = ChaCha20Rng::from_seed(*entropy.expose_secret());
+
+    (0..size)
+        .map(|_| {
+            let entropy = Secret::new(rng.gen());
+            E::generate_tau(&entropy)
+        })
+        .collect()
 }
