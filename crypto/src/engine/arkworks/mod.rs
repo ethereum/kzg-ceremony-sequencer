@@ -7,21 +7,35 @@ mod zcash_format;
 
 use self::endomorphism::{g1_mul_glv, g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
-use crate::{CeremonyError, ParseError, G1, G2};
+use crate::{CeremonyError, Entropy, ParseError, Tau, F, G1, G2};
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::{
     msm::VariableBaseMSM, wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve,
 };
-use ark_ff::{One, PrimeField, UniformRand, Zero};
-use rand::SeedableRng;
+use ark_ff::{BigInteger, One, PrimeField, UniformRand, Zero};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
+use secrecy::{ExposeSecret, Secret, SecretVec};
 use std::iter;
 use tracing::instrument;
 
 /// Arkworks implementation of [`Engine`] with additional endomorphism
 /// optimizations.
 pub struct Arkworks;
+
+pub fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Fr> {
+    // Convert tau
+    // TODO: Throw error instead of reducing
+    let tau = Secret::new(Fr::from_le_bytes_mod_order(&tau.expose_secret().0[..]));
+
+    // Compute powers
+    Secret::new(
+        iter::successors(Some(Fr::one()), |x| Some(*x * tau.expose_secret()))
+            .take(n)
+            .collect::<Vec<_>>(),
+    )
+}
 
 impl Engine for Arkworks {
     #[instrument(level = "info", skip_all, fields(n=points.len()))]
@@ -116,16 +130,30 @@ impl Engine for Arkworks {
         Ok(())
     }
 
+    #[instrument(level = "info", skip_all)]
+    fn generate_tau(entropy: &Entropy) -> Tau {
+        let mut rng = ChaCha20Rng::from_seed(*entropy.expose_secret());
+
+        // Generate tau by reducing 512 bits of entropy modulo prime.
+        let mut large = [0_u8; 64];
+        rng.fill(&mut large);
+        let fr = Fr::from_le_bytes_mod_order(&large[..]);
+
+        // Convert to Tau
+        let le_bytes = fr.into_repr().to_bytes_le();
+        assert!(le_bytes.len() == 32);
+        let mut tau = [0u8; 32];
+        tau.copy_from_slice(&le_bytes[..]);
+        Secret::new(F(tau))
+    }
+
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
-    fn add_entropy_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError> {
-        let tau = random_scalar(entropy);
-        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * tau))
-            .take(powers.len())
-            .collect::<Vec<_>>();
+    fn add_tau_g1(tau: &Tau, powers: &mut [G1]) -> Result<(), CeremonyError> {
+        let taus = powers_of_tau(tau, powers.len());
         let mut projective = powers
             .par_iter()
-            .zip(taus)
-            .map(|(p, tau)| G1Affine::try_from(*p).map(|p| g1_mul_glv(&p, tau)))
+            .zip(taus.expose_secret())
+            .map(|(p, tau)| G1Affine::try_from(*p).map(|p| g1_mul_glv(&p, *tau)))
             .collect::<Result<Vec<_>, _>>()?;
         G1Projective::batch_normalization(&mut projective);
         for (p, a) in powers.iter_mut().zip(projective) {
@@ -135,18 +163,15 @@ impl Engine for Arkworks {
     }
 
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
-    fn add_entropy_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError> {
-        let tau = random_scalar(entropy);
-        let taus = iter::successors(Some(Fr::one()), |x| Some(*x * tau))
-            .take(powers.len())
-            .collect::<Vec<_>>();
+    fn add_tau_g2(tau: &Tau, powers: &mut [G2]) -> Result<(), CeremonyError> {
+        let taus = powers_of_tau(tau, powers.len());
         let mut projective = powers
             .par_iter()
-            .zip(taus)
+            .zip(taus.expose_secret())
             .map(|(p, tau)| {
                 G2Affine::try_from(*p).map(|p| {
                     let wnaf = WnafContext::new(5);
-                    wnaf.mul(p.into(), &tau)
+                    wnaf.mul(p.into(), tau)
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -169,11 +194,6 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
     .take(n)
     .collect::<Vec<_>>();
     (factors, sum)
-}
-
-fn random_scalar(entropy: [u8; 32]) -> Fr {
-    let mut rng = ChaCha20Rng::from_seed(entropy);
-    Fr::rand(&mut rng)
 }
 
 #[cfg(test)]

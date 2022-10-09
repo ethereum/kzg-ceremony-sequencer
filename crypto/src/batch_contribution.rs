@@ -1,10 +1,10 @@
-use crate::{CeremoniesError, Contribution, Engine, G2};
+use crate::{CeremoniesError, Contribution, Engine, Entropy, Tau, G2};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
-use zeroize::Zeroize;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -19,27 +19,18 @@ impl BatchContribution {
     }
 
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
-    pub fn add_entropy<E: Engine>(&mut self, mut entropy: [u8; 32]) -> Result<(), CeremoniesError> {
-        // make sure that the entropy passed in is not prior zeroized
-        assert_ne!(entropy, [0; 32]);
-
-        let mut entropies = derive_entropy(entropy, self.contributions.len());
+    pub fn add_entropy<E: Engine>(&mut self, entropy: &Entropy) -> Result<(), CeremoniesError> {
+        let taus = derive_taus::<E>(entropy, self.contributions.len());
         let res = self
             .contributions
             .par_iter_mut()
-            .zip(&mut entropies)
+            .zip(&taus)
             .enumerate()
-            .try_for_each(|(i, (contribution, entropy))| {
-                let res = contribution
-                    .add_entropy::<E>(entropy)
-                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e));
-                // make sure the entropy has been zeroized
-                assert_eq!(*entropy, [0; 32]);
-                res
+            .try_for_each(|(i, (contribution, tau))| {
+                contribution
+                    .add_tau::<E>(tau)
+                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             });
-
-        // zeroize the toxic waste
-        entropy.zeroize();
         res
     }
 
@@ -49,7 +40,14 @@ impl BatchContribution {
     // same tau value for each contribution.
 }
 
-fn derive_entropy(entropy: [u8; 32], size: usize) -> Vec<[u8; 32]> {
-    let mut rng = ChaCha20Rng::from_seed(entropy);
-    (0..size).map(|_| rng.gen()).collect()
+fn derive_taus<E: Engine>(entropy: &Entropy, size: usize) -> Vec<Tau> {
+    // TODO: ChaCha20Rng does not implement Zeroize.
+    let mut rng = ChaCha20Rng::from_seed(*entropy.expose_secret());
+
+    (0..size)
+        .map(|_| {
+            let entropy = Secret::new(rng.gen());
+            E::generate_tau(&entropy)
+        })
+        .collect()
 }
