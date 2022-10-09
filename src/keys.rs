@@ -18,6 +18,7 @@ use thiserror::Error;
 use tracing::{info, warn};
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
+#[group(skip)]
 pub struct Options {
     #[clap(long, env)]
     pub signing_key: Option<String>,
