@@ -100,10 +100,7 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
         .collect::<Vec<_>>();
 
     // Convert scalars to blst_scalar
-    let scalars = scalars
-        .iter()
-        .map(|x| scalar_from_fr(x))
-        .collect::<Vec<_>>();
+    let scalars = scalars.iter().map(scalar_from_fr).collect::<Vec<_>>();
 
     // Get vec of pointers to scalars
     let scalar_ptrs = scalars.iter().map(|x| x.b.as_ptr()).collect::<Vec<_>>();
@@ -112,16 +109,17 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
     let mut ret = blst_p1_affine::default();
 
     unsafe {
-        let mut scratch: Vec<u64> =
-            Vec::with_capacity(blst_p1s_mult_pippenger_scratch_sizeof(npoints) / 8);
-        scratch.set_len(scratch.capacity());
+        let mut scratch = vec![
+            limb_t::default();
+            blst_p1s_mult_pippenger_scratch_sizeof(npoints) / size_of::<limb_t>()
+        ];
         blst_p1s_mult_pippenger(
             &mut msm_result,
             bases.as_ptr(),
             npoints,
             scalar_ptrs.as_ptr(),
             256,
-            &mut scratch[0],
+            scratch.as_mut_ptr(),
         );
         blst_p1_to_affine(&mut ret, &msm_result);
     }

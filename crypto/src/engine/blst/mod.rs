@@ -229,7 +229,7 @@ mod tests {
     fn test_verify_g1() {
         let powers = [rand_g1().into()];
         let tau = rand_g2().into();
-        BLST::verify_g1(&powers, tau);
+        let _ = BLST::verify_g1(&powers, tau);
     }
 }
 

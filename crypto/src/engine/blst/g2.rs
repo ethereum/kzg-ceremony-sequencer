@@ -4,7 +4,7 @@ use blst::{
     blst_fr, blst_p2, blst_p2_affine, blst_p2_affine_compress, blst_p2_affine_in_g2,
     blst_p2_from_affine, blst_p2_mult, blst_p2_to_affine, blst_p2_uncompress,
     blst_p2s_mult_pippenger, blst_p2s_mult_pippenger_scratch_sizeof, blst_p2s_to_affine,
-    blst_scalar,
+    blst_scalar, limb_t,
 };
 
 use crate::{ParseError, G2};
@@ -91,25 +91,32 @@ pub fn p2s_mult_pippenger(bases: &[blst_p2_affine], scalars: &[blst_fr]) -> blst
     }
 
     let npoints = bases.len();
+
+    // Get vec of pointers to bases
     let bases = bases
         .iter()
         .map(|x| x as *const blst_p2_affine)
         .collect::<Vec<_>>();
-    let scalars = scalars
-        .iter()
-        .map(|x| scalar_from_fr(x).b.as_ptr())
-        .collect::<Vec<_>>();
+
+    // Convert scalars to blst_scalar
+    let scalars = scalars.iter().map(scalar_from_fr).collect::<Vec<_>>();
+
+    // Get vec of pointers to scalars
+    let scalar_ptrs = scalars.iter().map(|x| x.b.as_ptr()).collect::<Vec<_>>();
+
     let mut msm_result = blst_p2::default();
     let mut ret = blst_p2_affine::default();
 
     unsafe {
-        let mut scratch =
-            vec![0_u64; blst_p2s_mult_pippenger_scratch_sizeof(npoints) / size_of::<u64>()];
+        let mut scratch = vec![
+            limb_t::default();
+            blst_p2s_mult_pippenger_scratch_sizeof(npoints) / size_of::<limb_t>()
+        ];
         blst_p2s_mult_pippenger(
             &mut msm_result,
             bases.as_ptr(),
             npoints,
-            scalars.as_ptr(),
+            scalar_ptrs.as_ptr(),
             256,
             scratch.as_mut_ptr(),
         );
