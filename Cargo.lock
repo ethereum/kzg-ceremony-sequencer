@@ -3406,7 +3406,7 @@ dependencies = [
 [[package]]
 name = "small-powers-of-tau"
 version = "0.1.0"
-source = "git+https://github.com/crate-crypto/small-powers-of-tau#7792ca98041b6e07b10f12efdfee8c9b712b33bf"
+source = "git+https://github.com/crate-crypto/small-powers-of-tau#a958dbf0dd73f47e03aad6da50e033dddb83230c"
 dependencies = [
  "ark-bls12-381",
  "ark-ec",
