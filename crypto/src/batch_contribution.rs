@@ -20,11 +20,11 @@ impl BatchContribution {
 
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
     pub fn add_entropy<E: Engine>(&mut self, entropy: &Entropy) -> Result<(), CeremoniesError> {
-        let mut taus = derive_taus::<E>(entropy, self.contributions.len());
+        let taus = derive_taus::<E>(entropy, self.contributions.len());
         let res = self
             .contributions
             .par_iter_mut()
-            .zip(&mut taus)
+            .zip(&taus)
             .enumerate()
             .try_for_each(|(i, (contribution, tau))| {
                 contribution
