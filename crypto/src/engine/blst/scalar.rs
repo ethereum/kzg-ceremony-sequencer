@@ -1,13 +1,20 @@
+use crate::F;
 use blst::{
-    blst_fr, blst_fr_from_scalar, blst_fr_mul, blst_scalar, blst_scalar_from_be_bytes,
-    blst_scalar_from_fr, blst_scalar_from_uint64,
+    blst_fr, blst_fr_from_scalar, blst_fr_mul, blst_lendian_from_scalar, blst_scalar,
+    blst_scalar_from_be_bytes, blst_scalar_from_fr, blst_scalar_from_lendian,
+    blst_scalar_from_uint64,
 };
-use rand::{rngs::StdRng, RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
+use secrecy::{ExposeSecret, Secret};
 
 pub fn random_fr(entropy: [u8; 32]) -> blst_fr {
-    let mut buffer = [0u8; 32];
-    let mut rng = StdRng::from_seed(entropy);
-    rng.fill_bytes(&mut buffer);
+    // Use ChaCha20 CPRNG
+    let mut rng = ChaCha20Rng::from_seed(entropy);
+
+    // Generate tau by reducing 512 bits of entropy modulo prime.
+    let mut buffer = [0u8; 64];
+    rng.fill(&mut buffer);
 
     let mut scalar = blst_scalar::default();
     let mut ret = blst_fr::default();
@@ -59,4 +66,29 @@ pub fn scalar_from_u64(a: u64) -> blst_scalar {
         blst_scalar_from_uint64(&mut scalar, input.as_ptr());
     }
     scalar
+}
+
+impl From<&F> for blst_fr {
+    fn from(n: &F) -> Self {
+        // TODO: Zeroize the temps
+        let mut scalar = blst_scalar::default();
+        let mut ret = blst_fr::default();
+        unsafe {
+            blst_scalar_from_lendian(&mut scalar, n.0.as_ptr());
+            blst_fr_from_scalar(&mut ret, &scalar);
+        }
+        ret
+    }
+}
+
+impl From<&blst_fr> for F {
+    fn from(n: &blst_fr) -> Self {
+        let mut scalar = blst_scalar::default();
+        let mut ret = [0u8; 32];
+        unsafe {
+            blst_scalar_from_fr(&mut scalar, n);
+            blst_lendian_from_scalar(ret.as_mut_ptr(), &scalar);
+        }
+        F(ret)
+    }
 }

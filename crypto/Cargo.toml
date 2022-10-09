@@ -44,4 +44,4 @@ secrecy = "0.8.0"
 
 [dev-dependencies]
 proptest = "1.0.0"
-ruint = { version = "1.3.0", features = ["proptest"] }
+ruint = { version = "1.3.0", features = ["ark-ff", "proptest"] }

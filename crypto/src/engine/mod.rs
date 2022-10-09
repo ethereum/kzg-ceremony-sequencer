@@ -249,36 +249,44 @@ pub mod bench {
 
 #[cfg(all(test, feature = "arkworks", feature = "blst"))]
 mod tests {
-    use crate::{
-        engine::{
-            arkworks::test::{arb_g1, arb_g2},
-            BLST,
-        },
-        Arkworks, Engine, G1, G2,
-    };
-    use proptest::proptest;
+    use super::*;
+    use proptest::{proptest, strategy::Strategy};
+
+    pub fn arb_f() -> impl Strategy<Value = F> {
+        arkworks::test::arb_fr().prop_map(|fr| F::from(fr))
+    }
+
+    pub fn arb_g1() -> impl Strategy<Value = G1> {
+        arkworks::test::arb_g1().prop_map(|p| G1::from(p))
+    }
+
+    pub fn arb_g2() -> impl Strategy<Value = G2> {
+        arkworks::test::arb_g2().prop_map(|p| G2::from(p))
+    }
 
     #[test]
-    fn test_add_entropy_g1() {
-        proptest!(|(p in arb_g1())| {
-            let points1: &mut [G1] = &mut [p.into(); 16];
-            let points2: &mut [G1] = &mut [p.into(); 16];
+    fn test_add_tau_g1() {
+        proptest!(|(tau in arb_f(), p in arb_g1())| {
+            let tau = Secret::new(tau);
+            let points1: &mut [G1] = &mut [p; 16];
+            let points2: &mut [G1] = &mut [p; 16];
 
-            BLST::add_entropy_g1([0; 32], points1).unwrap();
-            Arkworks::add_entropy_g1([0; 32], points2).unwrap();
+            BLST::add_tau_g1(&tau, points1).unwrap();
+            Arkworks::add_tau_g1(&tau, points2).unwrap();
 
             assert_eq!(points1, points2);
         });
     }
 
     #[test]
-    fn test_add_entropy_g2() {
-        proptest!(|(p in arb_g2())| {
-            let points1: &mut [G2] = &mut [p.into(); 16];
-            let points2: &mut [G2] = &mut [p.into(); 16];
+    fn test_add_tau_g2() {
+        proptest!(|(tau in arb_f(), p in arb_g2())| {
+            let tau = Secret::new(tau);
+            let points1: &mut [G2] = &mut [p; 16];
+            let points2: &mut [G2] = &mut [p; 16];
 
-            BLST::add_entropy_g2([0; 32], points1).unwrap();
-            Arkworks::add_entropy_g2([0; 32], points2).unwrap();
+            BLST::add_tau_g2(&tau, points1).unwrap();
+            Arkworks::add_tau_g2(&tau, points2).unwrap();
 
             assert_eq!(points1, points2);
         });

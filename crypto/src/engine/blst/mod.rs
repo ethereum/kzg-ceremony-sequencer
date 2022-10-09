@@ -2,43 +2,38 @@ mod g1;
 mod g2;
 mod scalar;
 
+use self::{
+    g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_mult_pippenger, p1s_to_affine},
+    g2::{p2_affine_in_g2, p2_from_affine, p2_mult, p2_to_affine, p2s_to_affine},
+    scalar::{fr_mul, fr_one, random_fr, scalar_from_fr},
+};
+use crate::{
+    engine::blst::{g1::p1_to_affine, g2::p2s_mult_pippenger},
+    CeremonyError, Engine, Entropy, ParseError, Tau, G1, G2,
+};
 use blst::{
     blst_final_exp, blst_fp12, blst_fr, blst_fr_add, blst_miller_loop, blst_p1_affine,
-    blst_p1_generator, blst_p2_affine, blst_p2_affine_generator, blst_p2_generator,
+    blst_p1_generator, blst_p2_affine, blst_p2_affine_generator, blst_p2_generator, blst_scalar,
 };
 use rand::Rng;
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
 };
+use secrecy::{ExposeSecret, Secret, SecretVec};
 use std::iter;
-
-use crate::{
-    engine::blst::{g1::p1_to_affine, g2::p2s_mult_pippenger},
-    CeremonyError, Engine, ParseError, G1, G2,
-};
-
-use self::{
-    g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_mult_pippenger, p1s_to_affine},
-    g2::{p2_affine_in_g2, p2_from_affine, p2_mult, p2_to_affine, p2s_to_affine},
-    scalar::{fr_mul, fr_one, random_fr, scalar_from_fr},
-};
 
 pub struct BLST;
 
 impl Engine for BLST {
-    fn add_entropy_g1(
-        entropy: [u8; 32],
-        powers: &mut [crate::G1],
-    ) -> Result<(), crate::CeremonyError> {
-        let tau = random_fr(entropy);
-        let one = fr_one();
+    fn generate_tau(entropy: &Entropy) -> Tau {
+        // TODO: Use `blst_keygen` or one of its versions (EIP-2333).
+        let fr = random_fr(*entropy.expose_secret());
+        Secret::new((&fr).into())
+    }
 
-        let taus = iter::successors(Some(one), |x| Some(fr_mul(x, &tau)))
-            .take(powers.len())
-            .collect::<Vec<_>>();
-
-        let taus = taus.par_iter().map(scalar_from_fr).collect::<Vec<_>>();
+    fn add_tau_g1(tau: &Tau, powers: &mut [G1]) -> Result<(), CeremonyError> {
+        let taus = powers_of_tau(tau, powers.len());
 
         let powers_projective = powers
             .par_iter()
@@ -61,18 +56,8 @@ impl Engine for BLST {
             })
     }
 
-    fn add_entropy_g2(
-        entropy: [u8; 32],
-        powers: &mut [crate::G2],
-    ) -> Result<(), crate::CeremonyError> {
-        let tau = random_fr(entropy);
-        let one = fr_one();
-
-        let taus = iter::successors(Some(one), |x| Some(fr_mul(x, &tau)))
-            .take(powers.len())
-            .collect::<Vec<_>>();
-
-        let taus = taus.par_iter().map(scalar_from_fr).collect::<Vec<_>>();
+    fn add_tau_g2(tau: &Tau, powers: &mut [crate::G2]) -> Result<(), crate::CeremonyError> {
+        let taus = powers_of_tau(tau, powers.len());
 
         let powers_projective = powers
             .par_iter()
@@ -208,6 +193,15 @@ fn pairing(p: &blst_p1_affine, q: &blst_p2_affine) -> blst_fp12 {
     unsafe { blst_final_exp(&mut out, &tmp) };
 
     out
+}
+
+// TODO: Ideally we return `SecretVec` here, but `blst_fr` is not Zeroize.
+fn powers_of_tau(tau: &Tau, n: usize) -> Vec<blst_scalar> {
+    let tau = tau.expose_secret().into();
+    iter::successors(Some(fr_one()), |x| Some(fr_mul(x, &tau)))
+        .map(|n| scalar_from_fr(&n))
+        .take(n)
+        .collect()
 }
 
 fn random_factors(n: usize) -> (Vec<blst_fr>, blst_fr) {
