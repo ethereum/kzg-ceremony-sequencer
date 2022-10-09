@@ -24,19 +24,6 @@ use tracing::instrument;
 /// optimizations.
 pub struct Arkworks;
 
-pub fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Fr> {
-    // Convert tau
-    // TODO: Throw error instead of reducing
-    let tau = Secret::new(Fr::from_le_bytes_mod_order(&tau.expose_secret().0[..]));
-
-    // Compute powers
-    Secret::new(
-        iter::successors(Some(Fr::one()), |x| Some(*x * tau.expose_secret()))
-            .take(n)
-            .collect::<Vec<_>>(),
-    )
-}
-
 impl Engine for Arkworks {
     #[instrument(level = "info", skip_all, fields(n=points.len()))]
     fn validate_g1(points: &[G1]) -> Result<(), CeremonyError> {
@@ -132,6 +119,7 @@ impl Engine for Arkworks {
 
     #[instrument(level = "info", skip_all)]
     fn generate_tau(entropy: &Entropy) -> Tau {
+        // Use ChaCha20 CPRNG
         let mut rng = ChaCha20Rng::from_seed(*entropy.expose_secret());
 
         // Generate tau by reducing 512 bits of entropy modulo prime.
@@ -183,6 +171,19 @@ impl Engine for Arkworks {
     }
 }
 
+pub fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Fr> {
+    // Convert tau
+    // TODO: Throw error instead of reducing
+    let tau = Secret::new(Fr::from_le_bytes_mod_order(&tau.expose_secret().0[..]));
+
+    // Compute powers
+    Secret::new(
+        iter::successors(Some(Fr::one()), |x| Some(*x * tau.expose_secret()))
+            .take(n)
+            .collect::<Vec<_>>(),
+    )
+}
+
 fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
     let mut rng = rand::thread_rng();
     let mut sum = Fr::zero();
@@ -197,18 +198,28 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
 }
 
 #[cfg(test)]
+impl From<Fr> for F {
+    fn from(fr: Fr) -> Self {
+        let le_bytes = fr.into_repr().to_bytes_le();
+        assert!(le_bytes.len() == 32);
+        let mut f = [0u8; 32];
+        f.copy_from_slice(&le_bytes[..]);
+        Self(f)
+    }
+}
+
+#[cfg(test)]
 pub mod test {
     use super::*;
-    use ark_bls12_381::FrParameters;
     use ark_ec::ProjectiveCurve;
-    use ark_ff::{BigInteger256, FpParameters};
+    use ark_ff::BigInteger256;
     use proptest::{arbitrary::any, strategy::Strategy};
-    use ruint::aliases::U256;
+    use ruint::{aliases::U256, uint};
 
     #[allow(clippy::missing_panics_doc)]
     pub fn arb_fr() -> impl Strategy<Value = Fr> {
         any::<U256>().prop_map(|mut n| {
-            n %= U256::from(FrParameters::MODULUS);
+            n %= uint!(52435875175126190479447740508185965837690552500527637822603658699938581184513_U256);
             Fr::from_repr(BigInteger256::from(n)).expect("n is smaller than modulus")
         })
     }

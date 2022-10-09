@@ -7,16 +7,21 @@
 
 #![allow(clippy::missing_errors_doc)] // TODO
 
+#[cfg(feature = "arkworks")]
 mod arkworks;
+#[cfg(feature = "blst")]
+mod blst;
 
 use crate::{CeremonyError, F, G1, G2};
 use secrecy::Secret;
 
-pub type Entropy = Secret<[u8; 32]>;
-pub type Tau = Secret<F>;
-
 #[cfg(feature = "arkworks")]
 pub use self::arkworks::Arkworks;
+#[cfg(feature = "blst")]
+pub use self::blst::BLST;
+
+pub type Entropy = Secret<[u8; 32]>;
+pub type Tau = Secret<F>;
 
 pub trait Engine {
     /// Verifies that the given G1 points are valid.
@@ -51,6 +56,52 @@ pub trait Engine {
     fn add_tau_g2(tau: &Tau, powers: &mut [G2]) -> Result<(), CeremonyError>;
 }
 
+#[cfg(all(test, feature = "arkworks", feature = "blst"))]
+mod tests {
+    use super::*;
+    use proptest::{proptest, strategy::Strategy};
+
+    pub fn arb_f() -> impl Strategy<Value = F> {
+        arkworks::test::arb_fr().prop_map(F::from)
+    }
+
+    pub fn arb_g1() -> impl Strategy<Value = G1> {
+        arkworks::test::arb_g1().prop_map(G1::from)
+    }
+
+    pub fn arb_g2() -> impl Strategy<Value = G2> {
+        arkworks::test::arb_g2().prop_map(G2::from)
+    }
+
+    #[test]
+    fn test_add_tau_g1() {
+        proptest!(|(tau in arb_f(), p in arb_g1())| {
+            let tau = Secret::new(tau);
+            let points1: &mut [G1] = &mut [p; 16];
+            let points2: &mut [G1] = &mut [p; 16];
+
+            BLST::add_tau_g1(&tau, points1).unwrap();
+            Arkworks::add_tau_g1(&tau, points2).unwrap();
+
+            assert_eq!(points1, points2);
+        });
+    }
+
+    #[test]
+    fn test_add_tau_g2() {
+        proptest!(|(tau in arb_f(), p in arb_g2())| {
+            let tau = Secret::new(tau);
+            let points1: &mut [G2] = &mut [p; 16];
+            let points2: &mut [G2] = &mut [p; 16];
+
+            BLST::add_tau_g2(&tau, points1).unwrap();
+            Arkworks::add_tau_g2(&tau, points2).unwrap();
+
+            assert_eq!(points1, points2);
+        });
+    }
+}
+
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
@@ -62,6 +113,8 @@ pub mod bench {
     pub fn group(criterion: &mut Criterion) {
         #[cfg(feature = "arkworks")]
         arkworks::bench::group(criterion);
+        #[cfg(feature = "blst")]
+        blst::bench::group(criterion);
     }
 
     pub(super) fn bench_engine<E: Engine>(criterion: &mut Criterion, name: &str) {

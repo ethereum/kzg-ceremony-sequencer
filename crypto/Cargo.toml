@@ -15,18 +15,20 @@ license-file = "../mit-license.md"
 default = [ ]
 bench = [ "criterion" ]
 arkworks = [ "dep:ruint" ]
+blst = [ "dep:blst" ]
 
 [[bench]]
 name = "criterion"
 harness = false
 path = "criterion.rs"
-required-features = [ "bench", "arkworks" ]
+required-features = [ "bench" ]
 
 [dependencies]
 criterion = { version = "0.4.0", optional = true } # Dev dep for bench
 ark-bls12-381 = "0.3.0"
 ark-ec = { version = "0.3.0", features = ["parallel"] }
 ark-ff = { version = "0.3.0", features = ["parallel", "asm"] }
+blst = { version = "0.3.10", optional = true}
 hex = "0.4.3"
 rand = "0.8.5"
 rayon = "1.5.3"
@@ -42,4 +44,4 @@ secrecy = "0.8.0"
 
 [dev-dependencies]
 proptest = "1.0.0"
-ruint = { version = "1.3.0", features = ["proptest"] }
+ruint = { version = "1.3.0", features = ["ark-ff", "proptest"] }

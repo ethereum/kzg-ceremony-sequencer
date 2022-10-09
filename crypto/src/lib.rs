@@ -26,6 +26,9 @@ pub use crate::{
 #[cfg(feature = "arkworks")]
 pub use crate::engine::Arkworks;
 
+#[cfg(feature = "blst")]
+pub use crate::engine::BLST;
+
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
