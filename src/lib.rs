@@ -55,7 +55,7 @@ mod storage;
 pub mod test_util;
 mod util;
 
-pub type Engine = kzg_ceremony_crypto::Arkworks;
+pub type Engine = kzg_ceremony_crypto::DefaultEngine;
 pub type SharedTranscript = Arc<RwLock<BatchTranscript>>;
 pub type SharedCeremonyStatus = Arc<AtomicUsize>;
 

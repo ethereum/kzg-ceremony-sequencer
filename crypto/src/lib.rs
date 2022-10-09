@@ -23,11 +23,22 @@ pub use crate::{
     transcript::Transcript,
 };
 
+pub use crate::engine::Both;
+
 #[cfg(feature = "arkworks")]
 pub use crate::engine::Arkworks;
 
 #[cfg(feature = "blst")]
 pub use crate::engine::BLST;
+
+#[cfg(all(feature = "arkworks", feature = "blst"))]
+pub type DefaultEngine = Both<Arkworks, BLST>;
+
+#[cfg(all(feature = "arkworks", not(feature = "blst")))]
+pub type DefaultEngine = Arkworks;
+
+#[cfg(all(not(feature = "arkworks"), feature = "blst"))]
+pub type DefaultEngine = BLST;
 
 #[cfg(feature = "bench")]
 #[doc(hidden)]
