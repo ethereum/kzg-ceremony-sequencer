@@ -1,11 +1,15 @@
 #![cfg(test)]
 
-use crate::common::harness::{run_test_harness, Harness};
+use crate::common::{
+    harness,
+    harness::{run_test_harness, Harness},
+};
 use ethers_core::types::{Address, Signature};
 use http::StatusCode;
 use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
+use secrecy::Secret;
 use serde_json::Value;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use url::Url;
 
 mod common;
@@ -306,6 +310,33 @@ async fn test_gh_auth_with_custom_frontend_redirect() {
     assert_eq!(params["provider"], "Github");
     assert!(params.get("session_id").is_some());
     assert!(params.get("exp").is_some());
+    assert!(params.get("error").is_none());
+}
+
+#[tokio::test]
+async fn test_gh_auth_errors_with_custom_frontend_redirect() {
+    let harness = run_test_harness().await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let csrf =
+        get_and_validate_csrf_token(&harness, Some("https://my.magical.frontend/post-sign-in"))
+            .await;
+    let auth_response = request_gh_callback(&harness, &client, 12345, &csrf).await;
+    assert_eq!(auth_response.status(), StatusCode::SEE_OTHER);
+    let location_header = auth_response
+        .headers()
+        .get("location")
+        .expect("must carry the location header")
+        .to_str()
+        .expect("location must be a string");
+    let redirected_to = Url::parse(location_header).expect("location must be a valid url");
+    assert_eq!(redirected_to.host_str(), Some("my.magical.frontend"));
+    assert_eq!(redirected_to.path(), "/post-sign-in");
+    let params: HashMap<_, _> = redirected_to.query_pairs().into_owned().collect();
+    assert!(params.get("error").is_some());
+    assert!(params.get("message").is_some());
 }
 
 #[tokio::test]
@@ -324,8 +355,9 @@ async fn test_contribution_happy_path() {
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
     contribute_successfully(
@@ -391,8 +423,9 @@ async fn test_double_contribution() {
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
     // First, successful contribution;
@@ -464,8 +497,9 @@ async fn well_behaved_participant(
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
     contribute_successfully(harness, client, &session_id, &contribution, &name).await;
     contribution
@@ -497,11 +531,12 @@ async fn slow_compute_participant(harness: &Harness, client: &reqwest::Client, n
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
 
     tokio::time::sleep(harness.options.lobby.compute_deadline).await;
 
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
     let response = request_contribute(harness, client, &session_id, &contribution).await;
@@ -513,18 +548,15 @@ async fn test_large_lobby() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
 
-    let handles = (0..20)
-        .into_iter()
-        .map(|i| {
-            let h = harness.clone();
-            let c = client.clone();
-            tokio::spawn(async move {
-                well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
-            })
+    let handles = (0..20).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        tokio::spawn(async move {
+            well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
         })
-        .collect::<Vec<_>>();
+    });
 
-    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+    let contributions: Vec<_> = futures::future::join_all(handles)
         .await
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
@@ -541,24 +573,21 @@ async fn test_large_lobby_with_misbehaving_users() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
 
-    let handles = (0..20)
-        .into_iter()
-        .map(|i| {
-            let h = harness.clone();
-            let c = client.clone();
-            let u = format!("user {i}");
-            tokio::spawn(async move {
-                if i % 2 == 0 {
-                    Some(well_behaved_participant(h.as_ref(), c.as_ref(), u).await)
-                } else {
-                    slow_compute_participant(h.as_ref(), c.as_ref(), u).await;
-                    None
-                }
-            })
+    let handles = (0..20).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        let u = format!("user {i}");
+        tokio::spawn(async move {
+            if i % 2 == 0 {
+                Some(well_behaved_participant(h.as_ref(), c.as_ref(), u).await)
+            } else {
+                slow_compute_participant(h.as_ref(), c.as_ref(), u).await;
+                None
+            }
         })
-        .collect::<Vec<_>>();
+    });
 
-    let contributions: Vec<_> = futures::future::join_all(handles.into_iter())
+    let contributions: Vec<_> = futures::future::join_all(handles)
         .await
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
@@ -580,4 +609,41 @@ async fn test_large_lobby_with_misbehaving_users() {
     assert!(!final_transcript.transcripts.is_empty());
     let actual_count = final_transcript.transcripts[0].num_contributions();
     assert_eq!(should_accept_count, actual_count);
+}
+
+#[tokio::test]
+async fn test_contribution_after_lobby_cleanup() {
+    let harness = harness::Builder::new()
+        .set_compute_deadline(Duration::from_millis(2000))
+        .set_lobby_checkin_frequency(Duration::from_millis(50))
+        .set_lobby_checkin_tolerance(Duration::from_millis(50))
+        .set_lobby_flush_interval(Duration::from_millis(100))
+        .run()
+        .await;
+    let http_client = reqwest::Client::new();
+
+    let session_id = login_gh_user(&harness, &http_client, "kustosz".to_string()).await;
+
+    let mut contribution = try_contribute(&harness, &http_client, &session_id).await;
+
+    let entropy = "such an unguessable string, wow!"
+        .bytes()
+        .collect::<Vec<u8>>()
+        .try_into()
+        .unwrap();
+    let entropy = Secret::new(entropy);
+    contribution
+        .add_entropy::<Arkworks>(&entropy)
+        .expect("Adding entropy must be possible");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution,
+        "kustosz",
+    )
+    .await;
 }

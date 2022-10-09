@@ -1,4 +1,4 @@
-use crate::{CeremonyError, Engine, Powers, G1, G2};
+use crate::{CeremonyError, Engine, Powers, Tau, G1, G2};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::instrument;
@@ -20,8 +20,9 @@ impl Contribution {
     }
 
     /// Adds entropy to this contribution. Can be called multiple times.
+    /// The entropy is consumed and the blob is zeroized after use.
     #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
-    pub fn add_entropy<E: Engine>(&mut self, entropy: [u8; 32]) -> Result<(), CeremonyError> {
+    pub fn add_tau<E: Engine>(&mut self, tau: &Tau) -> Result<(), CeremonyError> {
         // Basic checks
         self.sanity_check()?;
 
@@ -30,11 +31,11 @@ impl Contribution {
         E::validate_g2(&self.powers.g2)?;
         E::validate_g2(&[self.pot_pubkey])?;
 
-        // Add entropy
-        E::add_entropy_g1(entropy, &mut self.powers.g1)?;
-        E::add_entropy_g2(entropy, &mut self.powers.g2)?;
-        let mut temp = [G2::one(), self.pot_pubkey];
-        E::add_entropy_g2(entropy, &mut temp)?;
+        // Add powers of tau
+        E::add_tau_g1(tau, &mut self.powers.g1)?;
+        E::add_tau_g2(tau, &mut self.powers.g2)?;
+        let mut temp = [G2::zero(), self.pot_pubkey];
+        E::add_tau_g2(tau, &mut temp)?;
         self.pot_pubkey = temp[1];
 
         Ok(())
@@ -156,9 +157,10 @@ mod test {
 #[cfg(feature = "bench")]
 #[doc(hidden)]
 pub mod bench {
-    use crate::{Arkworks, Transcript};
+    use crate::{Arkworks, Engine, Transcript};
     use criterion::{BatchSize, Criterion};
     use rand::Rng;
+    use secrecy::Secret;
 
     pub fn group(criterion: &mut Criterion) {
         bench_sanity_check(criterion);
@@ -170,8 +172,10 @@ pub mod bench {
             let transcript = Transcript::new(32768, 65);
             b.iter_batched_ref(
                 || {
+                    let entropy = Secret::new(rng.gen());
+                    let tau = Arkworks::generate_tau(&entropy);
                     let mut contribution = transcript.contribution();
-                    contribution.add_entropy::<Arkworks>(rng.gen()).unwrap();
+                    contribution.add_tau::<Arkworks>(&tau).unwrap();
                     contribution
                 },
                 |contribution| contribution.sanity_check().unwrap(),

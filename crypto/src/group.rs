@@ -3,12 +3,40 @@
 use hex_literal::hex;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+use zeroize::Zeroize;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+/// A scalar field element.
+/// Encoding as little-endian 32-byte array.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Zeroize)]
+pub struct F(pub [u8; 32]);
+
+/// A G1 curve point.
+/// Encoded in compressed ZCash format.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Zeroize)]
 pub struct G1(pub [u8; 48]);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+/// A G2 curve point.
+/// Encoded in compressed ZCash format.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Zeroize)]
 pub struct G2(pub [u8; 96]);
+
+impl F {
+    /// The zero element of the group.
+    #[must_use]
+    pub const fn zero() -> Self {
+        Self(hex!(
+            "0000000000000000000000000000000000000000000000000000000000000000"
+        ))
+    }
+
+    /// The default generator for the group.
+    #[must_use]
+    pub const fn one() -> Self {
+        Self(hex!(
+            "0100000000000000000000000000000000000000000000000000000000000000"
+        ))
+    }
+}
 
 impl G1 {
     /// The zero element of the group.
@@ -35,6 +63,18 @@ impl G2 {
     #[must_use]
     pub const fn one() -> Self {
         Self(hex!("93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"))
+    }
+}
+
+impl Serialize for F {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        bytes_to_hex::<_, 32, 66>(serializer, self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for F {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        hex_to_bytes(deserializer).map(Self)
     }
 }
 

@@ -9,17 +9,19 @@
 
 #[cfg(feature = "arkworks")]
 mod arkworks;
-
 #[cfg(feature = "blst")]
 mod blst;
 
-use crate::{CeremonyError, G1, G2};
+use crate::{CeremonyError, F, G1, G2};
+use secrecy::Secret;
 
 #[cfg(feature = "arkworks")]
 pub use self::arkworks::Arkworks;
-
 #[cfg(feature = "blst")]
 pub use self::blst::BLST;
+
+pub type Entropy = Secret<[u8; 32]>;
+pub type Tau = Secret<F>;
 
 pub trait Engine {
     /// Verifies that the given G1 points are valid.
@@ -44,13 +46,14 @@ pub trait Engine {
     /// Verify that `g1` and `g2` contain the same values.
     fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError>;
 
-    /// Derive a secret scalar $τ$ from the given entropy and multiply elements
-    /// of `powers` by powers of $τ$.
-    fn add_entropy_g1(entropy: [u8; 32], powers: &mut [G1]) -> Result<(), CeremonyError>;
+    /// Derive a secret scalar $τ$ from the given entropy.
+    fn generate_tau(entropy: &Entropy) -> Tau;
 
-    /// Derive a secret scalar $τ4 from the given entropy and multiply elements
-    /// of `powers` by powers of $τ$.
-    fn add_entropy_g2(entropy: [u8; 32], powers: &mut [G2]) -> Result<(), CeremonyError>;
+    /// Multiply elements of `powers` by powers of $τ$.
+    fn add_tau_g1(tau: &Tau, powers: &mut [G1]) -> Result<(), CeremonyError>;
+
+    /// Multiply elements of `powers` by powers of $τ$.
+    fn add_tau_g2(tau: &Tau, powers: &mut [G2]) -> Result<(), CeremonyError>;
 }
 
 #[cfg(feature = "bench")]
@@ -74,8 +77,9 @@ pub mod bench {
         bench_verify_pubkey::<E>(criterion, name);
         bench_verify_g1::<E>(criterion, name);
         bench_verify_g2::<E>(criterion, name);
-        bench_add_entropy_g1::<E>(criterion, name);
-        bench_add_entropy_g2::<E>(criterion, name);
+        bench_generate_tau::<E>(criterion, name);
+        bench_add_tau_g1::<E>(criterion, name);
+        bench_add_tau_g2::<E>(criterion, name);
     }
 
     const G1_SIZES: [usize; 5] = [1, 4096, 8192, 16384, 32768];
@@ -89,9 +93,13 @@ pub mod bench {
         arkworks::bench::rand_g2().into()
     }
 
-    fn rand_entropy() -> [u8; 32] {
+    fn rand_entropy() -> Entropy {
         let mut rng = rand::thread_rng();
-        rng.gen()
+        Secret::new(rng.gen())
+    }
+
+    fn rand_tau() -> Tau {
+        Arkworks::generate_tau(&rand_entropy())
     }
 
     fn bench_validate_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
@@ -183,8 +191,19 @@ pub mod bench {
         }
     }
 
-    fn bench_add_entropy_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/add_entropy_g1", name);
+    fn bench_generate_tau<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/generate_tau", name);
+        criterion.bench_function(&id, move |bencher| {
+            bencher.iter_batched_ref(
+                rand_entropy,
+                |entropy| E::generate_tau(entropy),
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    fn bench_add_tau_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/add_tau_g1", name);
         for size in G1_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),
@@ -193,11 +212,11 @@ pub mod bench {
                     bencher.iter_batched_ref(
                         || {
                             (
-                                rand_entropy(),
+                                rand_tau(),
                                 iter::repeat(rand_g1()).take(size).collect::<Vec<_>>(),
                             )
                         },
-                        |(entropy, powers)| E::add_entropy_g1(*entropy, powers).unwrap(),
+                        |(tau, powers)| E::add_tau_g1(tau, powers).unwrap(),
                         BatchSize::LargeInput,
                     );
                 },
@@ -205,8 +224,8 @@ pub mod bench {
         }
     }
 
-    fn bench_add_entropy_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/add_entropy_g2", name);
+    fn bench_add_tau_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
+        let id = format!("engine/{}/add_tau_g2", name);
         for size in G2_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),
@@ -215,11 +234,11 @@ pub mod bench {
                     bencher.iter_batched_ref(
                         || {
                             (
-                                rand_entropy(),
+                                rand_tau(),
                                 iter::repeat(rand_g2()).take(size).collect::<Vec<_>>(),
                             )
                         },
-                        |(entropy, powers)| E::add_entropy_g2(*entropy, powers).unwrap(),
+                        |(tau, powers)| E::add_tau_g2(tau, powers).unwrap(),
                         BatchSize::LargeInput,
                     );
                 },

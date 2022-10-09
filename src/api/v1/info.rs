@@ -33,10 +33,7 @@ pub async fn status(
     Extension(ceremony_status): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
 ) -> StatusResponse {
-    let lobby_size = {
-        let state = lobby_state.read().await;
-        state.participants.len()
-    };
+    let lobby_size = lobby_state.get_lobby_size().await;
 
     let num_contributions = ceremony_status.load(Ordering::Relaxed);
     let sequencer_address = keys.address();

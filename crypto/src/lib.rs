@@ -16,9 +16,9 @@ pub use crate::{
     batch_contribution::BatchContribution,
     batch_transcript::BatchTranscript,
     contribution::Contribution,
-    engine::Engine,
+    engine::{Engine, Entropy, Tau},
     error::{CeremoniesError, CeremonyError, ParseError},
-    group::{G1, G2},
+    group::{F, G1, G2},
     powers::Powers,
     transcript::Transcript,
 };

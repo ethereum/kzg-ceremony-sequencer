@@ -2,10 +2,7 @@ mod ethereum;
 mod github;
 
 use crate::sessions::SessionId;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::RwLock;
 
 pub use self::{
@@ -15,13 +12,9 @@ pub use self::{
 
 pub type SharedAuthState = Arc<RwLock<AuthState>>;
 pub type IdTokenSub = String;
-pub type CsrfToken = String;
 
 #[derive(Default)]
 pub struct AuthState {
-    // CSRF tokens for oAUTH
-    pub csrf_tokens: BTreeSet<CsrfToken>,
-
     // A map between a users unique social id
     // and their session.
     // We use this to check if a user has already entered the lobby
