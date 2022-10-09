@@ -33,6 +33,8 @@ impl Engine for BLST {
     }
 
     fn add_tau_g1(tau: &Tau, powers: &mut [G1]) -> Result<(), CeremonyError> {
+        // TODO: BLST returns all zeros if one of the points is zero.
+
         let taus = powers_of_tau(tau, powers.len());
 
         let powers_projective = powers
@@ -57,6 +59,8 @@ impl Engine for BLST {
     }
 
     fn add_tau_g2(tau: &Tau, powers: &mut [crate::G2]) -> Result<(), crate::CeremonyError> {
+        // TODO: BLST returns all zeros if one of the points is zero.
+
         let taus = powers_of_tau(tau, powers.len());
 
         let powers_projective = powers

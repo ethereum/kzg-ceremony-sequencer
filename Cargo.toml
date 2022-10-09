@@ -59,7 +59,7 @@ small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-t
 ethers-signers = "0.17.0"
 ethers-core = "0.17.0"
 k256 = "0.11.5"
-kzg-ceremony-crypto = { path = "./crypto", features = ["arkworks"] }
+kzg-ceremony-crypto = { path = "./crypto", features = ["arkworks", "blst"] }
 once_cell = "1.8"
 indexmap = "1.9.1"
 clap = { version = "4.0", features = ["derive"] }

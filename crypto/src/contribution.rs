@@ -31,7 +31,7 @@ impl Contribution {
         // Add powers of tau
         E::add_tau_g1(tau, &mut self.powers.g1)?;
         E::add_tau_g2(tau, &mut self.powers.g2)?;
-        let mut temp = [G2::zero(), self.pot_pubkey];
+        let mut temp = [G2::one(), self.pot_pubkey];
         E::add_tau_g2(tau, &mut temp)?;
         self.pot_pubkey = temp[1];
 

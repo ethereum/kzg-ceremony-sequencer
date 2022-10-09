@@ -11,6 +11,7 @@
 mod arkworks;
 #[cfg(feature = "blst")]
 mod blst;
+mod both;
 
 use crate::{CeremonyError, F, G1, G2};
 use secrecy::Secret;
@@ -19,6 +20,7 @@ use secrecy::Secret;
 pub use self::arkworks::Arkworks;
 #[cfg(feature = "blst")]
 pub use self::blst::BLST;
+pub use self::both::Both;
 
 pub type Entropy = Secret<[u8; 32]>;
 pub type Tau = Secret<F>;
@@ -115,6 +117,8 @@ pub mod bench {
         arkworks::bench::group(criterion);
         #[cfg(feature = "blst")]
         blst::bench::group(criterion);
+        #[cfg(all(feature = "arkworks", feature = "blst"))]
+        bench_engine::<Both<Arkworks, BLST>>(criterion, "both");
     }
 
     pub(super) fn bench_engine<E: Engine>(criterion: &mut Criterion, name: &str) {
