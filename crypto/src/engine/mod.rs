@@ -253,15 +253,15 @@ mod tests {
     use proptest::{proptest, strategy::Strategy};
 
     pub fn arb_f() -> impl Strategy<Value = F> {
-        arkworks::test::arb_fr().prop_map(|fr| F::from(fr))
+        arkworks::test::arb_fr().prop_map(F::from)
     }
 
     pub fn arb_g1() -> impl Strategy<Value = G1> {
-        arkworks::test::arb_g1().prop_map(|p| G1::from(p))
+        arkworks::test::arb_g1().prop_map(G1::from)
     }
 
     pub fn arb_g2() -> impl Strategy<Value = G2> {
-        arkworks::test::arb_g2().prop_map(|p| G2::from(p))
+        arkworks::test::arb_g2().prop_map(G2::from)
     }
 
     #[test]

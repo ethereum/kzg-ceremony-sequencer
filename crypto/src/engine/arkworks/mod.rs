@@ -204,7 +204,7 @@ impl From<Fr> for F {
         assert!(le_bytes.len() == 32);
         let mut f = [0u8; 32];
         f.copy_from_slice(&le_bytes[..]);
-        F(f)
+        Self(f)
     }
 }
 
@@ -212,7 +212,7 @@ impl From<Fr> for F {
 pub mod test {
     use super::*;
     use ark_ec::ProjectiveCurve;
-    use ark_ff::{BigInteger256, FpParameters};
+    use ark_ff::BigInteger256;
     use proptest::{arbitrary::any, strategy::Strategy};
     use ruint::{aliases::U256, uint};
 

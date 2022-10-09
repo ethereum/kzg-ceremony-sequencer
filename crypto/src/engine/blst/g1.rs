@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 use blst::{
     blst_fr, blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1,
     blst_p1_from_affine, blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress,
@@ -87,16 +89,15 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
     let mut ret = blst_p1_affine::default();
 
     unsafe {
-        let mut scratch: Vec<u64> =
-            Vec::with_capacity(blst_p1s_mult_pippenger_scratch_sizeof(npoints) / 8);
-        scratch.set_len(scratch.capacity());
+        let mut scratch =
+            vec![0_u64; blst_p1s_mult_pippenger_scratch_sizeof(npoints) / size_of::<u64>()];
         blst_p1s_mult_pippenger(
             &mut msm_result,
             bases.as_ptr(),
             npoints,
             scalars.as_ptr(),
             256,
-            &mut scratch[0],
+            scratch.as_mut_ptr(),
         );
         blst_p1_to_affine(&mut ret, &msm_result);
     }

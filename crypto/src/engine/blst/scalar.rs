@@ -6,7 +6,6 @@ use blst::{
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use secrecy::{ExposeSecret, Secret};
 
 pub fn random_fr(entropy: [u8; 32]) -> blst_fr {
     // Use ChaCha20 CPRNG
@@ -35,6 +34,7 @@ pub fn fr_mul(a: &blst_fr, b: &blst_fr) -> blst_fr {
     out
 }
 
+#[allow(dead_code)]
 pub fn fr_zero() -> blst_fr {
     fr_from_scalar(&scalar_from_u64(0u64))
 }
@@ -72,7 +72,7 @@ impl From<&F> for blst_fr {
     fn from(n: &F) -> Self {
         // TODO: Zeroize the temps
         let mut scalar = blst_scalar::default();
-        let mut ret = blst_fr::default();
+        let mut ret = Self::default();
         unsafe {
             blst_scalar_from_lendian(&mut scalar, n.0.as_ptr());
             blst_fr_from_scalar(&mut ret, &scalar);
@@ -89,6 +89,6 @@ impl From<&blst_fr> for F {
             blst_scalar_from_fr(&mut scalar, n);
             blst_lendian_from_scalar(ret.as_mut_ptr(), &scalar);
         }
-        F(ret)
+        Self(ret)
     }
 }

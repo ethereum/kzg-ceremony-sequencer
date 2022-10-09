@@ -20,7 +20,7 @@ use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
 };
-use secrecy::{ExposeSecret, Secret, SecretVec};
+use secrecy::{ExposeSecret, Secret};
 use std::iter;
 
 pub struct BLST;
