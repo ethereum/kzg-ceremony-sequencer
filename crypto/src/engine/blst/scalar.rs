@@ -1,6 +1,6 @@
 use crate::F;
 use blst::{
-    blst_fr, blst_fr_from_scalar, blst_fr_mul, blst_lendian_from_scalar, blst_scalar,
+    blst_fr, blst_fr_add, blst_fr_from_scalar, blst_fr_mul, blst_lendian_from_scalar, blst_scalar,
     blst_scalar_from_be_bytes, blst_scalar_from_fr, blst_scalar_from_lendian,
     blst_scalar_from_uint64,
 };
@@ -26,6 +26,15 @@ pub fn random_fr(entropy: [u8; 32]) -> blst_fr {
     ret
 }
 
+#[allow(dead_code)] // Currently only used in tests
+pub fn fr_add(a: &blst_fr, b: &blst_fr) -> blst_fr {
+    let mut out = blst_fr::default();
+    unsafe {
+        blst_fr_add(&mut out, a, b);
+    }
+    out
+}
+
 pub fn fr_mul(a: &blst_fr, b: &blst_fr) -> blst_fr {
     let mut out = blst_fr::default();
     unsafe {
@@ -34,7 +43,7 @@ pub fn fr_mul(a: &blst_fr, b: &blst_fr) -> blst_fr {
     out
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Currently only used in tests
 pub fn fr_zero() -> blst_fr {
     fr_from_scalar(&scalar_from_u64(0u64))
 }
