@@ -7,6 +7,7 @@ use crate::common::{
 use ethers_core::types::{Address, Signature};
 use http::StatusCode;
 use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript, G2};
+use secrecy::Secret;
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use url::Url;
@@ -354,8 +355,9 @@ async fn test_contribution_happy_path() {
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
     contribute_successfully(
@@ -421,8 +423,9 @@ async fn test_double_contribution() {
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
     // First, successful contribution;
@@ -494,8 +497,9 @@ async fn well_behaved_participant(
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
     contribute_successfully(harness, client, &session_id, &contribution, &name).await;
     contribution
@@ -527,11 +531,12 @@ async fn slow_compute_participant(harness: &Harness, client: &reqwest::Client, n
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
 
     tokio::time::sleep(harness.options.lobby.compute_deadline).await;
 
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
     let response = request_contribute(harness, client, &session_id, &contribution).await;
@@ -626,8 +631,9 @@ async fn test_contribution_after_lobby_cleanup() {
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap();
+    let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(entropy)
+        .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
     tokio::time::sleep(Duration::from_millis(300)).await;
