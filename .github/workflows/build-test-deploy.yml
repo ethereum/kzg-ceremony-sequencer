@@ -50,12 +50,12 @@ jobs:
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --locked --all-features --all-targets
+          args: --locked --workspace --all-features --all-targets
       - name: Check docs
         uses: actions-rs/cargo@v1
         with:
           command: doc
-          args: --locked --all-features --no-deps --document-private-items
+          args: --locked --workspace --all-features --no-deps --document-private-items
 
   test:
     name: Test
@@ -75,14 +75,6 @@ jobs:
         uses: Swatinem/rust-cache@v1
         with:
           key: cache-v1
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: nightly
-      - name: Generate RSA Test Keys
-        run: |
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.key
-          openssl rsa -in private.key -pubout -out publickey.pem
       # Cargo doc test is not included in `--all-targets`
       # See <https://github.com/rust-lang/cargo/issues/6669>
       # Cargo doc test also doesn't support `--no-run`, so we run it but
@@ -90,12 +82,12 @@ jobs:
       # Cargo doc test also fails if there are no library targets.
       - name: Build tests
         run: |
-          cargo test --locked --all-features --all-targets --no-run
-          cargo test --locked --all-features --doc -- --help
+          cargo test --locked --workspace --all-features --all-targets --no-run
+          cargo test --locked --workspace --all-features --doc -- --help
       - name: Run tests
         run: |
-          cargo test --locked --all-features --all-targets -- --nocapture
-          cargo test --locked --all-features --doc -- --nocapture
+          cargo test --locked --workspace --all-features --all-targets -- --nocapture
+          cargo test --locked --workspace --all-features --doc -- --nocapture
 
   codecov:
     # See <https://doc.rust-lang.org/nightly/unstable-book/compiler-flags/source-based-code-coverage.html>
@@ -133,12 +125,12 @@ jobs:
           openssl rsa -in private.key -pubout -out publickey.pem
       - name: Build tests with coverage
         run: |
-          cargo test --locked --all-features --all-targets --no-fail-fast --no-run
-          cargo test --locked --all-features --doc --no-fail-fast -- --help
+          cargo test --locked --workspace --all-features --all-targets --no-fail-fast --no-run
+          cargo test --locked --workspace --all-features --doc --no-fail-fast -- --help
       - name: Run tests with coverage
         run: |
-          cargo test --locked --all-features --all-targets --no-fail-fast -- --nocapture
-          cargo test --locked --all-features --doc --no-fail-fast
+          cargo test --locked --workspace --all-features --all-targets --no-fail-fast -- --nocapture
+          cargo test --locked --workspace --all-features --doc --no-fail-fast
       - name: Merge execution traces
         run: cargo profdata -- merge -sparse $(find . -iname "profile-*.profraw") -o profile.profdata
       - name: Export to lcov format for codecov
@@ -150,7 +142,7 @@ jobs:
             $(
               for file in
                 $(
-                  cargo test --locked --all-features --all-targets
+                  cargo test --locked --workspace --all-features --all-targets
                     --no-fail-fast --no-run --message-format=json
                     | jq -r "select(.profile.test == true) | .filenames[]"
                     | grep -v dSYM -
