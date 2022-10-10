@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Display, str::FromStr};
 use thiserror::Error;
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Identity {
     None,
     Ethereum { address: [u8; 20] },
@@ -41,13 +43,14 @@ impl FromStr for Identity {
         match parts.next() {
             Some("eth") => {
                 let address = parts.next().ok_or(IdentityError::MissingField)?;
-                parts
-                    .next()
-                    .is_some()
-                    .then(|| ())
-                    .ok_or(IdentityError::TooManyFields)?;
+                if parts.next().is_some() {
+                    return Err(IdentityError::TooManyFields);
+                }
 
-                let address = hex::decode(address)
+                if address.len() != 42 || &address[..2] != "0x" {
+                    return Err(IdentityError::InvalidEthereumAddress);
+                }
+                let address = hex::decode(&address[2..])
                     .map_err(|_| IdentityError::InvalidEthereumAddress)?
                     .try_into()
                     .map_err(|_| IdentityError::InvalidEthereumAddress)?;
@@ -57,19 +60,78 @@ impl FromStr for Identity {
             Some("git") => {
                 let id = parts.next().ok_or(IdentityError::MissingField)?;
                 let username = parts.next().ok_or(IdentityError::MissingField)?;
-                parts
-                    .next()
-                    .is_some()
-                    .then(|| ())
-                    .ok_or(IdentityError::TooManyFields)?;
+                if parts.next().is_some() {
+                    return Err(IdentityError::TooManyFields);
+                }
 
                 let id = id.parse().map_err(|_| IdentityError::InvalidGithubId)?;
                 let username = username.to_string();
 
                 Ok(Identity::Github { id, username })
             }
-            Some(_) => Err(IdentityError::UnsupportedType),
-            None => Ok(Identity::None),
+            Some("") => {
+                if parts.next().is_some() {
+                    return Err(IdentityError::TooManyFields);
+                }
+                Ok(Identity::None)
+            }
+            _ => Err(IdentityError::UnsupportedType),
         }
+    }
+}
+
+impl Serialize for Identity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Identity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_none() {
+        let identity = Identity::None;
+        assert_eq!(identity.to_string(), "");
+        assert_eq!(identity, "".parse().unwrap());
+    }
+
+    #[test]
+    fn test_eth() {
+        let identity = Identity::Ethereum { address: [0; 20] };
+        assert_eq!(
+            identity.to_string(),
+            "eth|0x0000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            identity,
+            "eth|0x0000000000000000000000000000000000000000"
+                .parse()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_git() {
+        let identity = Identity::Github {
+            id:       123,
+            username: "username".to_string(),
+        };
+        assert_eq!(identity.to_string(), "git|123|username");
+        assert_eq!(identity, "git|123|username".parse().unwrap());
     }
 }
