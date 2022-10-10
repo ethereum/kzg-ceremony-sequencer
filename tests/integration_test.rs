@@ -480,7 +480,10 @@ async fn test_double_contribution() {
 
 #[tokio::test]
 async fn test_double_contribution_when_allowed() {
-    let harness = harness::Builder::new().allow_multi_contribution().run().await;
+    let harness = harness::Builder::new()
+        .allow_multi_contribution()
+        .run()
+        .await;
     let http_client = reqwest::Client::new();
     let auth_code = harness.create_valid_user("kustosz".to_string()).await;
 
@@ -523,7 +526,7 @@ async fn test_double_contribution_when_allowed() {
         &contribution2,
         "kustosz",
     )
-        .await;
+    .await;
     let transcript = harness.read_transcript_file().await;
     assert_includes_contribution(&transcript, &contribution1);
     assert_includes_contribution(&transcript, &contribution2);
