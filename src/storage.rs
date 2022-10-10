@@ -32,7 +32,7 @@ pub struct Options {
     /// By default, it is a file named `storage.db` in the current directory.
     /// You can use `sqlite::memory:` to use an in-memory database.
     #[clap(long, env, default_value = "sqlite://storage.db")]
-    database_url: String,
+    pub database_url: String,
 
     /// Allow creation or migration of the database schema.
     /// When set to false the process will terminate if the database is not

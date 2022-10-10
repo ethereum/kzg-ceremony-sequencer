@@ -70,6 +70,17 @@ async fn get_and_validate_csrf_token(harness: &Harness, redirect_url: Option<&st
     csrf_for_eth
 }
 
+fn entropy_from_str(seed: &str) -> Secret<[u8; 32]> {
+    let padding = "padding".repeat(5);
+    let entropy = format!("{seed}{padding}")
+        .bytes()
+        .take(32)
+        .collect::<Vec<u8>>()
+        .try_into()
+        .unwrap();
+    Secret::new(entropy)
+}
+
 async fn request_gh_callback(
     harness: &Harness,
     http_client: &reqwest::Client,
@@ -465,6 +476,57 @@ async fn test_double_contribution() {
         transcript_with_first_contrib, transcript_after_attempts,
         "must not change the transcript again"
     )
+}
+
+#[tokio::test]
+async fn test_double_contribution_when_allowed() {
+    let harness = harness::Builder::new().allow_multi_contribution().run().await;
+    let http_client = reqwest::Client::new();
+    let auth_code = harness.create_valid_user("kustosz".to_string()).await;
+
+    let csrf = get_and_validate_csrf_token(&harness, None).await;
+    let session_id = extract_session_id_from_auth_response(
+        request_gh_callback(&harness, &http_client, auth_code, &csrf).await,
+    )
+    .await;
+
+    let mut contribution1 = try_contribute(&harness, &http_client, &session_id).await;
+
+    contribution1
+        .add_entropy::<Arkworks>(&entropy_from_str("such an unguessable string, wow!"))
+        .expect("Adding entropy must be possible");
+
+    contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution1,
+        "kustosz",
+    )
+    .await;
+
+    let new_csrf = get_and_validate_csrf_token(&harness, None).await;
+    let session_id = extract_session_id_from_auth_response(
+        request_gh_callback(&harness, &http_client, auth_code, &new_csrf).await,
+    )
+    .await;
+
+    let mut contribution2 = try_contribute(&harness, &http_client, &session_id).await;
+    contribution2
+        .add_entropy::<Arkworks>(&entropy_from_str("another unguessable string, wow!"))
+        .expect("Adding entropy must be possible");
+
+    contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution2,
+        "kustosz",
+    )
+        .await;
+    let transcript = harness.read_transcript_file().await;
+    assert_includes_contribution(&transcript, &contribution1);
+    assert_includes_contribution(&transcript, &contribution2);
 }
 
 async fn well_behaved_participant(
