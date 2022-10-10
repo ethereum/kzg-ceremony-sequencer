@@ -56,11 +56,13 @@ pub mod bench {
         batch_transcript::bench::group(criterion);
     }
 
+    #[must_use]
     pub fn rand_entropy() -> Entropy {
         let mut rng = rand::thread_rng();
         Secret::new(rng.gen())
     }
 
+    #[must_use]
     pub fn rand_tau() -> Tau {
         Arkworks::generate_tau(&rand_entropy())
     }

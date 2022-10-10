@@ -109,7 +109,7 @@ pub mod bench {
                     || {
                         (transcript.clone(), {
                             let mut contribution = transcript.contribution();
-                            contribution.add_entropy::<E>(&rand_entropy());
+                            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
                             contribution
                         })
                     },
