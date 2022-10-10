@@ -20,6 +20,7 @@ use tracing::{info, warn};
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 #[group(skip)]
 pub struct Options {
+    /// Ethereum private key to use for signing receipts.
     #[clap(long, env)]
     pub signing_key: Option<String>,
 }

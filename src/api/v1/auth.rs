@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use thiserror::Error;
 use tokio::time::Instant;
+use tracing::warn;
 use url::Url;
 
 // These are the providers that are supported
@@ -343,6 +344,7 @@ pub async fn github_callback(
         user,
         payload.redirect_to,
         AuthProvider::Github,
+        options.multi_contribution,
     )
     .await
 }
@@ -437,6 +439,7 @@ pub async fn eth_callback(
         user_data,
         payload.redirect_to,
         AuthProvider::Ethereum,
+        options.multi_contribution,
     )
     .await
 }
@@ -476,6 +479,7 @@ async fn post_authenticate(
     user_data: AuthenticatedUser,
     redirect_to: Option<String>,
     auth_provider: AuthProvider,
+    multi_contribution: bool,
 ) -> Result<UserVerifiedResponse, AuthError> {
     // Check if they have already contributed
     match storage.has_contributed(&user_data.uid).await {
@@ -486,10 +490,14 @@ async fn post_authenticate(
             })
         }
         Ok(true) => {
-            return Err(AuthError {
-                redirect: redirect_to.clone(),
-                payload:  AuthErrorPayload::UserAlreadyContributed,
-            })
+            if multi_contribution {
+                warn!(uid = %user_data.uid, "User has already contributed, accepting multiple.");
+            } else {
+                return Err(AuthError {
+                    redirect: redirect_to.clone(),
+                    payload:  AuthErrorPayload::UserAlreadyContributed,
+                });
+            }
         }
         Ok(false) => (),
     }
