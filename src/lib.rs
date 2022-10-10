@@ -40,7 +40,7 @@ use std::{
 };
 use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
-use tracing::info;
+use tracing::{debug, info};
 use url::Url;
 
 mod api;
@@ -105,6 +105,8 @@ pub struct Options {
 
 #[allow(clippy::missing_errors_doc)]
 pub async fn async_main(options: Options) -> EyreResult<()> {
+    debug!(?options, "Options");
+
     let addr = options.server.clone();
     let server = start_server(options).await?;
     info!("Listening on http://{}{}", server.local_addr(), addr.path());

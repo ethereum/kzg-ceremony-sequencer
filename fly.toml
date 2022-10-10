@@ -13,6 +13,7 @@ processes = []
     destination = "/data"
 
 [env]
+    VERBOSE="3"
     GH_REDIRECT_URL="https://kzg-ceremony-sequencer-dev.fly.dev/auth/callback/github"
     ETH_REDIRECT_URL="https://kzg-ceremony-sequencer-dev.fly.dev/auth/callback/eth"
     ETH_MIN_NONCE="0"
@@ -21,12 +22,14 @@ processes = []
     LOBBY_CHECKIN_FREQUENCY="30"
     LOBBY_CHECKIN_TOLERANCE="15"
 
-# Secrets
-# - ETH_RPC_URL       (i.e. Alchemy)
-# - GH_CLIENT_ID      (Register at <https://github.com/settings/applications/new>)
-# - GH_CLIENT_SECRET
-# - ETH_CLIENT_ID     (Register at <https://etherscan.io/myapikey>)
-# - ETH_CLIENT_SECRET
+# ❯ fly secrets list
+# NAME                    DIGEST                  CREATED AT
+# ETH_CLIENT_ID           7db86bc22f8eb264        2022-09-29T17:04:36Z
+# ETH_CLIENT_SECRET       c763b2cffa065b48        2022-09-29T17:05:16Z
+# ETH_RPC_URL             a8398a69ef7ec386        2022-09-23T15:29:47Z
+# GH_CLIENT_ID            4d65ba30fd35bf64        2022-09-23T15:33:10Z
+# GH_CLIENT_SECRET        8112a28c3c5544c1        2022-09-23T15:33:38Z
+
 
 [experimental]
     allowed_public_ports = []
