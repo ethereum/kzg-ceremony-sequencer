@@ -20,7 +20,8 @@ pub struct Options {
     #[clap(long, env, value_parser=duration_from_str, default_value="180")]
     pub compute_deadline: Duration,
 
-    /// How often participants should ping the server to keep their session alive in seconds.
+    /// How often participants should ping the server to keep their session
+    /// alive in seconds.
     #[clap(long, env, value_parser=duration_from_str, default_value="30")]
     pub lobby_checkin_frequency: Duration,
 
