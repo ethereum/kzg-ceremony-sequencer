@@ -13,7 +13,10 @@ use axum::{
 };
 use chrono::DateTime;
 use http::StatusCode;
-use oauth2::{reqwest::async_http_client, AuthorizationCode, CsrfToken, Scope, TokenResponse};
+use oauth2::{
+    reqwest::async_http_client, AuthorizationCode, CsrfToken, RequestTokenError, Scope,
+    TokenResponse,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use thiserror::Error;
@@ -303,9 +306,18 @@ pub async fn github_callback(
         .exchange_code(AuthorizationCode::new(payload.code))
         .request_async(async_http_client)
         .await
-        .map_err(|_| AuthError {
-            redirect: payload.redirect_to.clone(),
-            payload:  AuthErrorPayload::InvalidAuthCode,
+        .map_err(|e| {
+            match e {
+                RequestTokenError::Parse(_, bytes) => {
+                    let response_str = String::from_utf8(bytes);
+                    warn!("Unexpected Github Token Exchange response: {response_str:?}")
+                }
+                _ => warn!("Github Token Exchange Error: {e}"),
+            };
+            AuthError {
+                redirect: payload.redirect_to.clone(),
+                payload:  AuthErrorPayload::InvalidAuthCode,
+            }
         })?;
 
     let response = http_client
