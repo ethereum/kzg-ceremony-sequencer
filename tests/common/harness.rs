@@ -163,6 +163,16 @@ impl Builder {
         self
     }
 
+    pub fn allow_multi_contribution(mut self) -> Self {
+        self.options.multi_contribution = true;
+        self
+    }
+
+    pub fn set_db_url(mut self, db_url: String) -> Self {
+        self.options.storage.database_url = db_url;
+        self
+    }
+
     pub async fn run(self) -> Harness {
         Harness::run(self.options).await
     }
