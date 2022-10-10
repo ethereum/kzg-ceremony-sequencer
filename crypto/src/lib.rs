@@ -10,6 +10,7 @@ mod engine;
 mod error;
 mod group;
 mod powers;
+mod signature;
 mod transcript;
 
 pub use crate::{
