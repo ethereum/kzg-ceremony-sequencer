@@ -16,6 +16,10 @@ processes = []
     GH_REDIRECT_URL="https://kzg-ceremony-sequencer-dev.fly.dev/auth/callback/github"
     ETH_REDIRECT_URL="https://kzg-ceremony-sequencer-dev.fly.dev/auth/callback/eth"
     ETH_MIN_NONCE="0"
+    MULTI_MODE="true"
+    COMPUTE_DEADLINE="600"
+    LOBBY_CHECKIN_FREQUENCY="30"
+    LOBBY_CHECKIN_TOLERANCE="15"
 
 # Secrets
 # - ETH_RPC_URL       (i.e. Alchemy)

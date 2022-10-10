@@ -78,12 +78,21 @@ pub struct Options {
     #[clap(flatten)]
     pub ethereum: EthAuthOptions,
 
+    /// Allow multiple contributions from the same participant.
+    #[clap(long, env, default_value = "false")]
+    pub multi_contribution: bool,
+
+    /// Storage location for the ceremony transcript json file.
     #[clap(long, env, default_value = "./transcript.json")]
     pub transcript_file: PathBuf,
 
+    /// Temporary storage location for transcript writing.
     #[clap(long, env, default_value = "./transcript.json.next")]
     pub transcript_in_progress_file: PathBuf,
 
+    /// Size of the ceremony in number of G1 and G2 points. Multiple ceremonies
+    /// can be specified by separating them with a colon. The format is
+    /// `G1_POINTS,G2_POINTS[:G1_POINTS,G2_POINTS]*`.
     #[clap(long, env, value_parser=CeremonySizes::parse_from_cmd, default_value=DEFAULT_CEREMONY_SIZES)]
     pub ceremony_sizes: CeremonySizes,
 
