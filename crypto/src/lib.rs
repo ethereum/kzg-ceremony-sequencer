@@ -45,8 +45,23 @@ pub type DefaultEngine = BLST;
 pub mod bench {
     use super::*;
     use criterion::Criterion;
+    use rand::Rng;
+    use secrecy::Secret;
+
+    pub const BATCH_SIZE: [(usize, usize); 4] = [(4096, 65), (8192, 65), (16384, 65), (32768, 65)];
 
     pub fn group(criterion: &mut Criterion) {
         engine::bench::group(criterion);
+        batch_contribution::bench::group(criterion);
+        batch_transcript::bench::group(criterion);
+    }
+
+    pub fn rand_entropy() -> Entropy {
+        let mut rng = rand::thread_rng();
+        Secret::new(rng.gen())
+    }
+
+    pub fn rand_tau() -> Tau {
+        Arkworks::generate_tau(&rand_entropy())
     }
 }

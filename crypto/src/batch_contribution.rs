@@ -46,3 +46,47 @@ fn derive_taus<E: Engine>(entropy: &Entropy, size: usize) -> Vec<Tau> {
         })
         .collect()
 }
+
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench {
+    use super::*;
+    use crate::{
+        bench::{rand_entropy, BATCH_SIZE},
+        Arkworks, BatchTranscript, Both, BLST,
+    };
+    use criterion::{BatchSize, Criterion};
+
+    pub fn group(criterion: &mut Criterion) {
+        #[cfg(feature = "arkworks")]
+        bench_add_tau::<Arkworks>(criterion, "arkworks");
+        #[cfg(feature = "blst")]
+        bench_add_tau::<BLST>(criterion, "blst");
+        #[cfg(all(feature = "arkworks", feature = "blst"))]
+        bench_add_tau::<Both<Arkworks, BLST>>(criterion, "both");
+    }
+
+    fn bench_add_tau<E: Engine>(criterion: &mut Criterion, name: &str) {
+        // Create a non-trivial transcript
+        let transcript = {
+            let mut transcript = BatchTranscript::new(BATCH_SIZE.iter());
+            let mut contribution = transcript.contribution();
+            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
+            transcript.verify_add::<E>(contribution).unwrap();
+            transcript
+        };
+
+        criterion.bench_function(
+            &format!("batch_contribution/{}/add_tau", name),
+            move |bencher| {
+                bencher.iter_batched(
+                    || (transcript.contribution(), rand_entropy()),
+                    |(mut contribution, entropy)| {
+                        contribution.add_entropy::<E>(&entropy).unwrap();
+                    },
+                    BatchSize::LargeInput,
+                );
+            },
+        );
+    }
+}
