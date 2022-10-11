@@ -307,13 +307,12 @@ pub async fn github_callback(
         .request_async(async_http_client)
         .await
         .map_err(|e| {
-            match e {
-                RequestTokenError::Parse(_, bytes) => {
-                    let response_str = String::from_utf8(bytes);
-                    warn!("Unexpected Github Token Exchange response: {response_str:?}")
-                }
-                _ => warn!("Github Token Exchange Error: {e}"),
-            };
+            if let RequestTokenError::Parse(_, bytes) = e {
+                let response_str = String::from_utf8(bytes);
+                warn!("Unexpected Github Token Exchange response: {response_str:?}");
+            } else {
+                warn!("Github Token Exchange Error: {e}");
+            }
             AuthError {
                 redirect: payload.redirect_to.clone(),
                 payload:  AuthErrorPayload::InvalidAuthCode,

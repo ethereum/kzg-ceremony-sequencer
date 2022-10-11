@@ -72,3 +72,53 @@ impl BatchTranscript {
         Ok(())
     }
 }
+
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench {
+    use super::*;
+    use crate::{
+        bench::{rand_entropy, BATCH_SIZE},
+        Arkworks, Both, BLST,
+    };
+    use criterion::{BatchSize, Criterion};
+
+    pub fn group(criterion: &mut Criterion) {
+        #[cfg(feature = "arkworks")]
+        bench_verify_add::<Arkworks>(criterion, "arkworks");
+        #[cfg(feature = "blst")]
+        bench_verify_add::<BLST>(criterion, "blst");
+        #[cfg(all(feature = "arkworks", feature = "blst"))]
+        bench_verify_add::<Both<Arkworks, BLST>>(criterion, "both");
+    }
+
+    fn bench_verify_add<E: Engine>(criterion: &mut Criterion, name: &str) {
+        // Create a non-trivial transcript
+        let transcript = {
+            let mut transcript = BatchTranscript::new(BATCH_SIZE.iter());
+            let mut contribution = transcript.contribution();
+            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
+            transcript.verify_add::<E>(contribution).unwrap();
+            transcript
+        };
+
+        criterion.bench_function(
+            &format!("batch_transcript/{}/verify_add", name),
+            move |bencher| {
+                bencher.iter_batched(
+                    || {
+                        (transcript.clone(), {
+                            let mut contribution = transcript.contribution();
+                            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
+                            contribution
+                        })
+                    },
+                    |(mut transcript, contribution)| {
+                        transcript.verify_add::<E>(contribution).unwrap();
+                    },
+                    BatchSize::LargeInput,
+                );
+            },
+        );
+    }
+}

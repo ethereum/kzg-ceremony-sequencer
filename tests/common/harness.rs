@@ -168,6 +168,7 @@ impl Builder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn set_db_url(mut self, db_url: String) -> Self {
         self.options.storage.database_url = db_url;
         self
