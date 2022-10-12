@@ -210,11 +210,11 @@ fn powers_of_tau(tau: &Tau, n: usize) -> Vec<blst_scalar> {
 
 fn random_factors(n: usize) -> (Vec<blst_fr>, blst_fr) {
     let mut rng = rand::thread_rng();
-    let mut entropy = [0u8; 32];
-    rng.fill(&mut entropy);
 
     let mut sum = blst_fr::default();
     let factors = iter::from_fn(|| {
+        let mut entropy = [0u8; 32];
+        rng.fill(&mut entropy);
         let r = random_fr(entropy);
         unsafe { blst_fr_add(&mut sum, &sum, &r) };
         Some(r)
