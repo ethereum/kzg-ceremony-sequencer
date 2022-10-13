@@ -5,31 +5,17 @@
 mod identity;
 
 use crate::G1;
-use ethers;
 
+#[allow(unused)]
 pub enum BlsSignature {
     None,
     G1(G1),
     String(String),
 }
 
+#[allow(unused)]
 pub enum EcdsaSignature {
     None,
     G1(G1),
     String(String),
-}
-
-
-#[derive(Debug, Clone, Eip712, EthAbiType)]
-#[eip712(
-    name = "Radicle",
-    version = "1",
-    chain_id = 1,
-    verifying_contract = "0x0000000000000000000000000000000000000001"
-)]
-pub struct Puzzle {
-    pub organization: H160,
-    pub contributor: H160,
-    pub commit: String,
-    pub project: String,
 }

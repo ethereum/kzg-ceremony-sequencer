@@ -21,8 +21,6 @@ pub enum IdentityError {
     InvalidEthereumAddress,
     #[error("Invalid Github ID")]
     InvalidGithubId,
-    #[error("Invalid Github username")]
-    InvalidGithubUsername,
 }
 
 impl Display for Identity {
