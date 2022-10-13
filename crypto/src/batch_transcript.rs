@@ -1,4 +1,7 @@
-use crate::{BatchContribution, CeremoniesError, Engine, Transcript};
+use crate::{
+    signature::{identity::Identity, EcdsaSignature},
+    BatchContribution, CeremoniesError, Engine, Transcript,
+};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
@@ -6,7 +9,9 @@ use tracing::instrument;
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BatchTranscript {
-    pub transcripts: Vec<Transcript>,
+    pub transcripts:                  Vec<Transcript>,
+    pub participant_ids:              Vec<Identity>,
+    pub participant_ecdsa_signatures: Vec<EcdsaSignature>,
 }
 
 impl BatchTranscript {
@@ -15,10 +20,12 @@ impl BatchTranscript {
         I: IntoIterator<Item = &'a (usize, usize)> + 'a,
     {
         Self {
-            transcripts: iter
+            transcripts:                  iter
                 .into_iter()
                 .map(|(num_g1, num_g2)| Transcript::new(*num_g1, *num_g2))
                 .collect(),
+            participant_ids:              vec![],
+            participant_ecdsa_signatures: vec![],
         }
     }
 
