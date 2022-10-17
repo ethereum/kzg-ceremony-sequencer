@@ -38,6 +38,12 @@ pub fn hex_to_bytes<'de, D: Deserializer<'de>, const N: usize>(
     }
 }
 
+pub fn optional_hex_to_bytes<'de, D: Deserializer<'de>, const N: usize>(
+    deserializer: D,
+) -> Result<Option<[u8; N]>, D::Error> {
+    deserializer.deserialize_option(OptionalHexStrVisitor::<N>)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum HexDecodingError {
     #[error("input length must equal {0}")]
@@ -107,5 +113,43 @@ impl<'de, const N: usize> de::Visitor<'de> for ByteVisitor<N> {
         let mut result = [0_u8; N];
         result.copy_from_slice(value);
         Ok(result)
+    }
+}
+
+pub struct OptionalHexStrVisitor<const N: usize>;
+
+impl<'de, const N: usize> de::Visitor<'de> for OptionalHexStrVisitor<N> {
+    type Value = Option<[u8; N]>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "a {N} byte hex string starting with `0x`, an empty string, or no value"
+        )
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        if v.is_empty() {
+            Ok(None)
+        } else {
+            hex_str_to_bytes::<N>(v).map_err(E::custom).map(Some)
+        }
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(None)
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(self)
     }
 }

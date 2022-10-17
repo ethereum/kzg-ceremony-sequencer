@@ -5,25 +5,51 @@
 pub mod identity;
 
 use crate::{
-    hex_format::{bytes_to_hex, hex_str_to_bytes},
+    hex_format::{bytes_to_hex, optional_hex_to_bytes},
     G1, G2,
 };
 use ethers::types::transaction::eip712::{EIP712Domain, Eip712, Eip712Error, TypedData};
-use serde::{de, de::Error, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
-use std::fmt::Formatter;
 
-#[allow(unused)]
-pub enum BlsSignature {
-    None,
-    G1(G1),
-    String(String),
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct BlsSignature(Option<G1>);
+
+impl BlsSignature {
+    pub fn empty() -> Self {
+        Self(None)
+    }
+}
+
+impl Serialize for BlsSignature {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self.0 {
+            Some(sig) => sig.serialize(serializer),
+            None => serializer.serialize_str(""),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BlsSignature {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        optional_hex_to_bytes::<_, 48>(deserializer)
+            .map(|bytes_opt| BlsSignature(bytes_opt.map(G1)))
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum EcdsaSignature {
-    None,
-    Signature(ethers::types::Signature),
+pub struct EcdsaSignature(Option<ethers::types::Signature>);
+
+impl EcdsaSignature {
+    pub fn empty() -> Self {
+        Self(None)
+    }
 }
 
 impl Serialize for EcdsaSignature {
@@ -31,12 +57,12 @@ impl Serialize for EcdsaSignature {
     where
         S: Serializer,
     {
-        match self {
-            Self::None => serializer.serialize_str(""),
-            Self::Signature(sig) => {
+        match self.0 {
+            Some(sig) => {
                 let bytes = <[u8; 65]>::from(sig);
                 bytes_to_hex::<_, 65, 132>(serializer, bytes)
             }
+            None => serializer.serialize_str(""),
         }
     }
 }
@@ -46,36 +72,12 @@ impl<'de> Deserialize<'de> for EcdsaSignature {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_str(EcdsaVisitor)
-    }
-}
-
-struct EcdsaVisitor;
-
-impl<'de> de::Visitor<'de> for EcdsaVisitor {
-    type Value = EcdsaSignature;
-
-    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-        write!(
-            formatter,
-            "expecting a 65 byte hex string starting with `0x`"
-        )
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
-        if v.is_empty() {
-            Ok(EcdsaSignature::None)
-        } else {
-            hex_str_to_bytes::<65>(v).map_err(E::custom).map(|bytes| {
-                EcdsaSignature::Signature(
-                    ethers::types::Signature::try_from(&bytes[..])
-                        .expect("Impossible, input is guaranteed correct"),
-                )
-            })
-        }
+        optional_hex_to_bytes::<_, 65>(deserializer).map(|bytes_opt| {
+            EcdsaSignature(bytes_opt.map(|bytes| {
+                ethers::types::Signature::try_from(&bytes[..])
+                    .expect("Impossible, input is guaranteed correct")
+            }))
+        })
     }
 }
 

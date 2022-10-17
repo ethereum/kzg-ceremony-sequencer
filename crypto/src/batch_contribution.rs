@@ -1,4 +1,4 @@
-use crate::{CeremoniesError, Contribution, Engine, Entropy, Tau, G2};
+use crate::{signature::EcdsaSignature, CeremoniesError, Contribution, Engine, Entropy, Tau, G2};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
@@ -9,7 +9,8 @@ use tracing::instrument;
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BatchContribution {
-    pub contributions: Vec<Contribution>,
+    pub contributions:   Vec<Contribution>,
+    pub ecdsa_signature: Option<EcdsaSignature>,
 }
 
 impl BatchContribution {

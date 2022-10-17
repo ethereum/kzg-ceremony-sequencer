@@ -33,11 +33,12 @@ impl BatchTranscript {
     #[must_use]
     pub fn contribution(&self) -> BatchContribution {
         BatchContribution {
-            contributions: self
+            contributions:   self
                 .transcripts
                 .iter()
                 .map(Transcript::contribution)
                 .collect(),
+            ecdsa_signature: None,
         }
     }
 

@@ -2,6 +2,7 @@ use super::{CeremonyError, Contribution, Powers, G1, G2};
 use crate::engine::Engine;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
+use crate::signature::BlsSignature;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Transcript {
@@ -55,8 +56,9 @@ impl Transcript {
     #[must_use]
     pub fn contribution(&self) -> Contribution {
         Contribution {
-            powers:     self.powers.clone(),
-            pot_pubkey: G2::one(),
+            powers:        self.powers.clone(),
+            pot_pubkey:    G2::one(),
+            bls_signature: BlsSignature::empty(),
         }
     }
 
