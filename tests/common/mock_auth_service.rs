@@ -108,7 +108,7 @@ async fn gh_userinfo(
     match user {
         Some(user) => (
             StatusCode::OK,
-            Json(json!({"login": user.name, "created_at": user.created_at})),
+            Json(json!({"login": user.name, "created_at": user.created_at, "id": code})),
         ),
         None => (
             StatusCode::UNAUTHORIZED,

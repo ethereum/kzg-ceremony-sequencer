@@ -107,18 +107,25 @@ async fn extract_session_id_from_auth_response(response: reqwest::Response) -> S
         .to_string()
 }
 
-async fn login_gh_user(harness: &Harness, http_client: &reqwest::Client, name: String) -> String {
+async fn login_gh_user(
+    harness: &Harness,
+    http_client: &reqwest::Client,
+    name: String,
+) -> (String, String) {
     // This code will normally be returned from the auth provider, through a
     // redirect to the frontend. Here we just get it when registering our fake user,
     // because it has nothing to do with this backend.
-    let code = harness.create_valid_user(name).await;
+    let code = harness.create_valid_user(name.clone()).await;
 
     let csrf = get_and_validate_csrf_token(harness, None).await;
 
     let callback_result = request_gh_callback(harness, http_client, code, &csrf).await;
 
     assert_eq!(callback_result.status(), StatusCode::OK);
-    extract_session_id_from_auth_response(callback_result).await
+    (
+        format!("git|{code}|{name}"),
+        extract_session_id_from_auth_response(callback_result).await,
+    )
 }
 
 async fn request_try_contribute(
@@ -189,7 +196,7 @@ async fn contribute_successfully(
     http_client: &reqwest::Client,
     session_id: &str,
     contribution: &BatchContribution,
-    username: &str,
+    user_id: &str,
 ) {
     let response = request_contribute(harness, http_client, session_id, contribution).await;
 
@@ -229,26 +236,11 @@ async fn contribute_successfully(
 
     let receipt_contents =
         serde_json::from_str::<Value>(receipt).expect("receipt must be a JSON-encoded string");
-    let id_token = receipt_contents
-        .get("id_token")
-        .expect("must contain id_token");
-
     assert_eq!(
-        id_token
-            .get("nickname")
-            .expect("must contain nickname")
-            .as_str()
-            .expect("nickname must be a string"),
-        username
-    );
-
-    assert_eq!(
-        id_token
-            .get("provider")
-            .expect("must contain provider")
-            .as_str()
-            .expect("provider must be a string"),
-        "Github"
+        receipt_contents
+            .get("identity")
+            .expect("must contain identity"),
+        user_id
     );
 
     let witness: Vec<G2> = serde_json::from_value(
@@ -316,7 +308,7 @@ async fn test_gh_auth_with_custom_frontend_redirect() {
     assert_eq!(redirected_to.host_str(), Some("my.magical.frontend"));
     assert_eq!(redirected_to.path(), "/post-sign-in");
     let params: HashMap<_, _> = redirected_to.query_pairs().into_owned().collect();
-    assert_eq!(params["sub"], "github | kustosz");
+    assert_eq!(params["sub"], format!("git|{code}|kustosz"));
     assert_eq!(params["nickname"], "kustosz");
     assert_eq!(params["provider"], "Github");
     assert!(params.get("session_id").is_some());
@@ -355,7 +347,7 @@ async fn test_contribution_happy_path() {
     let harness = run_test_harness().await;
     let http_client = reqwest::Client::new();
 
-    let session_id = login_gh_user(&harness, &http_client, "kustosz".to_string()).await;
+    let (user_id, session_id) = login_gh_user(&harness, &http_client, "kustosz".to_string()).await;
 
     let mut contribution = try_contribute(&harness, &http_client, &session_id).await;
 
@@ -371,14 +363,7 @@ async fn test_contribution_happy_path() {
         .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
 
-    contribute_successfully(
-        &harness,
-        &http_client,
-        &session_id,
-        &contribution,
-        "kustosz",
-    )
-    .await;
+    contribute_successfully(&harness, &http_client, &session_id, &contribution, &user_id).await;
 
     let transcript = harness.read_transcript_file().await;
 
@@ -445,7 +430,7 @@ async fn test_double_contribution() {
         &http_client,
         &session_id,
         &contribution,
-        "kustosz",
+        &format!("git|{auth_code}|kustosz"),
     )
     .await;
     let transcript_with_first_contrib = harness.read_transcript_file().await;
@@ -504,7 +489,7 @@ async fn test_double_contribution_when_allowed() {
         &http_client,
         &session_id,
         &contribution1,
-        "kustosz",
+        &format!("git|{auth_code}|kustosz"),
     )
     .await;
 
@@ -524,7 +509,7 @@ async fn test_double_contribution_when_allowed() {
         &http_client,
         &session_id,
         &contribution2,
-        "kustosz",
+        &format!("git|{auth_code}|kustosz"),
     )
     .await;
     let transcript = harness.read_transcript_file().await;
@@ -537,7 +522,7 @@ async fn well_behaved_participant(
     client: &reqwest::Client,
     name: String,
 ) -> BatchContribution {
-    let session_id = login_gh_user(harness, client, name.clone()).await;
+    let (user_id, session_id) = login_gh_user(harness, client, name.clone()).await;
     let mut contribution = loop {
         let try_contribute_response = request_try_contribute(harness, client, &session_id).await;
         assert_eq!(try_contribute_response.status(), StatusCode::OK);
@@ -566,12 +551,12 @@ async fn well_behaved_participant(
     contribution
         .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
-    contribute_successfully(harness, client, &session_id, &contribution, &name).await;
+    contribute_successfully(harness, client, &session_id, &contribution, &user_id).await;
     contribution
 }
 
 async fn slow_compute_participant(harness: &Harness, client: &reqwest::Client, name: String) {
-    let session_id = login_gh_user(harness, client, name.clone()).await;
+    let (_, session_id) = login_gh_user(harness, client, name.clone()).await;
     let mut contribution = loop {
         let try_contribute_response = request_try_contribute(harness, client, &session_id).await;
         assert_eq!(try_contribute_response.status(), StatusCode::OK);
@@ -687,7 +672,7 @@ async fn test_contribution_after_lobby_cleanup() {
         .await;
     let http_client = reqwest::Client::new();
 
-    let session_id = login_gh_user(&harness, &http_client, "kustosz".to_string()).await;
+    let (user_id, session_id) = login_gh_user(&harness, &http_client, "kustosz".to_string()).await;
 
     let mut contribution = try_contribute(&harness, &http_client, &session_id).await;
 
@@ -703,12 +688,5 @@ async fn test_contribution_after_lobby_cleanup() {
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    contribute_successfully(
-        &harness,
-        &http_client,
-        &session_id,
-        &contribution,
-        "kustosz",
-    )
-    .await;
+    contribute_successfully(&harness, &http_client, &session_id, &contribution, &user_id).await;
 }

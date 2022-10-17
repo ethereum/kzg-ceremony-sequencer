@@ -1,8 +1,7 @@
 use super::{CeremonyError, Contribution, Powers, G1, G2};
-use crate::engine::Engine;
+use crate::{engine::Engine, signature::BlsSignature};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
-use crate::signature::BlsSignature;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Transcript {
@@ -19,6 +18,9 @@ pub struct Witness {
 
     #[serde(rename = "potPubkeys")]
     pub pubkeys: Vec<G2>,
+
+    #[serde(rename = "blsSignatures")]
+    pub signatures: Vec<BlsSignature>,
 }
 
 impl Transcript {
@@ -46,8 +48,9 @@ impl Transcript {
         Self {
             powers:  Powers::new(num_g1, num_g2),
             witness: Witness {
-                products: vec![G1::one()],
-                pubkeys:  vec![G2::one()],
+                products:   vec![G1::one()],
+                pubkeys:    vec![G2::one()],
+                signatures: vec![BlsSignature::empty()],
             },
         }
     }

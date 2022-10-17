@@ -88,14 +88,14 @@ pub async fn contribute(
     if let Err(e) = result {
         lobby_state.clear_current_contributor().await;
         storage
-            .expire_contribution(id_token.unique_identifier())
+            .expire_contribution(&id_token.unique_identifier())
             .await?;
         return Err(e);
     }
 
     let receipt = Receipt {
-        id_token,
-        witness: contribution.receipt(),
+        identity: id_token.identity,
+        witness:  contribution.receipt(),
     };
 
     let (signed_msg, signature) = receipt

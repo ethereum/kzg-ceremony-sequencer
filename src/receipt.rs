@@ -1,15 +1,14 @@
 use crate::{
     keys::{Keys, Signature, SignatureError},
-    sessions::IdToken,
 };
-use kzg_ceremony_crypto::G2;
+use kzg_ceremony_crypto::{signature::identity::Identity, G2};
 use serde::Serialize;
 
 // Receipt for contributor that sequencer has
 // included their contribution
 #[derive(Serialize)]
 pub struct Receipt {
-    pub(crate) id_token: IdToken,
+    pub(crate) identity: Identity,
     pub witness:         Vec<G2>,
 }
 

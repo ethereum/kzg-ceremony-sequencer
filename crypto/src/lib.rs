@@ -11,7 +11,7 @@ mod error;
 mod group;
 mod hex_format;
 mod powers;
-mod signature;
+pub mod signature;
 mod transcript;
 
 pub use crate::{

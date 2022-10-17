@@ -4,9 +4,40 @@ use thiserror::Error;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Identity {
-    None,
     Ethereum { address: [u8; 20] },
     Github { id: u64, username: String },
+}
+
+impl Identity {
+    pub fn eth_from_str(address: &str) -> Result<Identity, IdentityError> {
+        if address.len() != 42 || &address[..2] != "0x" {
+            return Err(IdentityError::InvalidEthereumAddress);
+        }
+        let address = hex::decode(&address[2..])
+            .map_err(|_| IdentityError::InvalidEthereumAddress)?
+            .try_into()
+            .map_err(|_| IdentityError::InvalidEthereumAddress)?;
+
+        Ok(Identity::Ethereum { address })
+    }
+
+    pub fn unique_id(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn nickname(&self) -> String {
+        match self {
+            Self::Ethereum { address } => format!("0x{}", hex::encode(address)),
+            Self::Github { username, .. } => username.to_string(),
+        }
+    }
+
+    pub fn provider_name(&self) -> String {
+        match self {
+            Self::Ethereum { .. } => "Ethereum",
+            Self::Github { .. } => "Github",
+        }.to_string()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
@@ -26,7 +57,6 @@ pub enum IdentityError {
 impl Display for Identity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Identity::None => write!(f, ""),
             Identity::Ethereum { address } => write!(f, "eth|0x{}", hex::encode(address)),
             Identity::Github { id, username } => write!(f, "git|{}|{}", id, username),
         }
@@ -67,12 +97,6 @@ impl FromStr for Identity {
 
                 Ok(Identity::Github { id, username })
             }
-            Some("") => {
-                if parts.next().is_some() {
-                    return Err(IdentityError::TooManyFields);
-                }
-                Ok(Identity::None)
-            }
             _ => Err(IdentityError::UnsupportedType),
         }
     }
@@ -100,13 +124,6 @@ impl<'de> Deserialize<'de> for Identity {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_none() {
-        let identity = Identity::None;
-        assert_eq!(identity.to_string(), "");
-        assert_eq!(identity, "".parse().unwrap());
-    }
 
     #[test]
     fn test_eth() {
