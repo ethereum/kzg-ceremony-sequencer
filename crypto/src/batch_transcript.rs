@@ -24,8 +24,8 @@ impl BatchTranscript {
                 .into_iter()
                 .map(|(num_g1, num_g2)| Transcript::new(*num_g1, *num_g2))
                 .collect(),
-            participant_ids:              vec![],
-            participant_ecdsa_signatures: vec![],
+            participant_ids:              vec![Identity::None],
+            participant_ecdsa_signatures: vec![EcdsaSignature::empty()],
         }
     }
 
@@ -48,6 +48,7 @@ impl BatchTranscript {
     pub fn verify_add<E: Engine>(
         &mut self,
         contribution: BatchContribution,
+        identity: Identity,
     ) -> Result<(), CeremoniesError> {
         // Verify contribution count
         if self.transcripts.len() != contribution.contributions.len() {
@@ -76,6 +77,8 @@ impl BatchTranscript {
         {
             transcript.add(contribution);
         }
+
+        self.participant_ids.push(identity);
 
         Ok(())
     }

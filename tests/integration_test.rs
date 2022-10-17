@@ -261,14 +261,30 @@ async fn contribute_successfully(
     )
 }
 
-fn assert_includes_contribution(transcript: &BatchTranscript, contribution: &BatchContribution) {
+fn assert_includes_contribution(
+    transcript: &BatchTranscript,
+    contribution: &BatchContribution,
+    user_id: &str,
+) {
+    let first_contrib_pubkey = contribution.contributions[0].pot_pubkey;
+    let index_in_transcripts = transcript.transcripts[0]
+        .witness
+        .pubkeys
+        .iter()
+        .position(|pk| pk == &first_contrib_pubkey)
+        .expect("Transcript does not include contribution.");
+    assert_eq!(
+        transcript.participant_ids[index_in_transcripts].to_string(),
+        user_id
+    );
+
     transcript
         .transcripts
         .iter()
         .zip(contribution.contributions.iter())
         .for_each(|(t, c)| {
-            assert!(t.witness.products.contains(&c.powers.g1[0]));
-            assert!(t.witness.pubkeys.contains(&c.pot_pubkey));
+            assert_eq!(t.witness.products[index_in_transcripts], c.powers.g1[1]);
+            assert_eq!(t.witness.pubkeys[index_in_transcripts], c.pot_pubkey);
         })
 }
 
@@ -405,6 +421,7 @@ async fn test_double_contribution() {
     let http_client = reqwest::Client::new();
     let auth_code = harness.create_valid_user("kustosz".to_string()).await;
     let csrf = get_and_validate_csrf_token(&harness, None).await;
+    let user_id = format!("git|{auth_code}|kustosz");
     let session_id = extract_session_id_from_auth_response(
         request_gh_callback(&harness, &http_client, auth_code, &csrf).await,
     )
@@ -425,16 +442,9 @@ async fn test_double_contribution() {
         .expect("Adding entropy must be possible");
 
     // First, successful contribution;
-    contribute_successfully(
-        &harness,
-        &http_client,
-        &session_id,
-        &contribution,
-        &format!("git|{auth_code}|kustosz"),
-    )
-    .await;
+    contribute_successfully(&harness, &http_client, &session_id, &contribution, &user_id).await;
     let transcript_with_first_contrib = harness.read_transcript_file().await;
-    assert_includes_contribution(&transcript_with_first_contrib, &contribution);
+    assert_includes_contribution(&transcript_with_first_contrib, &contribution, &user_id);
 
     // Try contributing again right away – fails because the contribution spot is
     // emptied
@@ -471,7 +481,7 @@ async fn test_double_contribution_when_allowed() {
         .await;
     let http_client = reqwest::Client::new();
     let auth_code = harness.create_valid_user("kustosz".to_string()).await;
-
+    let user_id = format!("git|{auth_code}|kustosz");
     let csrf = get_and_validate_csrf_token(&harness, None).await;
     let session_id = extract_session_id_from_auth_response(
         request_gh_callback(&harness, &http_client, auth_code, &csrf).await,
@@ -513,15 +523,15 @@ async fn test_double_contribution_when_allowed() {
     )
     .await;
     let transcript = harness.read_transcript_file().await;
-    assert_includes_contribution(&transcript, &contribution1);
-    assert_includes_contribution(&transcript, &contribution2);
+    assert_includes_contribution(&transcript, &contribution1, &user_id);
+    assert_includes_contribution(&transcript, &contribution2, &user_id);
 }
 
 async fn well_behaved_participant(
     harness: &Harness,
     client: &reqwest::Client,
     name: String,
-) -> BatchContribution {
+) -> (BatchContribution, String) {
     let (user_id, session_id) = login_gh_user(harness, client, name.clone()).await;
     let mut contribution = loop {
         let try_contribute_response = request_try_contribute(harness, client, &session_id).await;
@@ -552,7 +562,7 @@ async fn well_behaved_participant(
         .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
     contribute_successfully(harness, client, &session_id, &contribution, &user_id).await;
-    contribution
+    (contribution, user_id)
 }
 
 async fn slow_compute_participant(harness: &Harness, client: &reqwest::Client, name: String) {
@@ -615,7 +625,7 @@ async fn test_large_lobby() {
     let final_transcript = harness.read_transcript_file().await;
     contributions
         .iter()
-        .for_each(|c| assert_includes_contribution(&final_transcript, c));
+        .for_each(|(c, user_id)| assert_includes_contribution(&final_transcript, c, &user_id));
 }
 
 #[tokio::test]
@@ -646,7 +656,7 @@ async fn test_large_lobby_with_misbehaving_users() {
     let final_transcript = harness.read_transcript_file().await;
     contributions.iter().for_each(|oc| {
         oc.iter()
-            .for_each(|c| assert_includes_contribution(&final_transcript, c))
+            .for_each(|(c, user_id)| assert_includes_contribution(&final_transcript, c, user_id))
     });
 
     let should_accept_count = contributions.iter().filter(|e| e.is_some()).count();

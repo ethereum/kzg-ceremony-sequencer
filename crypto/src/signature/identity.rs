@@ -4,6 +4,7 @@ use thiserror::Error;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Identity {
+    None,
     Ethereum { address: [u8; 20] },
     Github { id: u64, username: String },
 }
@@ -29,6 +30,7 @@ impl Identity {
         match self {
             Self::Ethereum { address } => format!("0x{}", hex::encode(address)),
             Self::Github { username, .. } => username.to_string(),
+            Self::None => "<<unauthorized>>".to_string(),
         }
     }
 
@@ -36,7 +38,9 @@ impl Identity {
         match self {
             Self::Ethereum { .. } => "Ethereum",
             Self::Github { .. } => "Github",
-        }.to_string()
+            Self::None => "None",
+        }
+        .to_string()
     }
 }
 
@@ -57,6 +61,7 @@ pub enum IdentityError {
 impl Display for Identity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Identity::None => write!(f, ""),
             Identity::Ethereum { address } => write!(f, "eth|0x{}", hex::encode(address)),
             Identity::Github { id, username } => write!(f, "git|{}|{}", id, username),
         }
@@ -97,6 +102,12 @@ impl FromStr for Identity {
 
                 Ok(Identity::Github { id, username })
             }
+            Some("") => {
+                if parts.next().is_some() {
+                    return Err(IdentityError::TooManyFields);
+                }
+                Ok(Identity::None)
+            }
             _ => Err(IdentityError::UnsupportedType),
         }
     }
@@ -124,6 +135,13 @@ impl<'de> Deserialize<'de> for Identity {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_none() {
+        let identity = Identity::None;
+        assert_eq!(identity.to_string(), "");
+        assert_eq!(identity, "".parse().unwrap());
+    }
 
     #[test]
     fn test_eth() {
