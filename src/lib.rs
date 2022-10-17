@@ -25,13 +25,15 @@ use crate::{
 };
 use axum::{
     extract::{DefaultBodyLimit, Extension},
-    response::Html,
+    handler::Handler,
+    response::{Html, IntoResponse},
     routing::{get, post, IntoMakeService},
     Router, Server,
 };
 use clap::Parser;
 use cli_batteries::await_shutdown;
 use eyre::Result as EyreResult;
+use http::StatusCode;
 use hyper::server::conn::AddrIncoming;
 use kzg_ceremony_crypto::BatchTranscript;
 use std::{
@@ -39,8 +41,12 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 use tokio::sync::RwLock;
-use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
-use tracing::{debug, info};
+use tower_http::{
+    cors::CorsLayer,
+    limit::RequestBodyLimitLayer,
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+};
+use tracing::{debug, info, Level};
 use url::Url;
 
 mod api;
@@ -163,12 +169,18 @@ pub async fn start_server(
         .layer(Extension(transcript))
         .layer(Extension(options.clone()))
         .layer(DefaultBodyLimit::disable())
-        .layer(RequestBodyLimitLayer::new(MAX_CONTRIBUTION_SIZE))
-        .layer(TraceLayer::new_for_http());
+        .layer(RequestBodyLimitLayer::new(MAX_CONTRIBUTION_SIZE));
 
     // Run the server
     let (addr, prefix) = parse_url(&options.server)?;
-    let app = Router::new().nest(prefix, app);
+    let app = Router::new()
+        .nest(prefix, app)
+        .fallback(handle_404.into_service())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::default().level(Level::INFO))
+                .on_response(DefaultOnResponse::default().level(Level::INFO)),
+        );
     let server = Server::try_bind(&addr)?.serve(app.into_make_service());
     Ok(server)
 }
@@ -176,6 +188,11 @@ pub async fn start_server(
 #[allow(clippy::unused_async)] // Required for axum function signature
 async fn hello_world() -> Html<&'static str> {
     Html("<h1>Server is Running</h1>")
+}
+
+#[allow(clippy::unused_async)] // Required for axum function signature
+async fn handle_404() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, Html("<h1>Error 404</h1>"))
 }
 
 #[cfg(test)]
