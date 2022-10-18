@@ -1,14 +1,22 @@
 #![cfg(test)]
 
-use crate::common::{
-    actions, harness,
-    harness::{run_test_harness, Harness},
-    mock_auth_service::{AnyTestUser, GhUser, TestUser},
+use crate::{
+    actions::assert_includes_contribution,
+    common::{
+        actions, harness,
+        harness::{run_test_harness, Harness},
+        mock_auth_service::{AnyTestUser, GhUser, TestUser},
+    },
 };
 use common::participants;
 use ethers_core::types::Address;
+use ethers_signers::{LocalWallet, Signer};
 use http::StatusCode;
-use kzg_ceremony_crypto::Arkworks;
+use kzg_ceremony_crypto::{
+    signature::{ContributionTypedData, EcdsaSignature},
+    Arkworks,
+};
+use rand::thread_rng;
 use secrecy::Secret;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use url::Url;
@@ -200,7 +208,12 @@ async fn test_double_contribution() {
     actions::contribute_successfully(&harness, &http_client, &session_id, &contribution, &user_id)
         .await;
     let transcript_with_first_contrib = harness.read_transcript_file().await;
-    actions::assert_includes_contribution(&transcript_with_first_contrib, &contribution, &user_id);
+    actions::assert_includes_contribution(
+        &transcript_with_first_contrib,
+        &contribution,
+        &user,
+        false,
+    );
 
     // Try contributing again right away – fails because the contribution spot is
     // emptied
@@ -284,8 +297,8 @@ async fn test_double_contribution_when_allowed() {
     )
     .await;
     let transcript = harness.read_transcript_file().await;
-    actions::assert_includes_contribution(&transcript, &contribution1, &user_id);
-    actions::assert_includes_contribution(&transcript, &contribution2, &user_id);
+    actions::assert_includes_contribution(&transcript, &contribution1, &user, false);
+    actions::assert_includes_contribution(&transcript, &contribution2, &user, false);
 }
 
 #[tokio::test]
@@ -297,7 +310,11 @@ async fn test_large_lobby() {
         let h = harness.clone();
         let c = client.clone();
         tokio::spawn(async move {
-            let user = h.create_gh_user(format!("user {i}")).await;
+            let user = if i % 2 == 0 {
+                h.create_gh_user(format!("user {i}")).await
+            } else {
+                h.create_eth_user().await
+            };
             participants::well_behaved(h.as_ref(), c.as_ref(), user).await
         })
     });
@@ -383,4 +400,37 @@ async fn test_contribution_after_lobby_cleanup() {
         &user.identity(),
     )
     .await;
+}
+
+#[tokio::test]
+async fn test_wrong_ecdsa_signature() {
+    let other_wallet = LocalWallet::new(&mut thread_rng());
+    let harness = run_test_harness().await;
+    let http_client = reqwest::Client::new();
+    let user = harness.create_eth_user().await;
+    let session_id = actions::login(&harness, &http_client, &user).await;
+    let mut contribution = actions::try_contribute(&harness, &http_client, &session_id).await;
+    let entropy = actions::entropy_from_str("foo bar baz");
+    contribution
+        .add_entropy::<Arkworks>(&entropy)
+        .expect("Adding entropy must be possible");
+    contribution.ecdsa_signature = EcdsaSignature(Some(
+        other_wallet
+            .sign_typed_data(&ContributionTypedData::from(&contribution))
+            .await
+            .unwrap(),
+    ));
+
+    actions::contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution,
+        &user.identity(),
+    )
+    .await;
+
+    let transcript = harness.read_transcript_file().await;
+
+    assert_includes_contribution(&transcript, &contribution, &user, false)
 }

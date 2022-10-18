@@ -1,5 +1,5 @@
 use crate::{
-    signature::{identity::Identity, EcdsaSignature},
+    signature::{identity::Identity, ContributionTypedData, EcdsaSignature},
     BatchContribution, CeremoniesError, Engine, Transcript,
 };
 use rayon::prelude::*;
@@ -38,7 +38,7 @@ impl BatchTranscript {
                 .iter()
                 .map(Transcript::contribution)
                 .collect(),
-            ecdsa_signature: None,
+            ecdsa_signature: EcdsaSignature::empty(),
         }
     }
 
@@ -69,6 +69,13 @@ impl BatchTranscript {
                     .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             })?;
 
+        self.participant_ids.push(identity);
+        self.participant_ecdsa_signatures.push(
+            contribution
+                .ecdsa_signature
+                .prune(&identity, ContributionTypedData::from(&contribution)),
+        );
+
         // Add contributions
         for (transcript, contribution) in self
             .transcripts
@@ -77,8 +84,6 @@ impl BatchTranscript {
         {
             transcript.add(contribution);
         }
-
-        self.participant_ids.push(identity);
 
         Ok(())
     }

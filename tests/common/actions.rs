@@ -260,7 +260,8 @@ pub async fn contribute_successfully(
 pub fn assert_includes_contribution(
     transcript: &BatchTranscript,
     contribution: &BatchContribution,
-    user_id: &str,
+    user: &TestUser,
+    expect_ecdsa_signed: bool,
 ) {
     let first_contrib_pubkey = contribution.contributions[0].pot_pubkey;
     let index_in_transcripts = transcript.transcripts[0]
@@ -271,8 +272,16 @@ pub fn assert_includes_contribution(
         .expect("Transcript does not include contribution.");
     assert_eq!(
         transcript.participant_ids[index_in_transcripts].to_string(),
-        user_id
+        user.identity()
     );
+
+    match &transcript.participant_ecdsa_signatures[index_in_transcripts].0 {
+        Some(_) if !expect_ecdsa_signed => {
+            panic!("Expected no signature, but signature is present")
+        }
+        None if expect_ecdsa_signed => panic!("Expected a signature, but none found"),
+        _ => (),
+    }
 
     transcript
         .transcripts

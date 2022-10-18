@@ -10,7 +10,7 @@ use tracing::instrument;
 #[serde(deny_unknown_fields)]
 pub struct BatchContribution {
     pub contributions:   Vec<Contribution>,
-    pub ecdsa_signature: Option<EcdsaSignature>,
+    pub ecdsa_signature: EcdsaSignature,
 }
 
 impl BatchContribution {

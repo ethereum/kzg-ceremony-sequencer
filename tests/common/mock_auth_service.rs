@@ -86,6 +86,13 @@ impl TestUser {
             AnyTestUser::Gh(user) => format!("git|{}|{}", self.id, user.name),
         }
     }
+
+    pub fn is_eth(&self) -> bool {
+        match &self.user {
+            AnyTestUser::Eth(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Default)]

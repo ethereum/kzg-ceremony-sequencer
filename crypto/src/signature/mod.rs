@@ -6,7 +6,8 @@ pub mod identity;
 
 use crate::{
     hex_format::{bytes_to_hex, optional_hex_to_bytes},
-    G1, G2,
+    signature::identity::Identity,
+    BatchContribution, G1, G2,
 };
 use ethers::types::transaction::eip712::{EIP712Domain, Eip712, Eip712Error, TypedData};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -44,11 +45,22 @@ impl<'de> Deserialize<'de> for BlsSignature {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct EcdsaSignature(Option<ethers::types::Signature>);
+pub struct EcdsaSignature(pub Option<ethers::types::Signature>);
 
 impl EcdsaSignature {
     pub fn empty() -> Self {
         Self(None)
+    }
+
+    pub fn prune<T: Eip712>(&self, identity: &Identity, data: T) -> Self {
+        EcdsaSignature(self.0.as_ref().and_then(|sig| {
+            if let Identity::Ethereum { address } = identity {
+                sig.verify(data.encode_eip712().ok()?, address).ok()?;
+                Some(sig.clone())
+            } else {
+                None
+            }
+        }))
     }
 }
 
@@ -84,8 +96,8 @@ impl<'de> Deserialize<'de> for EcdsaSignature {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PubkeyTypedData {
-    num_g1_powers: u64,
-    num_g2_powers: u64,
+    num_g1_powers: usize,
+    num_g2_powers: usize,
     pot_pubkey:    G2,
 }
 
@@ -93,6 +105,22 @@ pub struct PubkeyTypedData {
 #[serde(rename_all = "camelCase")]
 pub struct ContributionTypedData {
     pot_pubkeys: Vec<PubkeyTypedData>,
+}
+
+impl From<&BatchContribution> for ContributionTypedData {
+    fn from(contribution: &BatchContribution) -> Self {
+        Self {
+            pot_pubkeys: contribution
+                .contributions
+                .iter()
+                .map(|c| PubkeyTypedData {
+                    num_g1_powers: c.powers.g1.len(),
+                    num_g2_powers: c.powers.g2.len(),
+                    pot_pubkey:    c.pot_pubkey.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 impl From<ContributionTypedData> for TypedData {
@@ -139,13 +167,5 @@ impl Eip712 for ContributionTypedData {
 
     fn struct_hash(&self) -> Result<[u8; 32], Self::Error> {
         TypedData::from(self.clone()).struct_hash()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_thing() {
-        println!("foo");
     }
 }

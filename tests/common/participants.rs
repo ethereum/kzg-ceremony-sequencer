@@ -1,6 +1,9 @@
-use crate::{actions, Harness, TestUser};
+use crate::{actions, AnyTestUser, Harness, TestUser};
+use ethers_signers::Signer;
 use http::StatusCode;
-use kzg_ceremony_crypto::{Arkworks, BatchContribution, BatchTranscript};
+use kzg_ceremony_crypto::{
+    signature, signature::EcdsaSignature, Arkworks, BatchContribution, BatchTranscript,
+};
 use secrecy::Secret;
 
 type PostConditionCheck = Box<dyn FnOnce(&BatchTranscript) -> () + Send + Sync>;
@@ -40,6 +43,16 @@ pub async fn well_behaved(
     contribution
         .add_entropy::<Arkworks>(&entropy)
         .expect("Adding entropy must be possible");
+
+    if let AnyTestUser::Eth(wallet) = &user.user {
+        contribution.ecdsa_signature = EcdsaSignature(Some(
+            wallet
+                .sign_typed_data(&signature::ContributionTypedData::from(&contribution))
+                .await
+                .unwrap(),
+        ));
+    }
+
     actions::contribute_successfully(
         harness,
         client,
@@ -50,7 +63,7 @@ pub async fn well_behaved(
     .await;
 
     Box::new(move |transcript| {
-        actions::assert_includes_contribution(transcript, &contribution, &user.identity());
+        actions::assert_includes_contribution(transcript, &contribution, &user, user.is_eth());
     })
 }
 
