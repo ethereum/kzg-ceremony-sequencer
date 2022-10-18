@@ -11,6 +11,7 @@ use serde_json::json;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 use tokio::time::Instant;
+use tracing::warn;
 use uuid::Uuid;
 
 #[derive(Debug, Hash, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -96,7 +97,10 @@ where
         let TypedHeader(Authorization(bearer)) =
             TypedHeader::<Authorization<Bearer>>::from_request(req)
                 .await
-                .map_err(|_| SessionError::InvalidSessionId)?;
+                .map_err(|_| {
+                    warn!("Bearer token missing");
+                    SessionError::InvalidSessionId
+                })?;
 
         Ok(Self(bearer.token().to_owned()))
     }

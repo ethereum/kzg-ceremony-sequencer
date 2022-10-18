@@ -13,6 +13,7 @@ use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 use tokio::time::Instant;
+use tracing::{info, info_span, warn};
 
 #[derive(Debug, Error)]
 pub enum TryContributeError {
@@ -97,12 +98,22 @@ pub async fn try_contribute(
             Ok(info.token.unique_identifier().to_owned())
         })
         .await
-        .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
+        .unwrap_or_else(|| {
+            warn!("user session not found");
+            Err(TryContributeError::UnknownSessionId)
+        })?;
+    let span = info_span!("authenticated user", uid);
+    let _s = span.enter();
 
     lobby_state
         .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
         .await
-        .map_err(TryContributeError::from)?;
+        .map_err(|err| {
+            warn!(err = %err, "couldn't set current contributor");
+            TryContributeError::from(err)
+        })?;
+
+    info!("current contributor set");
 
     storage.insert_contributor(&uid).await?;
     let transcript = transcript.read().await;
