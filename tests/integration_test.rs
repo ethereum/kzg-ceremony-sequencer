@@ -5,9 +5,10 @@ use crate::common::{
     harness::{run_test_harness, Harness},
     mock_auth_service::{AnyTestUser, GhUser, TestUser},
 };
+use common::participants;
 use ethers_core::types::Address;
 use http::StatusCode;
-use kzg_ceremony_crypto::{Arkworks, BatchContribution};
+use kzg_ceremony_crypto::Arkworks;
 use secrecy::Secret;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use url::Url;
@@ -287,91 +288,6 @@ async fn test_double_contribution_when_allowed() {
     actions::assert_includes_contribution(&transcript, &contribution2, &user_id);
 }
 
-async fn well_behaved_participant(
-    harness: &Harness,
-    client: &reqwest::Client,
-    name: String,
-) -> (BatchContribution, TestUser) {
-    let (user, session_id) = actions::create_and_login_gh_user(harness, client, name.clone()).await;
-    let mut contribution = loop {
-        let try_contribute_response =
-            actions::request_try_contribute(harness, client, &session_id).await;
-        assert_eq!(try_contribute_response.status(), StatusCode::OK);
-        let maybe_contribution = try_contribute_response
-            .json::<BatchContribution>()
-            .await
-            .ok();
-        if let Some(contrib) = maybe_contribution {
-            break contrib;
-        }
-
-        tokio::time::sleep(
-            harness.options.lobby.lobby_checkin_frequency
-                - harness.options.lobby.lobby_checkin_tolerance,
-        )
-        .await;
-    };
-
-    let entropy = format!("{} such an unguessable string, wow!", name)
-        .bytes()
-        .take(32)
-        .collect::<Vec<u8>>()
-        .try_into()
-        .unwrap();
-    let entropy = Secret::new(entropy);
-    contribution
-        .add_entropy::<Arkworks>(&entropy)
-        .expect("Adding entropy must be possible");
-    actions::contribute_successfully(
-        harness,
-        client,
-        &session_id,
-        &contribution,
-        &user.identity(),
-    )
-    .await;
-    (contribution, user)
-}
-
-async fn slow_compute_participant(harness: &Harness, client: &reqwest::Client, name: String) {
-    let (_, session_id) = actions::create_and_login_gh_user(harness, client, name.clone()).await;
-    let mut contribution = loop {
-        let try_contribute_response =
-            actions::request_try_contribute(harness, client, &session_id).await;
-        assert_eq!(try_contribute_response.status(), StatusCode::OK);
-        let maybe_contribution = try_contribute_response
-            .json::<BatchContribution>()
-            .await
-            .ok();
-        if let Some(contrib) = maybe_contribution {
-            break contrib;
-        }
-
-        tokio::time::sleep(
-            harness.options.lobby.lobby_checkin_frequency
-                - harness.options.lobby.lobby_checkin_tolerance,
-        )
-        .await;
-    };
-
-    let entropy = format!("{} such an unguessable string, wow!", name)
-        .bytes()
-        .take(32)
-        .collect::<Vec<u8>>()
-        .try_into()
-        .unwrap();
-    let entropy = Secret::new(entropy);
-
-    tokio::time::sleep(harness.options.lobby.compute_deadline).await;
-
-    contribution
-        .add_entropy::<Arkworks>(&entropy)
-        .expect("Adding entropy must be possible");
-
-    let response = actions::request_contribute(harness, client, &session_id, &contribution).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
 #[tokio::test]
 async fn test_large_lobby() {
     let harness = Arc::new(run_test_harness().await);
@@ -381,55 +297,45 @@ async fn test_large_lobby() {
         let h = harness.clone();
         let c = client.clone();
         tokio::spawn(async move {
-            well_behaved_participant(h.as_ref(), c.as_ref(), format!("user {i}")).await
+            let user = h.create_gh_user(format!("user {i}")).await;
+            participants::well_behaved(h.as_ref(), c.as_ref(), user).await
         })
     });
 
-    let contributions: Vec<_> = futures::future::join_all(handles)
-        .await
+    let post_conditions = futures::future::join_all(handles).await;
+    let final_transcript = harness.read_transcript_file().await;
+    post_conditions
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
-        .collect();
-
-    let final_transcript = harness.read_transcript_file().await;
-    contributions.iter().for_each(|(c, user)| {
-        actions::assert_includes_contribution(&final_transcript, c, &user.identity())
-    });
+        .for_each(|check| check(&final_transcript));
 }
 
 #[tokio::test]
-async fn test_large_lobby_with_misbehaving_users() {
+async fn test_large_lobby_with_slow_compute_users() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
-
-    let handles = (0..20).into_iter().map(|i| {
+    let n = 20;
+    let handles = (0..n).into_iter().map(|i| {
         let h = harness.clone();
         let c = client.clone();
-        let u = format!("user {i}");
         tokio::spawn(async move {
+            let user = h.create_gh_user(format!("user {i}")).await;
             if i % 2 == 0 {
-                Some(well_behaved_participant(h.as_ref(), c.as_ref(), u).await)
+                participants::well_behaved(h.as_ref(), c.as_ref(), user).await
             } else {
-                slow_compute_participant(h.as_ref(), c.as_ref(), u).await;
-                None
+                participants::slow_compute(h.as_ref(), c.as_ref(), user).await
             }
         })
     });
 
-    let contributions: Vec<_> = futures::future::join_all(handles)
-        .await
+    let post_conditions = futures::future::join_all(handles).await;
+    let final_transcript = harness.read_transcript_file().await;
+    post_conditions
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
-        .collect();
+        .for_each(|cond| cond(&final_transcript));
 
-    let final_transcript = harness.read_transcript_file().await;
-    contributions.iter().for_each(|oc| {
-        oc.iter().for_each(|(c, user_id)| {
-            actions::assert_includes_contribution(&final_transcript, c, &user_id.identity())
-        })
-    });
-
-    let should_accept_count = contributions.iter().filter(|e| e.is_some()).count();
+    let should_accept_count = n / 2;
     assert!(
         final_transcript.transcripts[..]
             .windows(2)
