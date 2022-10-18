@@ -346,7 +346,7 @@ pub async fn github_callback(
 
 #[derive(Debug, Deserialize)]
 struct EthUserInfo {
-    sub:                String,
+    sub: String,
 }
 
 // This endpoint allows one to consume an oAUTH authorisation code

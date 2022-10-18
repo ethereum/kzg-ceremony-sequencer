@@ -1,6 +1,6 @@
 use crate::common::{
     mock_auth_service,
-    mock_auth_service::{AuthState, GhUser},
+    mock_auth_service::{AuthState, GhUser, TestUser},
 };
 use clap::Parser;
 use kzg_ceremony_crypto::BatchTranscript;
@@ -25,8 +25,12 @@ fn test_options() -> Options {
         "INVALID",
         "--gh-client-id",
         "INVALID",
+        "--eth-token-url",
+        "http://127.0.0.1:3001/eth/oauth/token",
+        "--eth-userinfo-url",
+        "http://127.0.0.1:3001/eth/user",
         "--eth-rpc-url",
-        "INVALID",
+        "http://127.0.0.1:3001/eth/rpc",
         "--eth-client-secret",
         "INVALID",
         "--eth-client-id",
@@ -54,13 +58,17 @@ impl Harness {
         read_json_file(self.options.transcript_file.clone()).await
     }
 
-    pub async fn create_valid_user(&self, name: String) -> u64 {
+    pub async fn create_gh_user(&self, name: String) -> TestUser {
         self.auth_state
-            .register_user(GhUser {
+            .register_gh_user(GhUser {
                 created_at: "2022-01-01T00:00:00Z".to_string(),
                 name,
             })
             .await
+    }
+
+    pub async fn create_eth_user(&self) -> TestUser {
+        self.auth_state.register_eth_user().await
     }
 
     pub fn app_path(&self, path: &str) -> Url {
