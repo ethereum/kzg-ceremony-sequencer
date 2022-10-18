@@ -41,12 +41,8 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 use tokio::sync::RwLock;
-use tower_http::{
-    cors::CorsLayer,
-    limit::RequestBodyLimitLayer,
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
-};
-use tracing::{debug, info, Level};
+use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer};
+use tracing::{debug, info};
 use url::Url;
 
 mod api;
@@ -176,11 +172,7 @@ pub async fn start_server(
     let app = Router::new()
         .nest(prefix, app)
         .fallback(handle_404.into_service())
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::default().level(Level::INFO))
-                .on_response(DefaultOnResponse::default().level(Level::INFO)),
-        );
+        .layer(axum_tracing_opentelemetry::opentelemetry_tracing_layer());
     let server = Server::try_bind(&addr)?.serve(app.into_make_service());
     Ok(server)
 }

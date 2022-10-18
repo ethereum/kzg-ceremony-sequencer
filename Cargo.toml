@@ -66,6 +66,8 @@ clap = { version = "4.0", features = ["derive"] }
 eyre = "0.6.8"
 url = "2.3.1"
 hex = "0.4.3"
+axum-tracing-opentelemetry = "0.5.0"
+opentelemetry = "0.18.0"
 
 # Use Rustls because it makes it easier to cross-compile on CI
 reqwest = { version = "0.11", default-features = false, features = [
