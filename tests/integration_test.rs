@@ -365,6 +365,36 @@ async fn test_large_lobby_with_slow_compute_users() {
 }
 
 #[tokio::test]
+async fn test_various_contributors() {
+    let harness = Arc::new(run_test_harness().await);
+    let client = Arc::new(reqwest::Client::new());
+    let n = 30;
+    let handles = (0..n).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        tokio::spawn(async move {
+            let user = if i % 2 == 0 {
+                h.create_gh_user(format!("user {i}")).await
+            } else {
+                h.create_eth_user().await
+            };
+            match i % 3 {
+                0 => participants::well_behaved(h.as_ref(), c.as_ref(), user).await,
+                1 => participants::slow_compute(h.as_ref(), c.as_ref(), user).await,
+                _ => participants::wrong_ecdsa(h.as_ref(), c.as_ref(), user).await,
+            }
+        })
+    });
+
+    let post_conditions = futures::future::join_all(handles).await;
+    let final_transcript = harness.read_transcript_file().await;
+    post_conditions
+        .into_iter()
+        .map(|r| r.expect("must terminate successfully"))
+        .for_each(|check| check(&final_transcript));
+}
+
+#[tokio::test]
 async fn test_contribution_after_lobby_cleanup() {
     let harness = harness::Builder::new()
         .set_compute_deadline(Duration::from_millis(2000))

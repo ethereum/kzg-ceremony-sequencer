@@ -69,7 +69,6 @@ impl BatchTranscript {
                     .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             })?;
 
-        self.participant_ids.push(identity);
         self.participant_ecdsa_signatures.push(
             contribution
                 .ecdsa_signature
@@ -84,6 +83,8 @@ impl BatchTranscript {
         {
             transcript.add(contribution);
         }
+
+        self.participant_ids.push(identity);
 
         Ok(())
     }
