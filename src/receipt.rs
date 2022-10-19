@@ -1,6 +1,4 @@
-use crate::{
-    keys::{Keys, Signature, SignatureError},
-};
+use crate::keys::{Keys, Signature, SignatureError};
 use kzg_ceremony_crypto::{signature::identity::Identity, G2};
 use serde::Serialize;
 

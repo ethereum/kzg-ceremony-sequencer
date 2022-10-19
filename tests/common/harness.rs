@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use crate::common::{
     mock_auth_service,
     mock_auth_service::{AuthState, GhUser, TestUser},
@@ -6,7 +5,7 @@ use crate::common::{
 use clap::Parser;
 use kzg_ceremony_crypto::BatchTranscript;
 use kzg_ceremony_sequencer::{io::read_json_file, start_server, Options};
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tempfile::{tempdir, TempDir};
 use tokio::sync::{broadcast, oneshot, Mutex, MutexGuard, OnceCell};
 use url::Url;
