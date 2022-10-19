@@ -6,6 +6,7 @@ use ethers_signers::{LocalWallet, Signer};
 use headers::{authorization::Bearer, Authorization};
 use http::StatusCode;
 use hyper::{server::conn::AddrIncoming, Server};
+use kzg_ceremony_crypto::signature::identity::Identity;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -80,10 +81,14 @@ pub struct TestUser {
 }
 
 impl TestUser {
-    pub fn identity(&self) -> String {
+    pub fn identity(&self) -> Identity {
         match &self.user {
-            AnyTestUser::Eth(wallet) => format!("eth|0x{}", hex::encode(wallet.address().0)),
-            AnyTestUser::Gh(user) => format!("git|{}|{}", self.id, user.name),
+            AnyTestUser::Eth(wallet) => {
+                Identity::from_str(&format!("eth|0x{}", hex::encode(wallet.address().0))).unwrap()
+            }
+            AnyTestUser::Gh(user) => {
+                Identity::from_str(&format!("git|{}|{}", self.id, user.name)).unwrap()
+            }
         }
     }
 

@@ -113,6 +113,7 @@ impl Transcript {
     pub fn add(&mut self, contribution: Contribution) {
         self.witness.products.push(contribution.powers.g1[1]);
         self.witness.pubkeys.push(contribution.pot_pubkey);
+        self.witness.signatures.push(contribution.bls_signature);
         self.powers = contribution.powers;
     }
 }
@@ -140,7 +141,7 @@ mod test {
                 "G2Powers": [
                 "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
                 "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
-                ]
+                ],
             },
             "witness": {
                 "runningProducts": [
@@ -148,7 +149,8 @@ mod test {
                 ],
                 "potPubkeys": [
                     "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
-                ]
+                ],
+                "blsSignatures": [""],
             }
             })
         );

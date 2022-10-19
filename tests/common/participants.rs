@@ -3,7 +3,9 @@ use ethers_core::types::Signature;
 use ethers_signers::Signer;
 use http::StatusCode;
 use kzg_ceremony_crypto::{
-    signature, signature::EcdsaSignature, Arkworks, BatchContribution, BatchTranscript,
+    signature,
+    signature::{BlsSignature, EcdsaSignature},
+    Arkworks, BatchContribution, BatchTranscript, DefaultEngine, BLST, G1,
 };
 use rand::{thread_rng, Rng};
 
@@ -42,7 +44,10 @@ pub async fn well_behaved(
     let session_id = actions::login(harness, client, &user).await;
     let mut contribution = await_contribution_slot(harness, client, &session_id).await;
     contribution
-        .add_entropy::<Arkworks>(&entropy_from_str(&user.identity()))
+        .add_entropy::<BLST>(
+            &entropy_from_str(&user.identity().to_string()),
+            &user.identity(),
+        )
         .expect("Adding entropy must be possible");
 
     if let AnyTestUser::Eth(wallet) = &user.user {
@@ -59,12 +64,18 @@ pub async fn well_behaved(
         client,
         &session_id,
         &contribution,
-        &user.identity(),
+        &user.identity().to_string(),
     )
     .await;
 
     Box::new(move |transcript| {
-        actions::assert_includes_contribution(transcript, &contribution, &user, user.is_eth());
+        actions::assert_includes_contribution(
+            transcript,
+            &contribution,
+            &user,
+            user.is_eth(),
+            true,
+        );
     })
 }
 
@@ -76,7 +87,10 @@ pub async fn wrong_ecdsa(
     let session_id = actions::login(harness, client, &user).await;
     let mut contribution = await_contribution_slot(harness, client, &session_id).await;
     contribution
-        .add_entropy::<Arkworks>(&entropy_from_str(&user.identity()))
+        .add_entropy::<DefaultEngine>(
+            &entropy_from_str(&user.identity().to_string()),
+            &user.identity(),
+        )
         .expect("Adding entropy must be possible");
 
     let mut random_bytes = [0 as u8; 65];
@@ -92,12 +106,44 @@ pub async fn wrong_ecdsa(
         client,
         &session_id,
         &contribution,
-        &user.identity(),
+        &user.identity().to_string(),
     )
     .await;
 
     Box::new(move |transcript| {
-        actions::assert_includes_contribution(transcript, &contribution, &user, false);
+        actions::assert_includes_contribution(transcript, &contribution, &user, false, true);
+    })
+}
+
+pub async fn wrong_bls(
+    harness: &Harness,
+    client: &reqwest::Client,
+    user: TestUser,
+) -> PostConditionCheck {
+    let session_id = actions::login(harness, client, &user).await;
+    let mut contribution = await_contribution_slot(harness, client, &session_id).await;
+    contribution
+        .add_entropy::<DefaultEngine>(
+            &entropy_from_str(&user.identity().to_string()),
+            &user.identity(),
+        )
+        .expect("Adding entropy must be possible");
+
+    contribution.contributions.iter_mut().for_each(|c| {
+        c.bls_signature = BlsSignature(Some(G1::one()));
+    });
+
+    actions::contribute_successfully(
+        harness,
+        client,
+        &session_id,
+        &contribution,
+        &user.identity().to_string(),
+    )
+    .await;
+
+    Box::new(move |transcript| {
+        actions::assert_includes_contribution(transcript, &contribution, &user, false, false);
     })
 }
 
@@ -110,7 +156,10 @@ pub async fn slow_compute(
     let mut contribution = await_contribution_slot(harness, client, &session_id).await;
     tokio::time::sleep(harness.options.lobby.compute_deadline).await;
     contribution
-        .add_entropy::<Arkworks>(&entropy_from_str(&user.identity()))
+        .add_entropy::<Arkworks>(
+            &entropy_from_str(&user.identity().to_string()),
+            &user.identity(),
+        )
         .expect("Adding entropy must be possible");
     let response = actions::request_contribute(harness, client, &session_id, &contribution).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use crate::common::{
     mock_auth_service,
     mock_auth_service::{AuthState, GhUser, TestUser},
@@ -173,6 +174,12 @@ impl Builder {
 
     pub fn allow_multi_contribution(mut self) -> Self {
         self.options.multi_contribution = true;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn set_transcript_file(mut self, path: PathBuf) -> Self {
+        self.options.transcript_file = path;
         self
     }
 

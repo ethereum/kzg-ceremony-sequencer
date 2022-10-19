@@ -181,7 +181,9 @@ async fn hello_world() -> Html<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kzg_ceremony_crypto::{BatchContribution, BatchTranscript, G2};
+    use kzg_ceremony_crypto::{
+        signature::identity::Identity, BatchContribution, BatchTranscript, G2,
+    };
     use secrecy::Secret;
 
     pub fn test_transcript() -> BatchTranscript {
@@ -191,7 +193,9 @@ mod tests {
     pub fn valid_contribution(transcript: &BatchTranscript, no: u8) -> BatchContribution {
         let entropy = Secret::new([no; 32]);
         let mut contribution = transcript.contribution();
-        contribution.add_entropy::<Engine>(&entropy).unwrap();
+        contribution
+            .add_entropy::<Engine>(&entropy, &Identity::None)
+            .unwrap();
         contribution
     }
 

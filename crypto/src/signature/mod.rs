@@ -7,10 +7,9 @@ pub mod identity;
 use crate::{
     hex_format::{bytes_to_hex, optional_hex_to_bytes},
     signature::identity::Identity,
-    BatchContribution, Engine, Tau, F, G1, G2,
+    BatchContribution, Engine, Tau, G1, G2,
 };
 use ethers::types::transaction::eip712::{EIP712Domain, Eip712, Eip712Error, TypedData};
-use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
 
@@ -18,10 +17,12 @@ use serde_json::json;
 pub struct BlsSignature(pub Option<G1>);
 
 impl BlsSignature {
-    pub fn empty() -> Self {
+    #[must_use]
+    pub const fn empty() -> Self {
         Self(None)
     }
 
+    #[must_use]
     pub fn prune<E: Engine>(&self, message: &[u8], pk: G2) -> Self {
         Self(self.0.and_then(|sig| {
             if E::verify_signature(sig, message, pk) {
@@ -32,6 +33,7 @@ impl BlsSignature {
         }))
     }
 
+    #[must_use]
     pub fn sign<E: Engine>(message: &[u8], sk: &Tau) -> Self {
         Self(E::sign_message(sk, message))
     }
@@ -54,8 +56,7 @@ impl<'de> Deserialize<'de> for BlsSignature {
     where
         D: Deserializer<'de>,
     {
-        optional_hex_to_bytes::<_, 48>(deserializer)
-            .map(|bytes_opt| BlsSignature(bytes_opt.map(G1)))
+        optional_hex_to_bytes::<_, 48>(deserializer).map(|bytes_opt| Self(bytes_opt.map(G1)))
     }
 }
 
@@ -63,15 +64,17 @@ impl<'de> Deserialize<'de> for BlsSignature {
 pub struct EcdsaSignature(pub Option<ethers::types::Signature>);
 
 impl EcdsaSignature {
-    pub fn empty() -> Self {
+    #[must_use]
+    pub const fn empty() -> Self {
         Self(None)
     }
 
-    pub fn prune<T: Eip712>(&self, identity: &Identity, data: T) -> Self {
+    #[must_use]
+    pub fn prune<T: Eip712>(&self, identity: &Identity, data: &T) -> Self {
         Self(self.0.as_ref().and_then(|sig| {
             if let Identity::Ethereum { address } = identity {
                 sig.verify(data.encode_eip712().ok()?, address).ok()?;
-                Some(sig.clone())
+                Some(*sig)
             } else {
                 None
             }
@@ -100,7 +103,7 @@ impl<'de> Deserialize<'de> for EcdsaSignature {
         D: Deserializer<'de>,
     {
         optional_hex_to_bytes::<_, 65>(deserializer).map(|bytes_opt| {
-            EcdsaSignature(bytes_opt.map(|bytes| {
+            Self(bytes_opt.map(|bytes| {
                 ethers::types::Signature::try_from(&bytes[..])
                     .expect("Impossible, input is guaranteed correct")
             }))
@@ -131,7 +134,7 @@ impl From<&BatchContribution> for ContributionTypedData {
                 .map(|c| PubkeyTypedData {
                     num_g1_powers: c.powers.g1.len(),
                     num_g2_powers: c.powers.g2.len(),
-                    pot_pubkey:    c.pot_pubkey.clone(),
+                    pot_pubkey:    c.pot_pubkey,
                 })
                 .collect(),
         }
@@ -164,8 +167,8 @@ impl From<ContributionTypedData> for TypedData {
             },
             "message": contrib
         });
-        return serde_json::from_value(json)
-            .expect("Impossible, constructed from a literal and therefore must be valid json");
+        serde_json::from_value(json)
+            .expect("Impossible, constructed from a literal and therefore must be valid json")
     }
 }
 

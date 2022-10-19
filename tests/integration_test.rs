@@ -13,8 +13,8 @@ use ethers_core::types::Address;
 use ethers_signers::{LocalWallet, Signer};
 use http::StatusCode;
 use kzg_ceremony_crypto::{
-    signature::{ContributionTypedData, EcdsaSignature},
-    Arkworks,
+    signature::{BlsSignature, ContributionTypedData, EcdsaSignature},
+    Arkworks, DefaultEngine, G1,
 };
 use rand::thread_rng;
 use secrecy::Secret;
@@ -69,7 +69,7 @@ async fn test_gh_auth_with_custom_frontend_redirect() {
     assert_eq!(redirected_to.host_str(), Some("my.magical.frontend"));
     assert_eq!(redirected_to.path(), "/post-sign-in");
     let params: HashMap<_, _> = redirected_to.query_pairs().into_owned().collect();
-    assert_eq!(params["sub"], user.identity());
+    assert_eq!(params["sub"], user.identity().to_string());
     assert_eq!(params["nickname"], "kustosz");
     assert_eq!(params["provider"], "Github");
     assert!(params.get("session_id").is_some());
@@ -132,7 +132,7 @@ async fn test_gh_contribution_happy_path() {
         .unwrap();
     let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(&entropy)
+        .add_entropy::<Arkworks>(&entropy, &user.identity())
         .expect("Adding entropy must be possible");
 
     actions::contribute_successfully(
@@ -140,7 +140,7 @@ async fn test_gh_contribution_happy_path() {
         &http_client,
         &session_id,
         &contribution,
-        &user.identity(),
+        &user.identity().to_string(),
     )
     .await;
 
@@ -201,18 +201,25 @@ async fn test_double_contribution() {
         .unwrap();
     let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(&entropy)
+        .add_entropy::<DefaultEngine>(&entropy, &user_id)
         .expect("Adding entropy must be possible");
 
     // First, successful contribution;
-    actions::contribute_successfully(&harness, &http_client, &session_id, &contribution, &user_id)
-        .await;
+    actions::contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution,
+        &user_id.to_string(),
+    )
+    .await;
     let transcript_with_first_contrib = harness.read_transcript_file().await;
     actions::assert_includes_contribution(
         &transcript_with_first_contrib,
         &contribution,
         &user,
         false,
+        true,
     );
 
     // Try contributing again right away – fails because the contribution spot is
@@ -261,9 +268,10 @@ async fn test_double_contribution_when_allowed() {
     let mut contribution1 = actions::try_contribute(&harness, &http_client, &session_id).await;
 
     contribution1
-        .add_entropy::<Arkworks>(&actions::entropy_from_str(
-            "such an unguessable string, wow!",
-        ))
+        .add_entropy::<DefaultEngine>(
+            &actions::entropy_from_str("such an unguessable string, wow!"),
+            &user_id,
+        )
         .expect("Adding entropy must be possible");
 
     actions::contribute_successfully(
@@ -271,7 +279,7 @@ async fn test_double_contribution_when_allowed() {
         &http_client,
         &session_id,
         &contribution1,
-        &user_id,
+        &user_id.to_string(),
     )
     .await;
 
@@ -283,9 +291,10 @@ async fn test_double_contribution_when_allowed() {
 
     let mut contribution2 = actions::try_contribute(&harness, &http_client, &session_id).await;
     contribution2
-        .add_entropy::<Arkworks>(&actions::entropy_from_str(
-            "another unguessable string, wow!",
-        ))
+        .add_entropy::<DefaultEngine>(
+            &actions::entropy_from_str("another unguessable string, wow!"),
+            &user_id,
+        )
         .expect("Adding entropy must be possible");
 
     actions::contribute_successfully(
@@ -293,12 +302,12 @@ async fn test_double_contribution_when_allowed() {
         &http_client,
         &session_id,
         &contribution2,
-        &user_id,
+        &user_id.to_string(),
     )
     .await;
     let transcript = harness.read_transcript_file().await;
-    actions::assert_includes_contribution(&transcript, &contribution1, &user, false);
-    actions::assert_includes_contribution(&transcript, &contribution2, &user, false);
+    actions::assert_includes_contribution(&transcript, &contribution1, &user, false, true);
+    actions::assert_includes_contribution(&transcript, &contribution2, &user, false, true);
 }
 
 #[tokio::test]
@@ -368,7 +377,7 @@ async fn test_large_lobby_with_slow_compute_users() {
 async fn test_various_contributors() {
     let harness = Arc::new(run_test_harness().await);
     let client = Arc::new(reqwest::Client::new());
-    let n = 30;
+    let n = 40;
     let handles = (0..n).into_iter().map(|i| {
         let h = harness.clone();
         let c = client.clone();
@@ -378,10 +387,12 @@ async fn test_various_contributors() {
             } else {
                 h.create_eth_user().await
             };
-            match i % 3 {
-                0 => participants::well_behaved(h.as_ref(), c.as_ref(), user).await,
+            // modulus here must be odd to test the full user / participant matrix.
+            match i % 5 {
+                0 => participants::wrong_ecdsa(h.as_ref(), c.as_ref(), user).await,
                 1 => participants::slow_compute(h.as_ref(), c.as_ref(), user).await,
-                _ => participants::wrong_ecdsa(h.as_ref(), c.as_ref(), user).await,
+                2 => participants::wrong_bls(h.as_ref(), c.as_ref(), user).await,
+                _ => participants::well_behaved(h.as_ref(), c.as_ref(), user).await,
             }
         })
     });
@@ -417,7 +428,7 @@ async fn test_contribution_after_lobby_cleanup() {
         .unwrap();
     let entropy = Secret::new(entropy);
     contribution
-        .add_entropy::<Arkworks>(&entropy)
+        .add_entropy::<Arkworks>(&entropy, &user.identity())
         .expect("Adding entropy must be possible");
 
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -427,7 +438,7 @@ async fn test_contribution_after_lobby_cleanup() {
         &http_client,
         &session_id,
         &contribution,
-        &user.identity(),
+        &user.identity().to_string(),
     )
     .await;
 }
@@ -442,7 +453,7 @@ async fn test_wrong_ecdsa_signature() {
     let mut contribution = actions::try_contribute(&harness, &http_client, &session_id).await;
     let entropy = actions::entropy_from_str("foo bar baz");
     contribution
-        .add_entropy::<Arkworks>(&entropy)
+        .add_entropy::<DefaultEngine>(&entropy, &user.identity())
         .expect("Adding entropy must be possible");
     contribution.ecdsa_signature = EcdsaSignature(Some(
         other_wallet
@@ -456,11 +467,41 @@ async fn test_wrong_ecdsa_signature() {
         &http_client,
         &session_id,
         &contribution,
-        &user.identity(),
+        &user.identity().to_string(),
     )
     .await;
 
     let transcript = harness.read_transcript_file().await;
 
-    assert_includes_contribution(&transcript, &contribution, &user, false)
+    assert_includes_contribution(&transcript, &contribution, &user, false, true)
+}
+
+#[tokio::test]
+async fn test_wrong_bls_signature() {
+    let harness = run_test_harness().await;
+    let http_client = reqwest::Client::new();
+    let user = harness.create_eth_user().await;
+    let session_id = actions::login(&harness, &http_client, &user).await;
+    let mut contribution = actions::try_contribute(&harness, &http_client, &session_id).await;
+    let entropy = actions::entropy_from_str("foo bar baz");
+    contribution
+        .add_entropy::<DefaultEngine>(&entropy, &user.identity())
+        .expect("Adding entropy must be possible");
+
+    contribution.contributions.iter_mut().for_each(|c| {
+        c.bls_signature = BlsSignature(Some(G1::one()));
+    });
+
+    actions::contribute_successfully(
+        &harness,
+        &http_client,
+        &session_id,
+        &contribution,
+        &user.identity().to_string(),
+    )
+    .await;
+
+    let transcript = harness.read_transcript_file().await;
+
+    assert_includes_contribution(&transcript, &contribution, &user, false, false)
 }

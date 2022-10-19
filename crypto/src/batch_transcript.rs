@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BatchTranscript {
     pub transcripts:                  Vec<Transcript>,
     pub participant_ids:              Vec<Identity>,
@@ -47,7 +47,7 @@ impl BatchTranscript {
     #[instrument(level = "info", skip_all, fields(n=contribution.contributions.len()))]
     pub fn verify_add<E: Engine>(
         &mut self,
-        contribution: BatchContribution,
+        mut contribution: BatchContribution,
         identity: Identity,
     ) -> Result<(), CeremoniesError> {
         // Verify contribution count
@@ -72,8 +72,15 @@ impl BatchTranscript {
         self.participant_ecdsa_signatures.push(
             contribution
                 .ecdsa_signature
-                .prune(&identity, ContributionTypedData::from(&contribution)),
+                .prune(&identity, &ContributionTypedData::from(&contribution)),
         );
+
+        // Prune BLS Signatures
+        contribution.contributions.iter_mut().for_each(|c| {
+            c.bls_signature = c
+                .bls_signature
+                .prune::<E>(identity.to_string().as_bytes(), c.pot_pubkey);
+        });
 
         // Add contributions
         for (transcript, contribution) in self
@@ -114,7 +121,9 @@ pub mod bench {
         let transcript = {
             let mut transcript = BatchTranscript::new(BATCH_SIZE.iter());
             let mut contribution = transcript.contribution();
-            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
+            contribution
+                .add_entropy::<E>(&rand_entropy(), &Identity::None)
+                .unwrap();
             transcript
                 .verify_add::<E>(contribution, Identity::None)
                 .unwrap();
@@ -128,7 +137,9 @@ pub mod bench {
                     || {
                         (transcript.clone(), {
                             let mut contribution = transcript.contribution();
-                            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
+                            contribution
+                                .add_entropy::<E>(&rand_entropy(), &Identity::None)
+                                .unwrap();
                             contribution
                         })
                     },

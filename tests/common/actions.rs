@@ -262,6 +262,7 @@ pub fn assert_includes_contribution(
     contribution: &BatchContribution,
     user: &TestUser,
     expect_ecdsa_signed: bool,
+    expect_bls_signed: bool,
 ) {
     let first_contrib_pubkey = contribution.contributions[0].pot_pubkey;
     let index_in_transcripts = transcript.transcripts[0]
@@ -271,15 +272,15 @@ pub fn assert_includes_contribution(
         .position(|pk| pk == &first_contrib_pubkey)
         .expect("Transcript does not include contribution.");
     assert_eq!(
-        transcript.participant_ids[index_in_transcripts].to_string(),
+        transcript.participant_ids[index_in_transcripts],
         user.identity()
     );
 
     match &transcript.participant_ecdsa_signatures[index_in_transcripts].0 {
         Some(_) if !expect_ecdsa_signed => {
-            panic!("Expected no signature, but signature is present")
+            panic!("Expected no ECDSA signature, but signature is present")
         }
-        None if expect_ecdsa_signed => panic!("Expected a signature, but none found"),
+        None if expect_ecdsa_signed => panic!("Expected an ECDSA signature, but none found"),
         _ => (),
     }
 
@@ -290,5 +291,14 @@ pub fn assert_includes_contribution(
         .for_each(|(t, c)| {
             assert_eq!(t.witness.products[index_in_transcripts], c.powers.g1[1]);
             assert_eq!(t.witness.pubkeys[index_in_transcripts], c.pot_pubkey);
+            match t.witness.signatures[index_in_transcripts].0 {
+                Some(_) if !expect_bls_signed => {
+                    panic!("Expected no BLS signature, but signature is present");
+                }
+                None if expect_bls_signed => {
+                    panic!("Expected a BLS signature, but none found");
+                }
+                _ => (),
+            }
         })
 }

@@ -1,4 +1,7 @@
-use crate::{signature::BlsSignature, CeremonyError, Engine, Powers, Tau, G2};
+use crate::{
+    signature::{identity::Identity, BlsSignature},
+    CeremonyError, Engine, Powers, Tau, G2,
+};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -21,7 +24,11 @@ impl Contribution {
     /// Adds entropy to this contribution. Can be called multiple times.
     /// The entropy is consumed and the blob is zeroized after use.
     #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
-    pub fn add_tau<E: Engine>(&mut self, tau: &Tau) -> Result<(), CeremonyError> {
+    pub fn add_tau<E: Engine>(
+        &mut self,
+        tau: &Tau,
+        identity: &Identity,
+    ) -> Result<(), CeremonyError> {
         // Validate points
         // TODO: Do this after we submit result to contribute faster.
         E::validate_g1(&self.powers.g1)?;
@@ -33,6 +40,7 @@ impl Contribution {
         E::add_tau_g2(tau, &mut self.powers.g2)?;
         let mut temp = [G2::one(), self.pot_pubkey];
         E::add_tau_g2(tau, &mut temp)?;
+        self.bls_signature = BlsSignature::sign::<E>(identity.to_string().as_bytes(), tau);
         self.pot_pubkey = temp[1];
 
         Ok(())

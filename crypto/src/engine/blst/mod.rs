@@ -200,10 +200,10 @@ impl Engine for BLST {
                 message.len(),
                 Self::CYPHER_SUITE.as_ptr(),
                 Self::CYPHER_SUITE.len(),
-                [0 as u8; 0].as_ptr(),
+                [0; 0].as_ptr(),
                 0,
             );
-            blst_sign_pk_in_g2(&mut sig, &mut hash, &sk);
+            blst_sign_pk_in_g2(&mut sig, &hash, &sk);
         }
         G1::try_from(sig).ok()
     }
@@ -226,7 +226,7 @@ impl Engine for BLST {
                 message.len(),
                 Self::CYPHER_SUITE.as_ptr(),
                 Self::CYPHER_SUITE.len(),
-                [0 as u8; 0].as_ptr(),
+                [0; 0].as_ptr(),
                 0,
             )
         };
