@@ -109,7 +109,7 @@ pub async fn extract_session_id_from_auth_response(response: reqwest::Response) 
 
 pub async fn login(harness: &Harness, http_client: &reqwest::Client, user: &TestUser) -> String {
     let csrf = get_and_validate_csrf_token(harness, None).await;
-    let callback_result = request_auth_callback(harness, http_client, &user, &csrf).await;
+    let callback_result = request_auth_callback(harness, http_client, user, &csrf).await;
     assert_eq!(callback_result.status(), StatusCode::OK);
     extract_session_id_from_auth_response(callback_result).await
 }

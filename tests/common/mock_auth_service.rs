@@ -93,10 +93,7 @@ impl TestUser {
     }
 
     pub fn is_eth(&self) -> bool {
-        match &self.user {
-            AnyTestUser::Eth(_) => true,
-            _ => false,
-        }
+        matches!(&self.user, AnyTestUser::Eth(_))
     }
 }
 

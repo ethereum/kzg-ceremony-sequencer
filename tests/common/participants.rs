@@ -9,7 +9,7 @@ use kzg_ceremony_crypto::{
 };
 use rand::{thread_rng, Rng};
 
-type PostConditionCheck = Box<dyn FnOnce(&BatchTranscript) -> () + Send + Sync>;
+type PostConditionCheck = Box<dyn FnOnce(&BatchTranscript) + Send + Sync>;
 
 async fn await_contribution_slot(
     harness: &Harness,
@@ -18,7 +18,7 @@ async fn await_contribution_slot(
 ) -> BatchContribution {
     loop {
         let try_contribute_response =
-            actions::request_try_contribute(harness, client, &session_id).await;
+            actions::request_try_contribute(harness, client, session_id).await;
         assert_eq!(try_contribute_response.status(), StatusCode::OK);
         let maybe_contribution = try_contribute_response
             .json::<BatchContribution>()
@@ -93,7 +93,7 @@ pub async fn wrong_ecdsa(
         )
         .expect("Adding entropy must be possible");
 
-    let mut random_bytes = [0 as u8; 65];
+    let mut random_bytes = [0; 65];
     (0..65).for_each(|i| {
         random_bytes[i] = thread_rng().gen();
     });

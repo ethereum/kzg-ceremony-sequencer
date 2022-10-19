@@ -208,15 +208,15 @@ mod tests {
             let mut tmp = vec![G2::one(), G2::one()];
             Arkworks::add_tau_g2(&tau, &mut tmp).unwrap();
             let pubkey = tmp[1];
-            let recovered = signed.prune::<BLST>(&bytes, pubkey);
+            let recovered = signed.prune::<BLST>(bytes, pubkey);
             assert_eq!(signed, recovered);
-        })
+        });
     }
 
     #[test]
     fn test_bls_prune_wrong_msg() {
-        let message = "git|1234|foobar".as_bytes();
-        let wrong_msg = "git|4567|bazbaz".as_bytes();
+        let message = b"git|1234|foobar";
+        let wrong_msg = b"git|4567|bazbaz";
         let tau = Secret::new(F::one());
         let signed = BlsSignature::sign::<BLST>(message, &tau);
         assert!(signed.0.is_some());
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_bls_prune_wrong_sig() {
-        let message = "git|1234|foobar".as_bytes();
+        let message = b"git|1234|foobar";
         let tau = Arkworks::generate_tau(&Entropy::new(thread_rng().gen()));
         let wrong_tau = Arkworks::generate_tau(&Entropy::new(thread_rng().gen()));
         let signed = BlsSignature::sign::<BLST>(message, &tau);
