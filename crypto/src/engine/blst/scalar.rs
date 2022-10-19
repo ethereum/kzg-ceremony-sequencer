@@ -77,6 +77,16 @@ pub fn scalar_from_u64(a: u64) -> blst_scalar {
     scalar
 }
 
+impl From<&F> for blst_scalar {
+    fn from(n: &F) -> Self {
+        let mut out = blst_scalar::default();
+        unsafe {
+            blst_scalar_from_lendian(&mut out, n.0.as_ptr());
+        }
+        out
+    }
+}
+
 impl From<&F> for blst_fr {
     fn from(n: &F) -> Self {
         // TODO: Zeroize the temps

@@ -115,7 +115,9 @@ pub mod bench {
             let mut transcript = BatchTranscript::new(BATCH_SIZE.iter());
             let mut contribution = transcript.contribution();
             contribution.add_entropy::<E>(&rand_entropy()).unwrap();
-            transcript.verify_add::<E>(contribution).unwrap();
+            transcript
+                .verify_add::<E>(contribution, Identity::None)
+                .unwrap();
             transcript
         };
 
@@ -131,7 +133,9 @@ pub mod bench {
                         })
                     },
                     |(mut transcript, contribution)| {
-                        transcript.verify_add::<E>(contribution).unwrap();
+                        transcript
+                            .verify_add::<E>(contribution, Identity::None)
+                            .unwrap();
                     },
                     BatchSize::LargeInput,
                 );

@@ -7,18 +7,33 @@ pub mod identity;
 use crate::{
     hex_format::{bytes_to_hex, optional_hex_to_bytes},
     signature::identity::Identity,
-    BatchContribution, G1, G2,
+    BatchContribution, Engine, Tau, F, G1, G2,
 };
 use ethers::types::transaction::eip712::{EIP712Domain, Eip712, Eip712Error, TypedData};
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct BlsSignature(Option<G1>);
+pub struct BlsSignature(pub Option<G1>);
 
 impl BlsSignature {
     pub fn empty() -> Self {
         Self(None)
+    }
+
+    pub fn prune<E: Engine>(&self, message: &[u8], pk: G2) -> Self {
+        Self(self.0.and_then(|sig| {
+            if E::verify_signature(sig, message, pk) {
+                Some(sig)
+            } else {
+                None
+            }
+        }))
+    }
+
+    pub fn sign<E: Engine>(message: &[u8], sk: &Tau) -> Self {
+        Self(E::sign_message(sk, message))
     }
 }
 
@@ -53,7 +68,7 @@ impl EcdsaSignature {
     }
 
     pub fn prune<T: Eip712>(&self, identity: &Identity, data: T) -> Self {
-        EcdsaSignature(self.0.as_ref().and_then(|sig| {
+        Self(self.0.as_ref().and_then(|sig| {
             if let Identity::Ethereum { address } = identity {
                 sig.verify(data.encode_eip712().ok()?, address).ok()?;
                 Some(sig.clone())
@@ -167,5 +182,59 @@ impl Eip712 for ContributionTypedData {
 
     fn struct_hash(&self) -> Result<[u8; 32], Self::Error> {
         TypedData::from(self.clone()).struct_hash()
+    }
+}
+
+#[cfg(all(test, feature = "arkworks", feature = "blst"))]
+mod tests {
+    use crate::{
+        engine::tests::arb_f, signature::BlsSignature, Arkworks, Engine, Entropy, BLST, F, G2,
+    };
+    use proptest::proptest;
+    use rand::{thread_rng, Rng};
+    use secrecy::Secret;
+
+    #[test]
+    fn test_bls_prune_after_encode() {
+        proptest!(|(f in arb_f(), msg in ".*")| {
+            let bytes = msg.as_bytes();
+            let tau = Secret::new(f);
+            let signed = BlsSignature::sign::<BLST>(bytes, &tau);
+            assert!(signed.0.is_some());
+            // use the Arkworks engine to cross-check with BLST
+            let mut tmp = vec![G2::one(), G2::one()];
+            Arkworks::add_tau_g2(&tau, &mut tmp).unwrap();
+            let pubkey = tmp[1];
+            let recovered = signed.prune::<BLST>(&bytes, pubkey);
+            assert_eq!(signed, recovered);
+        })
+    }
+
+    #[test]
+    fn test_bls_prune_wrong_msg() {
+        let message = "git|1234|foobar".as_bytes();
+        let wrong_msg = "git|4567|bazbaz".as_bytes();
+        let tau = Secret::new(F::one());
+        let signed = BlsSignature::sign::<BLST>(message, &tau);
+        assert!(signed.0.is_some());
+        let mut tmp = vec![G2::one(), G2::one()];
+        Arkworks::add_tau_g2(&tau, &mut tmp).unwrap();
+        let pubkey = tmp[1];
+        let recovered = signed.prune::<BLST>(wrong_msg, pubkey);
+        assert_eq!(recovered, BlsSignature(None));
+    }
+
+    #[test]
+    fn test_bls_prune_wrong_sig() {
+        let message = "git|1234|foobar".as_bytes();
+        let tau = Arkworks::generate_tau(&Entropy::new(thread_rng().gen()));
+        let wrong_tau = Arkworks::generate_tau(&Entropy::new(thread_rng().gen()));
+        let signed = BlsSignature::sign::<BLST>(message, &tau);
+        assert!(signed.0.is_some());
+        let mut tmp = vec![G2::one(), G2::one()];
+        Arkworks::add_tau_g2(&wrong_tau, &mut tmp).unwrap();
+        let wrong_pubkey = tmp[1];
+        let recovered = signed.prune::<BLST>(message, wrong_pubkey);
+        assert_eq!(recovered, BlsSignature(None));
     }
 }

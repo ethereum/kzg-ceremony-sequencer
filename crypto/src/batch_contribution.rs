@@ -57,6 +57,7 @@ pub mod bench {
         Arkworks, BatchTranscript, Both, BLST,
     };
     use criterion::{BatchSize, Criterion};
+    use crate::signature::identity::Identity;
 
     pub fn group(criterion: &mut Criterion) {
         #[cfg(feature = "arkworks")]
@@ -73,7 +74,9 @@ pub mod bench {
             let mut transcript = BatchTranscript::new(BATCH_SIZE.iter());
             let mut contribution = transcript.contribution();
             contribution.add_entropy::<E>(&rand_entropy()).unwrap();
-            transcript.verify_add::<E>(contribution).unwrap();
+            transcript
+                .verify_add::<E>(contribution, Identity::None)
+                .unwrap();
             transcript
         };
 

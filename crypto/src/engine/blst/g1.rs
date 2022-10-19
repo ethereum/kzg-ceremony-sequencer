@@ -32,6 +32,14 @@ impl TryFrom<blst_p1_affine> for G1 {
     }
 }
 
+impl TryFrom<blst_p1> for G1 {
+    type Error = ParseError;
+
+    fn try_from(g1: blst_p1) -> Result<Self, Self::Error> {
+        Self::try_from(p1_to_affine(&g1))
+    }
+}
+
 pub fn p1_from_affine(a: &blst_p1_affine) -> blst_p1 {
     unsafe {
         let mut p = blst_p1::default();

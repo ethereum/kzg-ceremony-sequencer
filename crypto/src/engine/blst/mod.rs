@@ -12,8 +12,9 @@ use crate::{
     CeremonyError, Engine, Entropy, ParseError, Tau, G1, G2,
 };
 use blst::{
-    blst_final_exp, blst_fp12, blst_fr, blst_fr_add, blst_miller_loop, blst_p1_affine,
-    blst_p1_generator, blst_p2_affine, blst_p2_affine_generator, blst_p2_generator, blst_scalar,
+    blst_core_verify_pk_in_g2, blst_final_exp, blst_fp12, blst_fr, blst_fr_add, blst_hash_to_g1,
+    blst_miller_loop, blst_p1, blst_p1_affine, blst_p1_generator, blst_p2_affine,
+    blst_p2_affine_generator, blst_p2_generator, blst_scalar, blst_sign_pk_in_g2, BLST_ERROR,
 };
 use rand::Rng;
 use rayon::prelude::{
@@ -186,6 +187,50 @@ impl Engine for BLST {
         }
 
         Ok(())
+    }
+
+    fn sign_message(tau: &Tau, message: &[u8]) -> Option<G1> {
+        let mut hash = blst_p1::default();
+        let mut sig = blst_p1::default();
+        let sk = blst_scalar::from(tau.expose_secret());
+        unsafe {
+            blst_hash_to_g1(
+                &mut hash,
+                message.as_ptr(),
+                message.len(),
+                Self::CYPHER_SUITE.as_ptr(),
+                Self::CYPHER_SUITE.len(),
+                [0 as u8; 0].as_ptr(),
+                0,
+            );
+            blst_sign_pk_in_g2(&mut sig, &mut hash, &sk);
+        }
+        G1::try_from(sig).ok()
+    }
+
+    fn verify_signature(sig: G1, message: &[u8], pk: G2) -> bool {
+        let blst_pk = match blst_p2_affine::try_from(pk).ok() {
+            Some(pk) => pk,
+            _ => return false,
+        };
+        let blst_sig = match blst_p1_affine::try_from(sig).ok() {
+            Some(sig) => sig,
+            _ => return false,
+        };
+        let result = unsafe {
+            blst_core_verify_pk_in_g2(
+                &blst_pk,
+                &blst_sig,
+                true,
+                message.as_ptr(),
+                message.len(),
+                Self::CYPHER_SUITE.as_ptr(),
+                Self::CYPHER_SUITE.len(),
+                [0 as u8; 0].as_ptr(),
+                0,
+            )
+        };
+        result == BLST_ERROR::BLST_SUCCESS
     }
 }
 
