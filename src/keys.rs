@@ -126,19 +126,4 @@ mod tests {
         let result = keys.verify(&message, &signature);
         println!("result {:?}", result);
     }
-
-    #[tokio::test]
-    async fn test_enum_casees() {
-        #[derive(Debug, Error)]
-        enum ErrorEnum {
-            #[error("duh")]
-            Lorem,
-            #[error("Ipsum error: {0}")]
-            Ipsum(usize),
-        }
-
-        let a = ErrorEnum::Lorem;
-        let b = ErrorEnum::Ipsum(5);
-        println!("{} {}", a, b);
-    }
 }
