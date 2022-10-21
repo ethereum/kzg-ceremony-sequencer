@@ -138,10 +138,13 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
 
 impl IntoResponse for StorageError {
     fn into_response(self) -> Response {
-        let message = match self {
+        let message = match &self {
             Self::DatabaseError(error) => error.to_string(),
         };
-        let body = Json(json!({ "error": message }));
+        let body = Json(json!({
+            "code": "StorageError::DatabaseError",
+            "error": message
+        }));
         (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
     }
 }

@@ -41,6 +41,7 @@ impl IntoResponse for TryContributeError {
         let (status, body) = match self {
             Self::UnknownSessionId => {
                 let body = Json(json!({
+                    "code": format!("{:?}", self),
                     "error": "unknown session id",
                 }));
                 (StatusCode::UNAUTHORIZED, body)
@@ -48,6 +49,7 @@ impl IntoResponse for TryContributeError {
 
             Self::RateLimited => {
                 let body = Json(json!({
+                    "code": format!("{:?}", self),
                     "error": "call came too early. rate limited",
                 }));
                 (StatusCode::BAD_REQUEST, body)
@@ -55,6 +57,7 @@ impl IntoResponse for TryContributeError {
 
             Self::AnotherContributionInProgress => {
                 let body = Json(json!({
+                    "code": format!("{:?}", self),
                     "message": "another contribution in progress",
                 }));
                 (StatusCode::OK, body)

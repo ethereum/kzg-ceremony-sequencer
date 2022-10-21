@@ -12,7 +12,7 @@ use axum::{
 };
 use axum_extra::response::ErasedJson;
 use http::StatusCode;
-use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
+use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, CeremonyError};
 use serde::Serialize;
 use serde_json::json;
 use std::sync::atomic::Ordering;
@@ -46,13 +46,14 @@ impl IntoResponse for ContributeError {
     fn into_response(self) -> Response {
         let (status, body) = match self {
             Self::NotUsersTurn => {
-                let body = Json(json!({"error" : "not your turn to participate"}));
+                let body = Json(json!({
+                    "code": format!("{:?}", self),
+                    "error" : "not your turn to participate"
+                }));
                 (StatusCode::BAD_REQUEST, body)
             }
-            Self::InvalidContribution(e) => {
-                let body = Json(json!({ "error": format!("contribution invalid: {}", e) }));
-                (StatusCode::BAD_REQUEST, body)
-            }
+            Self::InvalidContribution(e) =>
+                return CeremoniesErrorFormatter(e).into_response(),
             Self::Signature(err) => return err.into_response(),
             Self::StorageError(err) => return err.into_response(),
         };
