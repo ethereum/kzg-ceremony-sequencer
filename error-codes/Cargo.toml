@@ -1,0 +1,12 @@
+[package]
+version = "0.1.0"
+name = "error-codes"
+description = "Derive error codes from error enums"
+authors = ["Grzegorz Swirski <grzegorz@swirski.name>"]
+edition = "2021"
+homepage = "https://github.com/ethereum/kzg-ceremony-sequencer"
+repository = "https://github.com/ethereum/kzg-ceremony-sequencer"
+license-file = "../mit-license.md"
+
+[dependencies]
+error-codes-derive = { path = "../error-codes-derive" }

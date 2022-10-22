@@ -7,13 +7,14 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
+use error_codes::ErrorCode;
 use http::StatusCode;
 use kzg_ceremony_crypto::BatchContribution;
 use serde::Serialize;
 use thiserror::Error;
 use tokio::time::Instant;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, ErrorCode)]
 pub enum TryContributeError {
     #[error("unknown session id")]
     UnknownSessionId,

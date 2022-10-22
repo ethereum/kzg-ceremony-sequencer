@@ -12,6 +12,7 @@ use axum::{
     Extension, Json,
 };
 use chrono::DateTime;
+use error_codes::ErrorCode;
 use http::StatusCode;
 use oauth2::{
     reqwest::async_http_client, AuthorizationCode, CsrfToken, RequestTokenError, Scope,
@@ -47,7 +48,7 @@ pub struct AuthError {
     pub payload:  AuthErrorPayload,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, ErrorCode)]
 pub enum AuthErrorPayload {
     #[error("lobby is full")]
     LobbyIsFull,

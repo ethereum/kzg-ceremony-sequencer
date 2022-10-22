@@ -1,4 +1,5 @@
 use clap::Parser;
+use error_codes::ErrorCode;
 use ethers_core::{
     rand::thread_rng,
     types::{RecoveryMessage, H160},
@@ -22,7 +23,7 @@ pub struct Options {
 #[derive(Serialize)]
 pub struct Signature(String);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, ErrorCode)]
 pub enum SignatureError {
     #[error("couldn't sign the receipt")]
     SignatureCreation,

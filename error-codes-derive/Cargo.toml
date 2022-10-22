@@ -1,14 +1,11 @@
 [package]
 version = "0.1.0"
-name = "enum-variant-derive"
-description = "Implementation of the ethereum kzg cermony spec cryptography"
+name = "error-codes-derive"
+description = "Derive error codes from error enums"
 authors = ["Grzegorz Swirski <grzegorz@swirski.name>"]
 edition = "2021"
 homepage = "https://github.com/ethereum/kzg-ceremony-sequencer"
 repository = "https://github.com/ethereum/kzg-ceremony-sequencer"
-keywords = ["cryptography"]
-categories = ["cryptography::cryptocurrencies"]
-readme = "Readme.md"
 license-file = "../mit-license.md"
 
 [lib]

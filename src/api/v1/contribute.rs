@@ -11,6 +11,7 @@ use axum::{
     Extension, Json,
 };
 use axum_extra::response::ErasedJson;
+use error_codes::ErrorCode;
 use http::StatusCode;
 use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
 use serde::Serialize;
@@ -29,14 +30,14 @@ impl IntoResponse for ContributeReceipt {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, ErrorCode)]
 pub enum ContributeError {
     #[error("not your turn to participate")]
     NotUsersTurn,
     #[error("contribution invalid: {0}")]
-    InvalidContribution(#[from] CeremoniesError),
+    InvalidContribution(#[from] #[propagate_code] CeremoniesError),
     #[error("signature error: {0}")]
-    Signature(SignatureError),
+    Signature(#[propagate_code] SignatureError),
     #[error("storage error: {0}")]
     StorageError(#[from] StorageError),
 }

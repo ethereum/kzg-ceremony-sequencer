@@ -1,16 +1,15 @@
-use enum_variant::EnumVariantNameString;
-use enum_variant_derive::EnumVariantNameString;
+use error_codes::ErrorCode;
 use thiserror::Error;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, ErrorCode)]
 pub enum CeremoniesError {
     #[error("Unexpected number of contributions: expected {0}, got {1}")]
     UnexpectedNumContributions(usize, usize),
     #[error("Error in contribution {0}: {1}")]
-    InvalidCeremony(usize, #[source] CeremonyError),
+    InvalidCeremony(usize, #[source] #[propagate_code] CeremonyError),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, ErrorCode)]
 pub enum CeremonyError {
     #[error("Unsupported number of G1 powers: {0}")]
     UnsupportedNumG1Powers(usize),
@@ -70,7 +69,7 @@ pub enum CeremonyError {
     WitnessLengthMismatch(usize, usize),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, ErrorCode)]
 pub enum ParseError {
     #[error("Invalid x coordinate")]
     BigIntError,
@@ -88,28 +87,15 @@ pub enum ParseError {
     InvalidSubgroup,
 }
 
-#[derive(EnumVariantNameString)]
-pub enum SubEnum {
-    Dolor,
-    Sit(usize),
-    Amet
-}
-
-#[derive(EnumVariantNameString)]
-pub enum TestEnum {
-    Lorem(usize),
-    Sub(usize, #[variant] SubEnum)
-}
-
 #[test]
-fn test_derive() {
-    let a = TestEnum::Lorem(1);
-    println!("LOREM: {}\t{}", (&a.to_variant_name() == &"TestEnum::Lorem"), &a.to_variant_name());
+fn test_error_codes() {
+    assert_eq!(
+        "CeremoniesError::UnexpectedNumContributions",
+        CeremoniesError::UnexpectedNumContributions(1, 3).to_error_code()
+    );
 
-    let a = TestEnum::Sub(5, SubEnum::Dolor);
-    println!("DOLOR: {}\t{}", (&a.to_variant_name() == &"SubEnum::Dolor"), &a.to_variant_name());
-
-    if let TestEnum::Sub(_, sub) = a {
-        println!("DOLOR: {}", sub.to_variant_name());
-    }
+    assert_eq!(
+        "CeremonyError::InvalidG1Power",
+        CeremoniesError::InvalidCeremony(1, CeremonyError::InvalidG1Power(3, ParseError::InvalidInfinity)).to_error_code()
+    );
 }

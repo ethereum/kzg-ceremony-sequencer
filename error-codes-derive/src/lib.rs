@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
 use quote::quote;
 
-use syn::{parse_macro_input, DeriveInput, Data, Arm, parse_quote, PredicateType, PatTupleStruct, Expr};
+use syn::{parse_macro_input, DeriveInput, Data, Arm, parse_quote, Expr};
 
-#[proc_macro_derive(EnumVariantNameString, attributes(variant))]
-pub fn enum_variant_name_string(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(ErrorCode, attributes(propagate_code))]
+pub fn error_code_string(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     if let Data::Enum(r#enum) = &input.data {
@@ -24,7 +24,7 @@ pub fn enum_variant_name_string(input: TokenStream) -> TokenStream {
                 syn::Fields::Unnamed(fields) => {
                     let selected_field = fields.unnamed.iter().position(|field| {
                         field.attrs.iter().any(|attr| {
-                            attr.path.is_ident(&"variant")
+                            attr.path.is_ident(&"propagate_code")
                         })
                     });
 
@@ -39,19 +39,14 @@ pub fn enum_variant_name_string(input: TokenStream) -> TokenStream {
                         let sub_match = 
                             format!("{}({})", variant_quoted, to_sub_match);
                         let sub_expr = syn::parse_str::<Expr>(&sub_match).unwrap();
-                        println!("SUB MATCH {:?}", sub_match);
 
-                        //let sub_match_parsed: PatTupleStruct = parse_quote!(sub_match);
-                        let x = quote!(
+                        quote!(
                             if let #sub_expr = self {
-                                sub.to_variant_name()
+                                sub.to_error_code()
                             } else {
                                 #variant_quoted
                             }
-                        );
-
-                        println!("STREAM {}", x);
-                        x
+                        )
                     } else {
                         quote!( #variant_quoted )
                     }   
@@ -76,8 +71,8 @@ pub fn enum_variant_name_string(input: TokenStream) -> TokenStream {
         }
 
         (quote! {
-            impl ::enum_variant::EnumVariantNameString for #ident {
-                fn to_variant_name(&self) -> &'static str {
+            impl ::error_codes::ErrorCode for #ident {
+                fn to_error_code(&self) -> &'static str {
                     match self {
                         #(#to_string_arms),*
                     }
@@ -88,7 +83,7 @@ pub fn enum_variant_name_string(input: TokenStream) -> TokenStream {
 
     } else {
         quote!(compile_error!(
-            "Can only implement 'EnumVariantNameString' on a enum"
+            "Can only implement 'ErrorCode' on a enum"
         );)
         .into()
     }

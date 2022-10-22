@@ -3,6 +3,7 @@ use axum::{
     extract::{FromRequest, RequestParts},
     TypedHeader,
 };
+use error_codes::ErrorCode;
 use headers::{authorization::Bearer, Authorization};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -33,7 +34,7 @@ impl Display for SessionId {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, ErrorCode)]
 pub enum SessionError {
     #[error("unknown session id")]
     InvalidSessionId,

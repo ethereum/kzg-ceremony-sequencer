@@ -1280,21 +1280,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum-variant"
-version = "0.1.0"
-dependencies = [
- "enum-variant-derive",
-]
-
-[[package]]
-name = "enum-variant-derive"
-version = "0.1.0"
-dependencies = [
- "quote",
- "syn",
-]
-
-[[package]]
 name = "errno"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1313,6 +1298,21 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "error-codes"
+version = "0.1.0"
+dependencies = [
+ "error-codes-derive",
+]
+
+[[package]]
+name = "error-codes-derive"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2115,8 +2115,7 @@ dependencies = [
  "ark-ff",
  "blst",
  "criterion",
- "enum-variant",
- "enum-variant-derive",
+ "error-codes",
  "hex",
  "hex-literal",
  "proptest",
@@ -2143,6 +2142,7 @@ dependencies = [
  "chrono",
  "clap 4.0.12",
  "cli-batteries",
+ "error-codes",
  "ethers-core",
  "ethers-signers",
  "eyre",

@@ -2,8 +2,9 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     Json,
 };
+use error_codes::ErrorCode;
 use http::StatusCode;
-use kzg_ceremony_crypto::{CeremoniesError, CeremonyError};
+use kzg_ceremony_crypto::CeremoniesError;
 use serde_json::json;
 use url::Url;
 
@@ -21,7 +22,7 @@ impl IntoResponse for SignatureError {
             Self::SignatureCreation => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
-                    "code": "SignatureError::SignatureCreation",
+                    "code": self.to_error_code(),
                     "error": "couldn't sign the receipt"
                 })),
             )
@@ -29,7 +30,7 @@ impl IntoResponse for SignatureError {
             Self::InvalidToken => (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
-                    "code": "SignatureError::InvalidToken",
+                    "code": self.to_error_code(),
                     "error": "signature is not a valid hex string"
                 })),
             )
@@ -37,7 +38,7 @@ impl IntoResponse for SignatureError {
             Self::InvalidSignature => (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
-                    "code": "SignatureError::InvalidSignature",
+                    "code": self.to_error_code(),
                     "error": "couldn't create signature from string"
                 })),
             )
@@ -51,7 +52,7 @@ impl IntoResponse for SessionError {
         match self {
             Self::InvalidSessionId => {
                 let json = Json(json!({
-                    "code": "SessionError::InvalidSessionId",
+                    "code": self.to_error_code(),
                     "error": "invalid Bearer token",
                 }));
                 (StatusCode::BAD_REQUEST, json).into_response()
@@ -67,8 +68,8 @@ impl IntoResponse for AuthError {
             Some(mut redirect_url) => {
                 redirect_url
                     .query_pairs_mut()
-                    .append_pair("error", "")
-                    .append_pair("message", &format!("{}", self.payload));
+                    .append_pair("code", self.payload.to_error_code())
+                    .append_pair("error", &format!("{}", self.payload));
 
                 Redirect::to(redirect_url.as_str()).into_response()
             }
@@ -82,42 +83,42 @@ impl IntoResponse for AuthErrorPayload {
         let (status, body) = match self {
             Self::InvalidAuthCode => {
                 let body = Json(json!({
-                    "code": "AuthError::InvalidAuthCode",
+                    "code": self.to_error_code(),
                     "error": "invalid authorisation code",
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
             Self::FetchUserDataError => {
                 let body = Json(json!({
-                    "code": "AuthError::FetchUserDataError",
+                    "code": self.to_error_code(),
                     "error": "could not fetch user data from auth server",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
             Self::CouldNotExtractUserData => {
                 let body = Json(json!({
-                    "code": "AuthError::CouldNotExtractUserData",
+                    "code": self.to_error_code(),
                     "error": "could not extract user data from auth server response",
                 }));
                 (StatusCode::INTERNAL_SERVER_ERROR, body)
             }
             Self::LobbyIsFull => {
                 let body = Json(json!({
-                    "code": "AuthError::LobbyIsFull",
+                    "code": self.to_error_code(),
                     "error": "lobby is full",
                 }));
                 (StatusCode::SERVICE_UNAVAILABLE, body)
             }
             Self::UserAlreadyContributed => {
                 let body = Json(json!({
-                    "code": "AuthError::UserAlreadyContributed",
+                    "code": self.to_error_code(),
                     "error": "user has already contributed"
                 }));
                 (StatusCode::BAD_REQUEST, body)
             }
             Self::UserCreatedAfterDeadline => {
                 let body = Json(json!({
-                    "code": "AuthError::UserCreatedAfterDeadline",
+                    "code": self.to_error_code(),
                     "error": "user account was created after the deadline"
                 }));
                 (StatusCode::UNAUTHORIZED, body)
@@ -133,7 +134,7 @@ impl IntoResponse for ContributeError {
         let (status, body) = match self {
             Self::NotUsersTurn => {
                 let body = Json(json!({
-                    "code": "ContributeError::NotUsersTurn",
+                    "code": self.to_error_code(),
                     "error" : "not your turn to participate"
                 }));
                 (StatusCode::BAD_REQUEST, body)
@@ -152,7 +153,7 @@ impl IntoResponse for TryContributeError {
         let (status, body) = match self {
             Self::UnknownSessionId => {
                 let body = Json(json!({
-                    "code": "TryContributeError::UnknownSessionId",
+                    "code": self.to_error_code(),
                     "error": "unknown session id",
                 }));
                 (StatusCode::UNAUTHORIZED, body)
@@ -160,7 +161,7 @@ impl IntoResponse for TryContributeError {
 
             Self::RateLimited => {
                 let body = Json(json!({
-                    "code": "TryContributeError::RateLimited",
+                    "code": self.to_error_code(),
                     "error": "call came too early. rate limited",
                 }));
                 (StatusCode::BAD_REQUEST, body)
@@ -168,7 +169,7 @@ impl IntoResponse for TryContributeError {
 
             Self::AnotherContributionInProgress => {
                 let body = Json(json!({
-                    "code": "TryContributeError::AnotherContributionInProgress",
+                    "code": self.to_error_code(),
                     "message": "another contribution in progress",
                 }));
                 (StatusCode::OK, body)
@@ -184,53 +185,9 @@ struct CeremoniesErrorFormatter(CeremoniesError);
 
 impl IntoResponse for CeremoniesErrorFormatter {
     fn into_response(self) -> Response {
-        let error = format!("contribution invalid: {}", self.0);
-
-        let code = match self.0 {
-            CeremoniesError::UnexpectedNumContributions(..) => {
-                "CeremoniesError::UnexpectedNumContributions"
-            }
-            CeremoniesError::InvalidCeremony(_, err) => match err {
-                CeremonyError::UnsupportedNumG1Powers(_) => "CeremonyError::UnsupportedNumG1Powers",
-                CeremonyError::UnsupportedNumG2Powers(_) => "CeremonyError::UnsupportedNumG2Powers",
-                CeremonyError::UnexpectedNumG1Powers(..) => "CeremonyError::UnexpectedNumG1Powers",
-                CeremonyError::UnexpectedNumG2Powers(..) => "CeremonyError::UnexpectedNumG2Powers",
-                CeremonyError::InconsistentNumG1Powers(..) => {
-                    "CeremonyError::InconsistentNumG1Powers"
-                }
-                CeremonyError::InconsistentNumG2Powers(..) => {
-                    "CeremonyError::InconsistentNumG2Powers"
-                }
-                CeremonyError::UnsupportedMoreG2Powers(..) => {
-                    "CeremonyError::UnsupportedMoreG2Powers"
-                }
-                CeremonyError::InvalidG1Power(..) => "CeremonyError::InvalidG1Power",
-                CeremonyError::InvalidG2Power(..) => "CeremonyError::InvalidG2Power",
-                CeremonyError::ParserError(_) => "CeremonyError::ParserError",
-                CeremonyError::InvalidPubKey(_) => "CeremonyError::InvalidPubKey",
-                CeremonyError::InvalidWitnessProduct(..) => "CeremonyError::InvalidWitnessProduct",
-                CeremonyError::InvalidWitnessPubKey(..) => "CeremonyError::InvalidWitnessPubKey",
-                CeremonyError::PubKeyPairingFailed => "CeremonyError::PubKeyPairingFailed",
-                CeremonyError::G1PairingFailed => "CeremonyError::G1PairingFailed",
-                CeremonyError::G2PairingFailed => "CeremonyError::G2PairingFailed",
-                CeremonyError::ZeroPubkey => "CeremonyError::ZeroPubkey",
-                CeremonyError::ZeroG1(_) => "CeremonyError::ZeroG1",
-                CeremonyError::ZeroG2(_) => "CeremonyError::ZeroG2",
-                CeremonyError::InvalidG1FirstValue => "CeremonyError::InvalidG1FirstValue",
-                CeremonyError::InvalidG2FirstValue => "CeremonyError::InvalidG2FirstValue",
-                CeremonyError::InvalidG1One(_) => "CeremonyError::InvalidG1One",
-                CeremonyError::InvalidG2One(_) => "CeremonyError::InvalidG2One",
-                CeremonyError::InvalidG2Pubkey(_) => "CeremonyError::InvalidG2Pubkey",
-                CeremonyError::DuplicateG1(..) => "CeremonyError::DuplicateG1",
-                CeremonyError::DuplicateG2(..) => "CeremonyError::DuplicateG2",
-                CeremonyError::ContributionNoEntropy => "CeremonyError::ContributionNoEntropy",
-                CeremonyError::WitnessLengthMismatch(..) => "CeremonyError::WitnessLengthMismatch",
-            },
-        };
-
         let body = Json(json!({
-            "code": code,
-            "error" : error
+            "code": self.0.to_error_code(),
+            "error" : format!("contribution invalid: {}", self.0)
         }));
 
         (StatusCode::BAD_REQUEST, body).into_response()
