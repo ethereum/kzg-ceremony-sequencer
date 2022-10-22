@@ -32,6 +32,8 @@ path = "src/main.rs"
 [workspace]
 members = [
     "crypto",
+    "enum-variant",
+    "enum-variant-derive",
 ]
 
 [dependencies]

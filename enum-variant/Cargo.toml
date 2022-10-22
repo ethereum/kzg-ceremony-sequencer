@@ -1,0 +1,6 @@
+[package]
+version = "0.1.0"
+name = "enum-variant"
+
+[dependencies]
+enum-variant-derive = { path = "../enum-variant-derive" }

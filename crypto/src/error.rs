@@ -1,3 +1,5 @@
+use enum_variant_derive::EnumVariantNameString;
+use enum_variant::EnumVariantNameString;
 use thiserror::Error;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
@@ -84,4 +86,17 @@ pub enum ParseError {
     InvalidXCoordinate,
     #[error("curve point is not in prime order subgroup")]
     InvalidSubgroup,
+}
+
+
+#[test]
+fn test_derive() {
+    #[derive(EnumVariantNameString)]
+    pub enum TestEnum {
+        Lorem(usize),
+    }
+
+    println!("hellow");
+    let a = TestEnum::Lorem(1);
+    println!("{}", a.to_variant_name());
 }

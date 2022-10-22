@@ -41,6 +41,8 @@ zeroize = "1.5.7"
 hex-literal = "0.3.4"
 rand_chacha = "0.3.1"
 secrecy = "0.8.0"
+enum-variant = { path = "../enum-variant" }
+enum-variant-derive = { path = "../enum-variant-derive" }
 
 [dev-dependencies]
 proptest = "1.0.0"
