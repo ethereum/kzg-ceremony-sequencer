@@ -1,7 +1,3 @@
-use axum::{
-    response::{IntoResponse, Response},
-    Json,
-};
 use clap::Parser;
 use ethers_core::{
     rand::thread_rng,
@@ -10,9 +6,7 @@ use ethers_core::{
 };
 use ethers_signers::{LocalWallet, Signer};
 use eyre::Result;
-use http::StatusCode;
 use serde::Serialize;
-use serde_json::json;
 use std::{fmt, sync::Arc};
 use thiserror::Error;
 use tracing::{info, warn};
@@ -36,29 +30,6 @@ pub enum SignatureError {
     InvalidToken,
     #[error("couldn't create signature from string")]
     InvalidSignature,
-}
-
-impl IntoResponse for SignatureError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = match self {
-            Self::SignatureCreation => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "couldn't sign the receipt",
-            ),
-            Self::InvalidToken => (
-                StatusCode::BAD_REQUEST,
-                "signature is not a valid hex string",
-            ),
-            Self::InvalidSignature => (
-                StatusCode::BAD_REQUEST,
-                "couldn't create signature from string",
-            ),
-        };
-        let body = Json(json!({
-            "error": error_message,
-        }));
-        (status, body).into_response()
-    }
 }
 
 pub struct Keys {

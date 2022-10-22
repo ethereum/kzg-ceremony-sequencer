@@ -10,7 +10,6 @@ use axum::{
 use http::StatusCode;
 use kzg_ceremony_crypto::BatchContribution;
 use serde::Serialize;
-use serde_json::json;
 use thiserror::Error;
 use tokio::time::Instant;
 
@@ -33,36 +32,6 @@ impl From<ActiveContributorError> for TryContributeError {
             | ActiveContributorError::NotUsersTurn => Self::AnotherContributionInProgress,
             ActiveContributorError::UserNotInLobby => Self::UnknownSessionId,
         }
-    }
-}
-
-impl IntoResponse for TryContributeError {
-    fn into_response(self) -> Response {
-        let (status, body) = match self {
-            Self::UnknownSessionId => {
-                let body = Json(json!({
-                    "error": "unknown session id",
-                }));
-                (StatusCode::UNAUTHORIZED, body)
-            }
-
-            Self::RateLimited => {
-                let body = Json(json!({
-                    "error": "call came too early. rate limited",
-                }));
-                (StatusCode::BAD_REQUEST, body)
-            }
-
-            Self::AnotherContributionInProgress => {
-                let body = Json(json!({
-                    "message": "another contribution in progress",
-                }));
-                (StatusCode::OK, body)
-            }
-            Self::StorageError(err) => return err.into_response(),
-        };
-
-        (status, body).into_response()
     }
 }
 

@@ -14,7 +14,6 @@ use axum_extra::response::ErasedJson;
 use http::StatusCode;
 use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
 use serde::Serialize;
-use serde_json::json;
 use std::sync::atomic::Ordering;
 use thiserror::Error;
 
@@ -40,25 +39,6 @@ pub enum ContributeError {
     Signature(SignatureError),
     #[error("storage error: {0}")]
     StorageError(#[from] StorageError),
-}
-
-impl IntoResponse for ContributeError {
-    fn into_response(self) -> Response {
-        let (status, body) = match self {
-            Self::NotUsersTurn => {
-                let body = Json(json!({"error" : "not your turn to participate"}));
-                (StatusCode::BAD_REQUEST, body)
-            }
-            Self::InvalidContribution(e) => {
-                let body = Json(json!({ "error": format!("contribution invalid: {}", e) }));
-                (StatusCode::BAD_REQUEST, body)
-            }
-            Self::Signature(err) => return err.into_response(),
-            Self::StorageError(err) => return err.into_response(),
-        };
-
-        (status, body).into_response()
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

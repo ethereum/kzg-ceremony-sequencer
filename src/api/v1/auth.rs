@@ -43,8 +43,8 @@ impl AuthProvider {
 #[derive(Debug, Error)]
 #[error("{payload}")]
 pub struct AuthError {
-    redirect: Option<String>,
-    payload:  AuthErrorPayload,
+    pub redirect: Option<String>,
+    pub payload:  AuthErrorPayload,
 }
 
 #[derive(Debug, Error)]
@@ -108,64 +108,6 @@ impl IntoResponse for UserVerifiedResponse {
             }))
             .into_response(),
         }
-    }
-}
-
-impl IntoResponse for AuthError {
-    fn into_response(self) -> Response {
-        let redirect_url = self.redirect.and_then(|r| Url::parse(&r).ok());
-        match redirect_url {
-            Some(mut redirect_url) => {
-                redirect_url
-                    .query_pairs_mut()
-                    .append_pair("error", "")
-                    .append_pair("message", &format!("{}", self.payload));
-
-                Redirect::to(redirect_url.as_str()).into_response()
-            }
-            None => self.payload.into_response(),
-        }
-    }
-}
-
-impl IntoResponse for AuthErrorPayload {
-    fn into_response(self) -> Response {
-        let (status, body) = match self {
-            Self::InvalidAuthCode => {
-                let body = Json(json!({
-                    "error": "invalid authorisation code",
-                }));
-                (StatusCode::BAD_REQUEST, body)
-            }
-            Self::FetchUserDataError => {
-                let body = Json(json!({
-                    "error": "could not fetch user data from auth server",
-                }));
-                (StatusCode::INTERNAL_SERVER_ERROR, body)
-            }
-            Self::CouldNotExtractUserData => {
-                let body = Json(json!({
-                    "error": "could not extract user data from auth server response",
-                }));
-                (StatusCode::INTERNAL_SERVER_ERROR, body)
-            }
-            Self::LobbyIsFull => {
-                let body = Json(json!({
-                    "error": "lobby is full",
-                }));
-                (StatusCode::SERVICE_UNAVAILABLE, body)
-            }
-            Self::UserAlreadyContributed => {
-                let body = Json(json!({ "error": "user has already contributed" }));
-                (StatusCode::BAD_REQUEST, body)
-            }
-            Self::UserCreatedAfterDeadline => {
-                let body = Json(json!({ "error": "user account was created after the deadline"}));
-                (StatusCode::UNAUTHORIZED, body)
-            }
-            Self::Storage(storage_error) => return storage_error.into_response(),
-        };
-        (status, body).into_response()
     }
 }
 
