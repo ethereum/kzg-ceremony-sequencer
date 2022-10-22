@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 
-use syn::{parse_macro_input, DeriveInput, Data, Arm, parse_quote, Expr};
+use syn::{parse_macro_input, parse_quote, Arm, Data, DeriveInput, Expr};
 
 #[proc_macro_derive(ErrorCode, attributes(propagate_code))]
 pub fn error_code_string(input: TokenStream) -> TokenStream {
@@ -23,21 +23,18 @@ pub fn error_code_string(input: TokenStream) -> TokenStream {
                 }
                 syn::Fields::Unnamed(fields) => {
                     let selected_field = fields.unnamed.iter().position(|field| {
-                        field.attrs.iter().any(|attr| {
-                            attr.path.is_ident(&"propagate_code")
-                        })
+                        field
+                            .attrs
+                            .iter()
+                            .any(|attr| attr.path.is_ident(&"propagate_code"))
                     });
 
                     if let Some(selected) = selected_field {
-                        let to_sub_match = (0..fields.unnamed.len()).map(|index| {
-                            if index == selected {
-                                "sub"
-                            } else {
-                                "_"
-                            }
-                        }).collect::<Vec<&str>>().join(", ");
-                        let sub_match = 
-                            format!("{}({})", variant_quoted, to_sub_match);
+                        let to_sub_match = (0..fields.unnamed.len())
+                            .map(|index| if index == selected { "sub" } else { "_" })
+                            .collect::<Vec<&str>>()
+                            .join(", ");
+                        let sub_match = format!("{}({})", variant_quoted, to_sub_match);
                         let sub_expr = syn::parse_str::<Expr>(&sub_match).unwrap();
 
                         quote!(
@@ -49,7 +46,7 @@ pub fn error_code_string(input: TokenStream) -> TokenStream {
                         )
                     } else {
                         quote!( #variant_quoted )
-                    }   
+                    }
                 }
                 syn::Fields::Unit => quote!( #variant_quoted ),
             };
@@ -67,7 +64,6 @@ pub fn error_code_string(input: TokenStream) -> TokenStream {
             to_string_arms.push(parse_quote! {
                 #to_string_pattern => #to_string_value
             });
-
         }
 
         (quote! {
@@ -80,7 +76,6 @@ pub fn error_code_string(input: TokenStream) -> TokenStream {
             }
         })
         .into()
-
     } else {
         quote!(compile_error!(
             "Can only implement 'ErrorCode' on a enum"

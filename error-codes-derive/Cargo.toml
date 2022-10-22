@@ -6,6 +6,9 @@ authors = ["Grzegorz Swirski <grzegorz@swirski.name>"]
 edition = "2021"
 homepage = "https://github.com/ethereum/kzg-ceremony-sequencer"
 repository = "https://github.com/ethereum/kzg-ceremony-sequencer"
+keywords = ["error", "error-handling", "derive"]
+categories = ["rust-patterns"]
+readme = "README.md"
 license-file = "../mit-license.md"
 
 [lib]

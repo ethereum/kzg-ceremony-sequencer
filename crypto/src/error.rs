@@ -6,7 +6,12 @@ pub enum CeremoniesError {
     #[error("Unexpected number of contributions: expected {0}, got {1}")]
     UnexpectedNumContributions(usize, usize),
     #[error("Error in contribution {0}: {1}")]
-    InvalidCeremony(usize, #[source] #[propagate_code] CeremonyError),
+    InvalidCeremony(
+        usize,
+        #[source]
+        #[propagate_code]
+        CeremonyError,
+    ),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Error, ErrorCode)]
@@ -96,6 +101,10 @@ fn test_error_codes() {
 
     assert_eq!(
         "CeremonyError::InvalidG1Power",
-        CeremoniesError::InvalidCeremony(1, CeremonyError::InvalidG1Power(3, ParseError::InvalidInfinity)).to_error_code()
+        CeremoniesError::InvalidCeremony(
+            1,
+            CeremonyError::InvalidG1Power(3, ParseError::InvalidInfinity)
+        )
+        .to_error_code()
     );
 }

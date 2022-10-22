@@ -35,7 +35,11 @@ pub enum ContributeError {
     #[error("not your turn to participate")]
     NotUsersTurn,
     #[error("contribution invalid: {0}")]
-    InvalidContribution(#[from] #[propagate_code] CeremoniesError),
+    InvalidContribution(
+        #[from]
+        #[propagate_code]
+        CeremoniesError,
+    ),
     #[error("signature error: {0}")]
     Signature(#[propagate_code] SignatureError),
     #[error("storage error: {0}")]
