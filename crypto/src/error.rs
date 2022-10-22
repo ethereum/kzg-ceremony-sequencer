@@ -1,5 +1,5 @@
-use enum_variant_derive::EnumVariantNameString;
 use enum_variant::EnumVariantNameString;
+use enum_variant_derive::EnumVariantNameString;
 use thiserror::Error;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
@@ -88,15 +88,28 @@ pub enum ParseError {
     InvalidSubgroup,
 }
 
+#[derive(EnumVariantNameString)]
+pub enum SubEnum {
+    Dolor,
+    Sit(usize),
+    Amet
+}
+
+#[derive(EnumVariantNameString)]
+pub enum TestEnum {
+    Lorem(usize),
+    Sub(usize, #[variant] SubEnum)
+}
 
 #[test]
 fn test_derive() {
-    #[derive(EnumVariantNameString)]
-    pub enum TestEnum {
-        Lorem(usize),
-    }
-
-    println!("hellow");
     let a = TestEnum::Lorem(1);
-    println!("{}", a.to_variant_name());
+    println!("LOREM: {}\t{}", (&a.to_variant_name() == &"TestEnum::Lorem"), &a.to_variant_name());
+
+    let a = TestEnum::Sub(5, SubEnum::Dolor);
+    println!("DOLOR: {}\t{}", (&a.to_variant_name() == &"SubEnum::Dolor"), &a.to_variant_name());
+
+    if let TestEnum::Sub(_, sub) = a {
+        println!("DOLOR: {}", sub.to_variant_name());
+    }
 }
