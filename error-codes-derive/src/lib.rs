@@ -14,12 +14,11 @@ pub fn error_code_string(input: TokenStream) -> TokenStream {
 
         for variant in r#enum.variants.iter() {
             let variant_name = &variant.ident;
-
-            let variant_quoted = format!("{}::{}", ident.to_string(), variant_name.to_string());
+            let qualified_name = format!("{}::{}", ident, variant_name);
 
             let to_string_value = match &variant.fields {
                 syn::Fields::Named(_) => {
-                    quote!( #variant_quoted )
+                    quote!( #qualified_name )
                 }
                 syn::Fields::Unnamed(fields) => {
                     let selected_field = fields.unnamed.iter().position(|field| {
@@ -30,25 +29,25 @@ pub fn error_code_string(input: TokenStream) -> TokenStream {
                     });
 
                     if let Some(selected) = selected_field {
-                        let to_sub_match = (0..fields.unnamed.len())
+                        let tuple_pattern = (0..fields.unnamed.len())
                             .map(|index| if index == selected { "sub" } else { "_" })
                             .collect::<Vec<&str>>()
                             .join(", ");
-                        let sub_match = format!("{}({})", variant_quoted, to_sub_match);
-                        let sub_expr = syn::parse_str::<Expr>(&sub_match).unwrap();
+                        let struct_tuple_pattern = format!("{}({})", qualified_name, tuple_pattern);
+                        let struct_tuple_expt = syn::parse_str::<Expr>(&struct_tuple_pattern).unwrap();
 
                         quote!(
-                            if let #sub_expr = self {
+                            if let #struct_tuple_expt = self {
                                 sub.to_error_code()
                             } else {
-                                #variant_quoted
+                                #qualified_name
                             }
                         )
                     } else {
-                        quote!( #variant_quoted )
+                        quote!( #qualified_name )
                     }
                 }
-                syn::Fields::Unit => quote!( #variant_quoted ),
+                syn::Fields::Unit => quote!( #qualified_name ),
             };
 
             let to_string_pattern = match &variant.fields {
