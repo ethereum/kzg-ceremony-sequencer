@@ -54,7 +54,7 @@ pub enum AuthErrorPayload {
     LobbyIsFull,
     #[error("user already contributed")]
     UserAlreadyContributed,
-    #[error("invalid auth code")]
+    #[error("invalid authorization code")]
     InvalidAuthCode,
     #[error("could not fetch user data from auth server")]
     FetchUserDataError,

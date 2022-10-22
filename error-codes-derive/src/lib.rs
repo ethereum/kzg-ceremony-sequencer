@@ -34,7 +34,8 @@ pub fn error_code_string(input: TokenStream) -> TokenStream {
                             .collect::<Vec<&str>>()
                             .join(", ");
                         let struct_tuple_pattern = format!("{}({})", qualified_name, tuple_pattern);
-                        let struct_tuple_expt = syn::parse_str::<Expr>(&struct_tuple_pattern).unwrap();
+                        let struct_tuple_expt =
+                            syn::parse_str::<Expr>(&struct_tuple_pattern).unwrap();
 
                         quote!(
                             if let #struct_tuple_expt = self {
