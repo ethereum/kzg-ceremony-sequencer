@@ -7,10 +7,10 @@
 
 This implements [KZG Ceremony Specification](https://github.com/ethereum/kzg-ceremony-specs).
 
-The latest build is available as a container on [ghcr.io/ethereum/kzg-ceremony-sequencer](https://github.com/ethereum/kzg-ceremony-sequencer/pkgs/container/kzg-ceremony-sequencer):
+The latest build is available as a container on [ethereum/kzg-ceremony-sequencer](https://hub.docker.com/repository/docker/ethereum/kzg-ceremony-sequencer/general):
 
 ```shell
-docker run ghcr.io/ethereum/kzg-ceremony-sequencer:latest
+docker run ethereum/kzg-ceremony-sequencer:latest
 ```
 
 ## Setup
