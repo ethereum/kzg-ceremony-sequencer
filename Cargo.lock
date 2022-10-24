@@ -3174,9 +3174,9 @@ dependencies = [
 
 [[package]]
 name = "ruint"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea68c70fa2b6ce8f8b656e9d3d64776b7ced5b235bb93bb9fee560bf2381196"
+checksum = "c4e92ffeb2358f4d0ada2906530800ee2dce75d2a45aafa621f9033fd762aed6"
 dependencies = [
  "ark-ff",
  "proptest",
