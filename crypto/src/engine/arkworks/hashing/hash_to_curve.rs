@@ -109,24 +109,10 @@ where
         // 6. return P
 
         let rand_field_elems = self.field_hasher.hash_to_field(msg, 2);
-
-        println!("rand_field_elems: {:?}", rand_field_elems);
-
         let rand_curve_elem_0 = self.curve_mapper.map_to_curve(rand_field_elems[0])?;
-
-        println!("rand_curve_elem_0: {:?}", rand_curve_elem_0);
-
         let rand_curve_elem_1 = self.curve_mapper.map_to_curve(rand_field_elems[1])?;
-
-        println!("rand_curve_elem_1: {:?}", rand_curve_elem_1);
-
         let rand_curve_elem = rand_curve_elem_0 + rand_curve_elem_1;
-
-        println!("rand_curve_elem: {:?}", rand_curve_elem);
         let rand_subgroup_elem = rand_curve_elem.clear_cofactor();
-
-        println!("rand_subgroup_elem: {:?}", rand_subgroup_elem);
-
         Ok(rand_subgroup_elem)
     }
 }

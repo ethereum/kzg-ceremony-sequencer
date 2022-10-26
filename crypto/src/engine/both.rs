@@ -76,12 +76,16 @@ impl<A: Engine, B: Engine> Engine for Both<A, B> {
     }
 
     fn sign_message(tau: &Tau, message: &[u8]) -> Option<G1> {
-        // TODO: Use both engines, when Arkworks support added
-        A::sign_message(tau, message).or_else(|| B::sign_message(tau, message))
+        let a = A::sign_message(tau, message);
+        let b = B::sign_message(tau, message);
+        assert_eq!(a, b);
+        a
     }
 
     fn verify_signature(sig: G1, message: &[u8], pk: G2) -> bool {
-        // TODO: Use both engines, when Arkworks support added
-        A::verify_signature(sig, message, pk) || B::verify_signature(sig, message, pk)
+        let a = A::verify_signature(sig, message, pk);
+        let b = B::verify_signature(sig, message, pk);
+        assert_eq!(a, b);
+        a
     }
 }
