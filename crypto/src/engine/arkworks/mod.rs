@@ -4,6 +4,8 @@
 
 mod endomorphism;
 mod zcash_format;
+mod hashing;
+mod ext_field;
 
 use self::endomorphism::{g1_mul_glv, g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
