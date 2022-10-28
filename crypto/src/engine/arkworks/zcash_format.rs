@@ -1,14 +1,13 @@
-use crate::{ParseError, G1, G2};
-use ark_bls12_381::{Fq, G1Affine, G2Affine};
+use crate::{engine::arkworks::ext_field::ToBasePrimeFieldIterator, ParseError, G1, G2};
+use ark_bls12_381::{G1Affine, G2Affine};
 use ark_ec::{
     models::{ModelParameters, SWModelParameters},
     short_weierstrass_jacobian::GroupAffine,
 };
 use ark_ff::{
     fields::{Field, FpParameters, PrimeField},
-    BigInteger, QuadExtField, QuadExtParameters, Zero,
+    BigInteger, Zero,
 };
-use crate::engine::arkworks::ext_field::ToBasePrimeFieldIterator;
 
 impl TryFrom<G1> for G1Affine {
     type Error = ParseError;
