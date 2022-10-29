@@ -1,20 +1,28 @@
-use error_codes::ErrorCode;
+use strum::IntoStaticStr;
 use thiserror::Error;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, ErrorCode)]
+pub trait ErrorCode {
+    fn to_error_code(&self) -> String;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, IntoStaticStr)]
 pub enum CeremoniesError {
     #[error("Unexpected number of contributions: expected {0}, got {1}")]
     UnexpectedNumContributions(usize, usize),
     #[error("Error in contribution {0}: {1}")]
-    InvalidCeremony(
-        usize,
-        #[source]
-        #[propagate_code]
-        CeremonyError,
-    ),
+    InvalidCeremony(usize, #[source] CeremonyError),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, ErrorCode)]
+impl ErrorCode for CeremoniesError {
+    fn to_error_code(&self) -> String {
+        match self {
+            Self::InvalidCeremony(_, inner) => inner.to_error_code(),
+            _ => format!("CeremoniesError::{}", <&str>::from(self)),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, IntoStaticStr)]
 pub enum CeremonyError {
     #[error("Unsupported number of G1 powers: {0}")]
     UnsupportedNumG1Powers(usize),
@@ -74,7 +82,15 @@ pub enum CeremonyError {
     WitnessLengthMismatch(usize, usize),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, ErrorCode)]
+impl ErrorCode for CeremonyError {
+    fn to_error_code(&self) -> String {
+        match self {
+            _ => format!("CeremonyError::{}", <&str>::from(self)),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, IntoStaticStr)]
 pub enum ParseError {
     #[error("Invalid x coordinate")]
     BigIntError,
@@ -90,6 +106,14 @@ pub enum ParseError {
     InvalidXCoordinate,
     #[error("curve point is not in prime order subgroup")]
     InvalidSubgroup,
+}
+
+impl ErrorCode for ParseError {
+    fn to_error_code(&self) -> String {
+        match self {
+            _ => format!("ParseError::{}", <&str>::from(self)),
+        }
+    }
 }
 
 #[test]
