@@ -84,9 +84,7 @@ pub enum CeremonyError {
 
 impl ErrorCode for CeremonyError {
     fn to_error_code(&self) -> String {
-        match self {
-            _ => format!("CeremonyError::{}", <&str>::from(self)),
-        }
+        format!("CeremonyError::{}", <&str>::from(self))
     }
 }
 
@@ -110,9 +108,7 @@ pub enum ParseError {
 
 impl ErrorCode for ParseError {
     fn to_error_code(&self) -> String {
-        match self {
-            _ => format!("ParseError::{}", <&str>::from(self)),
-        }
+        format!("ParseError::{}", <&str>::from(self))
     }
 }
 

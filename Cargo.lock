@@ -1301,21 +1301,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "error-codes"
-version = "0.1.0"
-dependencies = [
- "error-codes-derive",
-]
-
-[[package]]
-name = "error-codes-derive"
-version = "0.1.0"
-dependencies = [
- "quote",
- "syn",
-]
-
-[[package]]
 name = "eth-keystore"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2115,7 +2100,6 @@ dependencies = [
  "ark-ff",
  "blst",
  "criterion",
- "error-codes",
  "hex",
  "hex-literal",
  "proptest",
@@ -2126,6 +2110,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "strum",
  "thiserror",
  "tracing",
  "zeroize",
@@ -2142,7 +2127,6 @@ dependencies = [
  "chrono",
  "clap 4.0.12",
  "cli-batteries",
- "error-codes",
  "ethers-core",
  "ethers-signers",
  "eyre",
@@ -2163,6 +2147,7 @@ dependencies = [
  "serde_json",
  "small-powers-of-tau",
  "sqlx",
+ "strum",
  "tempfile",
  "thiserror",
  "tokio",

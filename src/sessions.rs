@@ -3,10 +3,11 @@ use axum::{
     extract::{FromRequest, RequestParts},
     TypedHeader,
 };
-use error_codes::ErrorCode;
 use headers::{authorization::Bearer, Authorization};
+use kzg_ceremony_crypto::ErrorCode;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use strum::IntoStaticStr;
 use thiserror::Error;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -34,10 +35,16 @@ impl Display for SessionId {
     }
 }
 
-#[derive(Debug, Error, ErrorCode)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum SessionError {
     #[error("unknown session id")]
     InvalidSessionId,
+}
+
+impl ErrorCode for SessionError {
+    fn to_error_code(&self) -> String {
+        format!("SessionError::{}", <&str>::from(self))
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

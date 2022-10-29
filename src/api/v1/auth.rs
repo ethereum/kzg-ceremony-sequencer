@@ -12,14 +12,15 @@ use axum::{
     Extension, Json,
 };
 use chrono::DateTime;
-use error_codes::ErrorCode;
 use http::StatusCode;
+use kzg_ceremony_crypto::ErrorCode;
 use oauth2::{
     reqwest::async_http_client, AuthorizationCode, CsrfToken, RequestTokenError, Scope,
     TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use strum::IntoStaticStr;
 use thiserror::Error;
 use tokio::time::Instant;
 use tracing::warn;
@@ -48,7 +49,7 @@ pub struct AuthError {
     pub payload:  AuthErrorPayload,
 }
 
-#[derive(Debug, Error, ErrorCode)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum AuthErrorPayload {
     #[error("lobby is full")]
     LobbyIsFull,
@@ -64,6 +65,12 @@ pub enum AuthErrorPayload {
     UserCreatedAfterDeadline,
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+}
+
+impl ErrorCode for AuthErrorPayload {
+    fn to_error_code(&self) -> String {
+        format!("AuthErrorPayload::{}", <&str>::from(self))
+    }
 }
 
 pub struct UserVerifiedResponse {

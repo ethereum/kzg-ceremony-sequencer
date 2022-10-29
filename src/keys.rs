@@ -1,5 +1,4 @@
 use clap::Parser;
-use error_codes::ErrorCode;
 use ethers_core::{
     rand::thread_rng,
     types::{RecoveryMessage, H160},
@@ -7,8 +6,10 @@ use ethers_core::{
 };
 use ethers_signers::{LocalWallet, Signer};
 use eyre::Result;
+use kzg_ceremony_crypto::ErrorCode;
 use serde::Serialize;
 use std::{fmt, sync::Arc};
+use strum::IntoStaticStr;
 use thiserror::Error;
 use tracing::{info, warn};
 
@@ -23,7 +24,7 @@ pub struct Options {
 #[derive(Serialize)]
 pub struct Signature(String);
 
-#[derive(Debug, Error, ErrorCode)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum SignatureError {
     #[error("couldn't sign the receipt")]
     SignatureCreation,
@@ -31,6 +32,12 @@ pub enum SignatureError {
     InvalidToken,
     #[error("couldn't create signature from string")]
     InvalidSignature,
+}
+
+impl ErrorCode for SignatureError {
+    fn to_error_code(&self) -> String {
+        format!("SignatureError::{}", <&str>::from(self))
+    }
 }
 
 pub struct Keys {

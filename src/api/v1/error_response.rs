@@ -1,22 +1,18 @@
-use std::fmt::Display;
-
-use axum::{
-    response::{IntoResponse, Redirect, Response},
-    Json,
-};
-use error_codes::ErrorCode;
-use http::StatusCode;
-use kzg_ceremony_crypto::CeremoniesError;
-use serde_json::json;
-use url::Url;
-
-use crate::{keys::SignatureError, sessions::SessionError};
-
 use super::{
     auth::{AuthError, AuthErrorPayload},
     contribute::ContributeError,
     lobby::TryContributeError,
 };
+use crate::{keys::SignatureError, sessions::SessionError};
+use axum::{
+    response::{IntoResponse, Redirect, Response},
+    Json,
+};
+use http::StatusCode;
+use kzg_ceremony_crypto::{CeremoniesError, ErrorCode};
+use serde_json::json;
+use std::fmt::Display;
+use url::Url;
 
 fn error_to_json<Err: Display + ErrorCode>(error: &Err) -> Json<serde_json::Value> {
     Json(json!({
@@ -56,7 +52,7 @@ impl IntoResponse for AuthError {
             Some(mut redirect_url) => {
                 redirect_url
                     .query_pairs_mut()
-                    .append_pair("code", self.payload.to_error_code())
+                    .append_pair("code", &self.payload.to_error_code())
                     .append_pair("error", &format!("{}", self.payload));
 
                 Redirect::to(redirect_url.as_str()).into_response()
