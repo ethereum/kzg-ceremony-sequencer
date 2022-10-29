@@ -175,8 +175,9 @@ mod tests {
         let participant = SessionId::new();
         lobby_state
             .insert_session(participant.clone(), create_test_session_info(100))
-            .await;
-        lobby_state.enter_lobby(&participant).await;
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&participant).await.unwrap();
         lobby_state
             .set_current_contributor(&participant, opts.lobby.compute_deadline, db.clone())
             .await
@@ -228,8 +229,9 @@ mod tests {
 
         lobby_state
             .insert_session(participant.clone(), create_test_session_info(100))
-            .await;
-        lobby_state.enter_lobby(&participant).await;
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&participant).await.unwrap();
 
         lobby_state
             .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
@@ -252,7 +254,8 @@ mod tests {
         assert_eq!(transcript, transcript_1);
         lobby_state
             .insert_session(participant.clone(), create_test_session_info(100))
-            .await;
+            .await
+            .unwrap();
 
         lobby_state
             .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
@@ -287,12 +290,14 @@ mod tests {
 
         lobby_state
             .insert_session(session_id.clone(), create_test_session_info(100))
-            .await;
-        lobby_state.enter_lobby(&session_id).await;
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&session_id).await.unwrap();
         lobby_state
             .insert_session(other_session_id.clone(), create_test_session_info(100))
-            .await;
-        lobby_state.enter_lobby(&other_session_id).await;
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&other_session_id).await.unwrap();
 
         lobby_state
             .set_current_contributor(&session_id, opts.lobby.compute_deadline, db.clone())

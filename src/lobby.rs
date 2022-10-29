@@ -49,7 +49,7 @@ pub struct Options {
 
     /// Maximum number of active sessions.
     #[clap(long, env, default_value = "100000")]
-    pub max_num_sessions: usize,
+    pub max_sessions_count: usize,
 }
 
 #[derive(Default)]
@@ -85,6 +85,10 @@ pub enum ActiveContributorError {
     NotUsersTurn,
     #[error("user not in the lobby")]
     UserNotInLobby,
+    #[error("session count limit exceeded")]
+    SessionCountLimitExceeded,
+    #[error("lobby size limit exceeded")]
+    LobbySizeLimitExceeded,
 }
 
 #[derive(Clone)]
@@ -210,28 +214,29 @@ impl SharedLobbyState {
         self.inner.lock().await.lobby_participants.len()
     }
 
-    pub async fn insert_session(&self, session_id: SessionId, session_info: SessionInfo) -> bool {
+    pub async fn insert_session(
+        &self,
+        session_id: SessionId,
+        session_info: SessionInfo,
+    ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
-        if state.sessions.len() >= self.options.max_num_sessions {
-            return false;
+        let sessions = &mut state.sessions;
+        if sessions.len() >= self.options.max_sessions_count && !sessions.contains_key(&session_id)
+        {
+            return Err(ActiveContributorError::SessionCountLimitExceeded);
         }
-
         state.sessions.insert(session_id, session_info);
-
-        true
+        Ok(())
     }
 
-    pub async fn enter_lobby(&self, session_id: &SessionId) -> bool {
+    pub async fn enter_lobby(&self, session_id: &SessionId) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
-        if state.lobby_participants.len() >= self.options.max_lobby_size
-            && !state.lobby_participants.contains(session_id)
-        {
-            return false;
+        let lobby = &mut state.lobby_participants;
+        if lobby.len() >= self.options.max_lobby_size && !lobby.contains(session_id) {
+            return Err(ActiveContributorError::LobbySizeLimitExceeded);
         }
-
-        state.lobby_participants.insert(session_id.clone());
-
-        true
+        lobby.insert(session_id.clone());
+        Ok(())
     }
 
     #[cfg(test)]
@@ -318,8 +323,11 @@ async fn flush_on_predicate() {
         for i in 0..to_add {
             let id = SessionId::new();
             let session_info = create_test_session_info(i as u64);
-            arc_state.insert_session(id.clone(), session_info).await;
-            arc_state.enter_lobby(&id).await;
+            arc_state
+                .insert_session(id.clone(), session_info)
+                .await
+                .unwrap();
+            arc_state.enter_lobby(&id).await.unwrap();
         }
     }
 

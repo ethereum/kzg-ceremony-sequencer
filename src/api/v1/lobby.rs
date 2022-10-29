@@ -33,6 +33,8 @@ impl From<ActiveContributorError> for TryContributeError {
             ActiveContributorError::AnotherContributionInProgress
             | ActiveContributorError::NotUsersTurn => Self::AnotherContributionInProgress,
             ActiveContributorError::UserNotInLobby => Self::UnknownSessionId,
+            ActiveContributorError::SessionCountLimitExceeded
+            | ActiveContributorError::LobbySizeLimitExceeded => Self::LobbyIsFull,
         }
     }
 }
@@ -70,9 +72,7 @@ pub async fn try_contribute(
         .await
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
 
-    if !lobby_state.enter_lobby(&session_id).await {
-        return Err(TryContributeError::LobbyIsFull);
-    }
+    lobby_state.enter_lobby(&session_id).await?;
 
     lobby_state
         .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
@@ -125,10 +125,12 @@ mod tests {
         ));
         lobby_state
             .insert_session(session_id.clone(), create_test_session_info(100))
-            .await;
+            .await
+            .unwrap();
         lobby_state
             .insert_session(other_session_id.clone(), create_test_session_info(100))
-            .await;
+            .await
+            .unwrap();
 
         // "other participant" is contributing
         try_contribute(
