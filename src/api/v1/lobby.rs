@@ -1,5 +1,5 @@
 use crate::{
-    lobby::{ActiveContributorError, SharedLobbyState},
+    lobby::{ActiveContributorError, SharedLobbyState, self},
     storage::{PersistentStorage, StorageError},
     SessionId, SharedTranscript,
 };
@@ -21,6 +21,8 @@ pub enum TryContributeError {
     RateLimited,
     #[error("another contribution in progress")]
     AnotherContributionInProgress,
+    #[error("lobby is full")]
+    LobbyIsFull,
     #[error("error in storage layer: {0}")]
     StorageError(#[from] StorageError),
 }
@@ -67,6 +69,10 @@ pub async fn try_contribute(
         })
         .await
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
+
+    if !lobby_state.enter_lobby(&session_id).await {
+        return Err(TryContributeError::LobbyIsFull)
+    }
 
     lobby_state
         .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
@@ -118,10 +124,10 @@ mod tests {
             Err(TryContributeError::UnknownSessionId)
         ));
         lobby_state
-            .insert_participant(session_id.clone(), create_test_session_info(100))
+            .insert_session(session_id.clone(), create_test_session_info(100))
             .await;
         lobby_state
-            .insert_participant(other_session_id.clone(), create_test_session_info(100))
+            .insert_session(other_session_id.clone(), create_test_session_info(100))
             .await;
 
         // "other participant" is contributing

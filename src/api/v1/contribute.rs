@@ -120,7 +120,7 @@ mod tests {
     use crate::{
         api::v1::{
             contribute::ContributeError,
-            lobby::{try_contribute, TryContributeError, TryContributeResponse},
+            lobby::{try_contribute, TryContributeError, TryContributeResponse, self},
         },
         contribute,
         io::read_json_file,
@@ -174,8 +174,9 @@ mod tests {
         let lobby_state = SharedLobbyState::default();
         let participant = SessionId::new();
         lobby_state
-            .insert_participant(participant.clone(), create_test_session_info(100))
+            .insert_session(participant.clone(), create_test_session_info(100))
             .await;
+        lobby_state.enter_lobby(&participant).await;
         lobby_state
             .set_current_contributor(&participant, opts.lobby.compute_deadline, db.clone())
             .await
@@ -226,8 +227,9 @@ mod tests {
         let shared_transcript = Arc::new(RwLock::new(transcript));
 
         lobby_state
-            .insert_participant(participant.clone(), create_test_session_info(100))
+            .insert_session(participant.clone(), create_test_session_info(100))
             .await;
+        lobby_state.enter_lobby(&participant).await;
 
         lobby_state
             .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
@@ -249,7 +251,7 @@ mod tests {
         let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
         assert_eq!(transcript, transcript_1);
         lobby_state
-            .insert_participant(participant.clone(), create_test_session_info(100))
+            .insert_session(participant.clone(), create_test_session_info(100))
             .await;
 
         lobby_state
@@ -284,11 +286,13 @@ mod tests {
         let other_session_id = SessionId::new();
 
         lobby_state
-            .insert_participant(session_id.clone(), create_test_session_info(100))
+            .insert_session(session_id.clone(), create_test_session_info(100))
             .await;
+        lobby_state.enter_lobby(&session_id).await;
         lobby_state
-            .insert_participant(other_session_id.clone(), create_test_session_info(100))
+            .insert_session(other_session_id.clone(), create_test_session_info(100))
             .await;
+        lobby_state.enter_lobby(&other_session_id).await;
 
         lobby_state
             .set_current_contributor(&session_id, opts.lobby.compute_deadline, db.clone())

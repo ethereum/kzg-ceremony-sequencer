@@ -173,6 +173,13 @@ impl IntoResponse for TryContributeError {
                 }));
                 (StatusCode::OK, body)
             }
+            Self::LobbyIsFull => {
+                let body = Json(json!({
+                    "code": "TryContributeError::LobbyIsFull",
+                    "message": "lobby is full",
+                }));
+                (StatusCode::BAD_REQUEST, body)
+            }
             Self::StorageError(err) => return err.into_response(),
         };
 
