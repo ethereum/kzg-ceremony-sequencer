@@ -120,7 +120,7 @@ mod tests {
     use crate::{
         api::v1::{
             contribute::ContributeError,
-            lobby::{try_contribute, TryContributeError, TryContributeResponse, self},
+            lobby::{try_contribute, TryContributeError, TryContributeResponse},
         },
         contribute,
         io::read_json_file,
@@ -150,7 +150,7 @@ mod tests {
     async fn rejects_out_of_turn_contribution() {
         let opts = test_options();
         let db = storage_client(&opts.storage).await.unwrap();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let transcript = test_transcript();
         let contrbution = valid_contribution(&transcript, 1);
         let result = contribute(
@@ -171,7 +171,7 @@ mod tests {
     async fn rejects_invalid_contribution() {
         let opts = test_options();
         let db = storage_client(&opts.storage).await.unwrap();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let participant = SessionId::new();
         lobby_state
             .insert_session(participant.clone(), create_test_session_info(100))
@@ -202,10 +202,10 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
-        let keys = shared_keys();
-        let lobby_state = SharedLobbyState::default();
-        let participant = SessionId::new();
         let cfg = test_options();
+        let keys = shared_keys();
+        let lobby_state = SharedLobbyState::new(cfg.lobby.clone());
+        let participant = SessionId::new();
         let db = storage_client(&cfg.storage).await.unwrap();
         let transcript = test_transcript();
         let contribution_1 = valid_contribution(&transcript, 1);
@@ -278,7 +278,7 @@ mod tests {
     #[tokio::test]
     async fn aborts_contribution() {
         let opts = test_options();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let transcript = Arc::new(RwLock::new(test_transcript()));
         let db = storage_client(&opts.storage).await.unwrap();
 

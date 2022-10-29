@@ -1,11 +1,15 @@
 use crate::{
-    sessions::{SessionId, SessionInfo, self},
-    storage::PersistentStorage, api::v1::lobby,
+    sessions::{SessionId, SessionInfo},
+    storage::PersistentStorage,
 };
-use async_session::Session;
 use clap::Parser;
 use std::{
-    collections::{BTreeMap, BTreeSet}, mem, num::ParseIntError, str::FromStr, sync::Arc, time::Duration,
+    collections::{BTreeMap, BTreeSet},
+    mem,
+    num::ParseIntError,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
 };
 use thiserror::Error;
 use tokio::{sync::Mutex, time::Instant};
@@ -38,14 +42,14 @@ pub struct Options {
     #[clap(long, env, default_value = "1000")]
     pub max_lobby_size: usize,
 
-    /// How long the session is valid if user doesn't take any actions, in seconds.
-    /// Default: 24 hours
+    /// How long the session is valid if user doesn't take any actions, in
+    /// seconds. Default: 24 hours
     #[clap(long, env, value_parser=duration_from_str, default_value="86400")]
     pub session_expiration: Duration,
 
     /// Maximum number of active sessions.
     #[clap(long, env, default_value = "100000")]
-    pub max_num_sessions: usize
+    pub max_num_sessions: usize,
 }
 
 #[derive(Default)]
@@ -83,12 +87,20 @@ pub enum ActiveContributorError {
     UserNotInLobby,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct SharedLobbyState {
-    inner: Arc<Mutex<LobbyState>>,
+    inner:   Arc<Mutex<LobbyState>>,
+    options: Options,
 }
 
 impl SharedLobbyState {
+    pub fn new(options: Options) -> Self {
+        Self {
+            inner: Arc::default(),
+            options,
+        }
+    }
+
     pub async fn set_current_contributor(
         &self,
         participant: &SessionId,
@@ -170,7 +182,7 @@ impl SharedLobbyState {
         let mut lobby_state = self.inner.lock().await;
         let mut remove_participants: Vec<SessionId> = vec![];
         for id in &lobby_state.lobby_participants {
-            let should_delete = lobby_state.sessions.get(id).map(predicate).unwrap_or(true);
+            let should_delete = lobby_state.sessions.get(id).map_or(true, predicate);
             if should_delete {
                 remove_participants.push(id.clone());
             }
@@ -198,22 +210,27 @@ impl SharedLobbyState {
         self.inner.lock().await.lobby_participants.len()
     }
 
-    pub async fn insert_session(&self, session_id: SessionId, session_info: SessionInfo) {
-        // TODO: check in num of sessions not exceeded
-        self.inner
-            .lock()
-            .await
-            .sessions
-            .insert(session_id, session_info);
+    pub async fn insert_session(&self, session_id: SessionId, session_info: SessionInfo) -> bool {
+        let mut state = self.inner.lock().await;
+        if state.sessions.len() >= self.options.max_num_sessions {
+            return false;
+        }
+
+        state.sessions.insert(session_id, session_info);
+
+        true
     }
 
     pub async fn enter_lobby(&self, session_id: &SessionId) -> bool {
-        // TODO: check if lobby size not exceeded
-        self.inner
-            .lock()
-            .await
-            .lobby_participants
-            .insert(session_id.clone());
+        let mut state = self.inner.lock().await;
+        if state.lobby_participants.len() >= self.options.max_lobby_size
+            && !state.lobby_participants.contains(session_id)
+        {
+            return false;
+        }
+
+        state.lobby_participants.insert(session_id.clone());
+
         true
     }
 
@@ -278,7 +295,10 @@ pub async fn clear_lobby_on_interval(state: SharedLobbyState, options: Options) 
 
 #[tokio::test]
 async fn flush_on_predicate() {
-    use crate::{sessions::SessionId, test_util::create_test_session_info};
+    use crate::{
+        sessions::SessionId,
+        test_util::{create_test_session_info, test_options},
+    };
 
     // We want to test that the clear_lobby_on_interval function works as expected.
     //
@@ -292,7 +312,7 @@ async fn flush_on_predicate() {
 
     let to_add = 100;
 
-    let arc_state = SharedLobbyState::default();
+    let arc_state = SharedLobbyState::new(test_options().lobby);
 
     {
         for i in 0..to_add {

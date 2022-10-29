@@ -1,5 +1,5 @@
 use crate::{
-    lobby::{ActiveContributorError, SharedLobbyState, self},
+    lobby::{ActiveContributorError, SharedLobbyState},
     storage::{PersistentStorage, StorageError},
     SessionId, SharedTranscript,
 };
@@ -71,7 +71,7 @@ pub async fn try_contribute(
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
 
     if !lobby_state.enter_lobby(&session_id).await {
-        return Err(TryContributeError::LobbyIsFull)
+        return Err(TryContributeError::LobbyIsFull);
     }
 
     lobby_state
@@ -103,7 +103,7 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     async fn lobby_try_contribute_test() {
         let opts = test_options();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let transcript = Arc::new(RwLock::new(test_transcript()));
         let db = storage_client(&opts.storage).await.unwrap();
 
