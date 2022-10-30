@@ -87,12 +87,6 @@ impl From<&F> for blst_scalar {
     }
 }
 
-impl From<&blst_scalar> for F {
-    fn from(n: &blst_scalar) -> Self {
-        F::from(&fr_from_scalar(n))
-    }
-}
-
 impl From<&F> for blst_fr {
     fn from(n: &F) -> Self {
         // TODO: Zeroize the temps
