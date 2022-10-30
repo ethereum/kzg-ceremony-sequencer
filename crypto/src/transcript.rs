@@ -1,5 +1,5 @@
 use super::{CeremonyError, Contribution, Powers, G1, G2};
-use crate::engine::Engine;
+use crate::{engine::Engine, signature::BlsSignature};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -18,6 +18,9 @@ pub struct Witness {
 
     #[serde(rename = "potPubkeys")]
     pub pubkeys: Vec<G2>,
+
+    #[serde(rename = "blsSignatures")]
+    pub signatures: Vec<BlsSignature>,
 }
 
 impl Transcript {
@@ -45,8 +48,9 @@ impl Transcript {
         Self {
             powers:  Powers::new(num_g1, num_g2),
             witness: Witness {
-                products: vec![G1::one()],
-                pubkeys:  vec![G2::one()],
+                products:   vec![G1::one()],
+                pubkeys:    vec![G2::one()],
+                signatures: vec![BlsSignature::empty()],
             },
         }
     }
@@ -55,8 +59,9 @@ impl Transcript {
     #[must_use]
     pub fn contribution(&self) -> Contribution {
         Contribution {
-            powers:     self.powers.clone(),
-            pot_pubkey: G2::one(),
+            powers:        self.powers.clone(),
+            pot_pubkey:    G2::one(),
+            bls_signature: BlsSignature::empty(),
         }
     }
 
@@ -108,6 +113,7 @@ impl Transcript {
     pub fn add(&mut self, contribution: Contribution) {
         self.witness.products.push(contribution.powers.g1[1]);
         self.witness.pubkeys.push(contribution.pot_pubkey);
+        self.witness.signatures.push(contribution.bls_signature);
         self.powers = contribution.powers;
     }
 }
@@ -135,7 +141,7 @@ mod test {
                 "G2Powers": [
                 "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
                 "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8",
-                ]
+                ],
             },
             "witness": {
                 "runningProducts": [
@@ -143,7 +149,8 @@ mod test {
                 ],
                 "potPubkeys": [
                     "0x93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
-                ]
+                ],
+                "blsSignatures": [""],
             }
             })
         );

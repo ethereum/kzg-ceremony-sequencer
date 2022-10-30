@@ -29,6 +29,7 @@ ark-ec = { version = "0.3.0", features = ["parallel"] }
 ark-ff = { version = "0.3.0", features = ["parallel", "asm"] }
 blst = { version = "0.3.10", optional = true }
 criterion = { version = "0.4.0", optional = true } # Dev dep for bench
+ethers-core = { version = "1.0.0", features = ["eip712"] }
 hex = "0.4.3"
 hex-literal = "0.3.4"
 rand = "0.8.5"

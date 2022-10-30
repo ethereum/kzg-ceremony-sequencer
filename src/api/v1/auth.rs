@@ -13,7 +13,7 @@ use axum::{
 };
 use chrono::DateTime;
 use http::StatusCode;
-use kzg_ceremony_crypto::ErrorCode;
+use kzg_ceremony_crypto::{signature::identity::Identity, ErrorCode};
 use oauth2::{
     reqwest::async_http_client, AuthorizationCode, CsrfToken, RequestTokenError, Scope,
     TokenResponse,
@@ -25,22 +25,6 @@ use thiserror::Error;
 use tokio::time::Instant;
 use tracing::warn;
 use url::Url;
-
-// These are the providers that are supported
-// via oauth
-pub enum AuthProvider {
-    Github,
-    Ethereum,
-}
-
-impl AuthProvider {
-    pub const fn to_string(&self) -> &str {
-        match self {
-            Self::Github => "Github",
-            Self::Ethereum => "Ethereum",
-        }
-    }
-}
 
 #[derive(Debug, Error)]
 #[error("{payload}")]
@@ -104,14 +88,19 @@ impl IntoResponse for UserVerifiedResponse {
                 redirect_url
                     .query_pairs_mut()
                     .append_pair("session_id", &self.session_id)
-                    .append_pair("sub", &self.id_token.sub)
-                    .append_pair("nickname", &self.id_token.nickname)
-                    .append_pair("provider", &self.id_token.provider)
+                    .append_pair("sub", &self.id_token.identity.unique_id())
+                    .append_pair("nickname", &self.id_token.identity.nickname())
+                    .append_pair("provider", &self.id_token.identity.provider_name())
                     .append_pair("exp", &self.id_token.exp.to_string());
                 Redirect::to(redirect_url.as_str()).into_response()
             }
             None => Json(json!({
-                "id_token" : self.id_token,
+                "id_token" : {
+                    "sub": &self.id_token.identity.unique_id(),
+                    "nickname": &self.id_token.identity.nickname(),
+                    "provider": &self.id_token.identity.provider_name(),
+                    "exp": &self.id_token.exp,
+                },
                 "session_id" : self.session_id,
             }))
             .into_response(),
@@ -230,14 +219,9 @@ where
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct AuthenticatedUser {
-    uid:      String,
-    nickname: String,
-}
-
 #[derive(Debug, Deserialize)]
 struct GhUserInfo {
+    id:         u64,
     login:      String,
     created_at: String,
 }
@@ -294,9 +278,9 @@ pub async fn github_callback(
             payload:  AuthErrorPayload::UserCreatedAfterDeadline,
         });
     }
-    let user = AuthenticatedUser {
-        uid:      format!("github | {}", gh_user_info.login),
-        nickname: gh_user_info.login,
+    let user = Identity::Github {
+        id:       gh_user_info.id,
+        username: gh_user_info.login.clone(),
     };
     post_authenticate(
         auth_state,
@@ -304,7 +288,6 @@ pub async fn github_callback(
         storage,
         user,
         payload.redirect_to,
-        AuthProvider::Github,
         options.multi_contribution,
     )
     .await
@@ -312,8 +295,7 @@ pub async fn github_callback(
 
 #[derive(Debug, Deserialize)]
 struct EthUserInfo {
-    sub:                String,
-    preferred_username: String,
+    sub: String,
 }
 
 // This endpoint allows one to consume an oAUTH authorisation code
@@ -388,10 +370,10 @@ pub async fn eth_callback(
         });
     }
 
-    let user_data = AuthenticatedUser {
-        uid:      format!("eth | {address}"),
-        nickname: eth_user.preferred_username,
-    };
+    let user_data = Identity::eth_from_str(&address).map_err(|_| AuthError {
+        redirect: payload.redirect_to.clone(),
+        payload:  AuthErrorPayload::CouldNotExtractUserData,
+    })?;
 
     post_authenticate(
         auth_state,
@@ -399,7 +381,6 @@ pub async fn eth_callback(
         storage,
         user_data,
         payload.redirect_to,
-        AuthProvider::Ethereum,
         options.multi_contribution,
     )
     .await
@@ -437,13 +418,12 @@ async fn post_authenticate(
     auth_state: SharedAuthState,
     lobby_state: SharedLobbyState,
     storage: PersistentStorage,
-    user_data: AuthenticatedUser,
+    user_data: Identity,
     redirect_to: Option<String>,
-    auth_provider: AuthProvider,
     multi_contribution: bool,
 ) -> Result<UserVerifiedResponse, AuthError> {
     // Check if they have already contributed
-    match storage.has_contributed(&user_data.uid).await {
+    match storage.has_contributed(&user_data.unique_id()).await {
         Err(error) => {
             return Err(AuthError {
                 redirect: redirect_to.clone(),
@@ -452,7 +432,7 @@ async fn post_authenticate(
         }
         Ok(true) => {
             if multi_contribution {
-                warn!(uid = %user_data.uid, "User has already contributed, accepting multiple.");
+                warn!(uid = %user_data, "User has already contributed, accepting multiple.");
             } else {
                 return Err(AuthError {
                     redirect: redirect_to.clone(),
@@ -468,21 +448,20 @@ async fn post_authenticate(
     let session_id = {
         let mut state = auth_state.write().await;
 
-        if let Some(session_id) = state.unique_id_session.get(&user_data.uid) {
+        #[allow(clippy::option_if_let_else)]
+        if let Some(session_id) = state.unique_id_session.get(&user_data.unique_id()) {
             session_id.clone()
         } else {
             let id = SessionId::new();
             state
                 .unique_id_session
-                .insert(user_data.uid.clone(), id.clone());
+                .insert(user_data.unique_id(), id.clone());
             id
         }
     };
 
     let id_token = IdToken {
-        sub:      user_data.uid,
-        provider: auth_provider.to_string().to_owned(),
-        nickname: user_data.nickname,
+        identity: user_data,
         exp:      u64::MAX,
     };
 

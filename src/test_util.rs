@@ -5,15 +5,16 @@ use crate::{
     Options,
 };
 use clap::Parser;
+use kzg_ceremony_crypto::signature::identity::Identity;
 use tokio::time::Instant;
-use uuid::Uuid;
 
 #[must_use]
 pub fn test_jwt(exp: u64) -> IdToken {
     IdToken {
-        sub: Uuid::new_v4().to_string(),
-        nickname: String::from("foo"),
-        provider: String::from("foo"),
+        identity: Identity::Github {
+            id:       1234,
+            username: "test_user".to_string(),
+        },
         exp,
     }
 }

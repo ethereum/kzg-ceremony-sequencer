@@ -68,21 +68,21 @@ pub async fn contribute(
     let result = {
         let mut transcript = shared_transcript.write().await;
         transcript
-            .verify_add::<Engine>(contribution.clone())
+            .verify_add::<Engine>(contribution.clone(), id_token.identity.clone())
             .map_err(ContributeError::InvalidContribution)
     };
 
     if let Err(e) = result {
         lobby_state.clear_current_contributor().await;
         storage
-            .expire_contribution(id_token.unique_identifier())
+            .expire_contribution(&id_token.unique_identifier())
             .await?;
         return Err(e);
     }
 
     let receipt = Receipt {
-        id_token,
-        witness: contribution.receipt(),
+        identity: id_token.identity,
+        witness:  contribution.receipt(),
     };
 
     let (signed_msg, signature) = receipt
@@ -141,7 +141,7 @@ mod tests {
     };
     use axum::{Extension, Json};
     use clap::Parser;
-    use kzg_ceremony_crypto::BatchTranscript;
+    use kzg_ceremony_crypto::{signature::identity::Identity, BatchTranscript};
     use std::{
         sync::{atomic::AtomicUsize, Arc},
         time::Duration,
@@ -218,7 +218,10 @@ mod tests {
         let transcript_1 = {
             let mut transcript = transcript.clone();
             transcript
-                .verify_add::<Engine>(contribution_1.clone())
+                .verify_add::<Engine>(contribution_1.clone(), Identity::Github {
+                    id:       1234,
+                    username: "test_user".to_string(),
+                })
                 .unwrap();
             transcript
         };
@@ -226,7 +229,10 @@ mod tests {
         let transcript_2 = {
             let mut transcript = transcript_1.clone();
             transcript
-                .verify_add::<Engine>(contribution_2.clone())
+                .verify_add::<Engine>(contribution_2.clone(), Identity::Github {
+                    id:       1234,
+                    username: "test_user".to_string(),
+                })
                 .unwrap();
             transcript
         };

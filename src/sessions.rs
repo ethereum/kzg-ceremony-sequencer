@@ -4,7 +4,7 @@ use axum::{
     TypedHeader,
 };
 use headers::{authorization::Bearer, Authorization};
-use kzg_ceremony_crypto::ErrorCode;
+use kzg_ceremony_crypto::{signature::identity::Identity, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use strum::IntoStaticStr;
@@ -47,13 +47,9 @@ impl ErrorCode for SessionError {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IdToken {
-    pub sub:      String,
-    pub nickname: String,
-    // The provider whom the client used to login with
-    // Example, Google, Ethereum, Facebook
-    pub provider: String,
+    pub identity: Identity,
     pub exp:      u64,
 }
 
@@ -62,8 +58,8 @@ impl IdToken {
     // For example, see: https://developers.google.com/identity/protocols/oauth2/openid-connect#obtainuserinfo
     // We can use this to identify when a user signs in with the same
     // login and signup
-    pub fn unique_identifier(&self) -> &str {
-        &self.sub
+    pub fn unique_identifier(&self) -> String {
+        self.identity.unique_id()
     }
 }
 

@@ -1,12 +1,17 @@
-use crate::{BatchContribution, CeremoniesError, Engine, Transcript};
+use crate::{
+    signature::{identity::Identity, ContributionTypedData, EcdsaSignature},
+    BatchContribution, CeremoniesError, Engine, Transcript,
+};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BatchTranscript {
-    pub transcripts: Vec<Transcript>,
+    pub transcripts:                  Vec<Transcript>,
+    pub participant_ids:              Vec<Identity>,
+    pub participant_ecdsa_signatures: Vec<EcdsaSignature>,
 }
 
 impl BatchTranscript {
@@ -15,10 +20,12 @@ impl BatchTranscript {
         I: IntoIterator<Item = &'a (usize, usize)> + 'a,
     {
         Self {
-            transcripts: iter
+            transcripts:                  iter
                 .into_iter()
                 .map(|(num_g1, num_g2)| Transcript::new(*num_g1, *num_g2))
                 .collect(),
+            participant_ids:              vec![Identity::None],
+            participant_ecdsa_signatures: vec![EcdsaSignature::empty()],
         }
     }
 
@@ -26,11 +33,12 @@ impl BatchTranscript {
     #[must_use]
     pub fn contribution(&self) -> BatchContribution {
         BatchContribution {
-            contributions: self
+            contributions:   self
                 .transcripts
                 .iter()
                 .map(Transcript::contribution)
                 .collect(),
+            ecdsa_signature: EcdsaSignature::empty(),
         }
     }
 
@@ -39,7 +47,8 @@ impl BatchTranscript {
     #[instrument(level = "info", skip_all, fields(n=contribution.contributions.len()))]
     pub fn verify_add<E: Engine>(
         &mut self,
-        contribution: BatchContribution,
+        mut contribution: BatchContribution,
+        identity: Identity,
     ) -> Result<(), CeremoniesError> {
         // Verify contribution count
         if self.transcripts.len() != contribution.contributions.len() {
@@ -60,6 +69,19 @@ impl BatchTranscript {
                     .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             })?;
 
+        self.participant_ecdsa_signatures.push(
+            contribution
+                .ecdsa_signature
+                .prune(&identity, &ContributionTypedData::from(&contribution)),
+        );
+
+        // Prune BLS Signatures
+        contribution.contributions.iter_mut().for_each(|c| {
+            c.bls_signature = c
+                .bls_signature
+                .prune::<E>(identity.to_string().as_bytes(), c.pot_pubkey);
+        });
+
         // Add contributions
         for (transcript, contribution) in self
             .transcripts
@@ -68,6 +90,8 @@ impl BatchTranscript {
         {
             transcript.add(contribution);
         }
+
+        self.participant_ids.push(identity);
 
         Ok(())
     }
@@ -97,8 +121,12 @@ pub mod bench {
         let transcript = {
             let mut transcript = BatchTranscript::new(BATCH_SIZE.iter());
             let mut contribution = transcript.contribution();
-            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
-            transcript.verify_add::<E>(contribution).unwrap();
+            contribution
+                .add_entropy::<E>(&rand_entropy(), &Identity::None)
+                .unwrap();
+            transcript
+                .verify_add::<E>(contribution, Identity::None)
+                .unwrap();
             transcript
         };
 
@@ -109,12 +137,16 @@ pub mod bench {
                     || {
                         (transcript.clone(), {
                             let mut contribution = transcript.contribution();
-                            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
+                            contribution
+                                .add_entropy::<E>(&rand_entropy(), &Identity::None)
+                                .unwrap();
                             contribution
                         })
                     },
                     |(mut transcript, contribution)| {
-                        transcript.verify_add::<E>(contribution).unwrap();
+                        transcript
+                            .verify_add::<E>(contribution, Identity::None)
+                            .unwrap();
                     },
                     BatchSize::LargeInput,
                 );

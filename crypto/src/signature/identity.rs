@@ -9,6 +9,49 @@ pub enum Identity {
     Github { id: u64, username: String },
 }
 
+impl Identity {
+    /// Parse Ethereum identity from address from hex string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IdentityError`] if the input is not a valid Ethereum address.
+    pub fn eth_from_str(address: &str) -> Result<Self, IdentityError> {
+        if address.len() != 42 || &address[..2] != "0x" {
+            return Err(IdentityError::InvalidEthereumAddress);
+        }
+        let address = hex::decode(&address[2..])
+            .map_err(|_| IdentityError::InvalidEthereumAddress)?
+            .try_into()
+            .map_err(|_| IdentityError::InvalidEthereumAddress)?;
+
+        Ok(Self::Ethereum { address })
+    }
+
+    #[must_use]
+    pub fn unique_id(&self) -> String {
+        self.to_string()
+    }
+
+    #[must_use]
+    pub fn nickname(&self) -> String {
+        match self {
+            Self::Ethereum { address } => format!("0x{}", hex::encode(address)),
+            Self::Github { username, .. } => username.to_string(),
+            Self::None => "<<unauthorized>>".to_string(),
+        }
+    }
+
+    #[must_use]
+    pub fn provider_name(&self) -> String {
+        match self {
+            Self::Ethereum { .. } => "Ethereum",
+            Self::Github { .. } => "Github",
+            Self::None => "None",
+        }
+        .to_string()
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
 pub enum IdentityError {
     #[error("invalid identity")]
