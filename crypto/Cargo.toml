@@ -26,8 +26,8 @@ required-features = ["bench"]
 [dependencies]
 ark-bls12-381 = "0.3.0"
 ark-ec = { version = "0.3.0", features = ["parallel"] }
-ark-poly = { version = "0.3.0", features = ["parallel"] }
 ark-ff = { version = "0.3.0", features = ["parallel", "asm"] }
+ark-poly = { version = "0.3.0", features = ["parallel"] }
 blst = { version = "0.3.10", optional = true }
 criterion = { version = "0.4.0", optional = true } # Dev dep for bench
 digest = "0.10"
