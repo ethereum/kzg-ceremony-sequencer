@@ -389,7 +389,7 @@ pub async fn eth_callback(
     }
 
     let user_data = AuthenticatedUser {
-        uid:      format!("eth | {}", address),
+        uid:      format!("eth | {address}"),
         nickname: eth_user.preferred_username,
     };
 

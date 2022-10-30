@@ -143,7 +143,7 @@ impl<'de, const N: usize> de::Visitor<'de> for StrVisitor<N> {
     type Value = [u8; N];
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "a {} byte hex string stating with `0x`", N)
+        write!(formatter, "a {N} byte hex string stating with `0x`")
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -166,7 +166,7 @@ impl<'de, const N: usize> de::Visitor<'de> for StrVisitor<N> {
             ));
         }
         hex::decode_to_slice(&value[2..], &mut result)
-            .map_err(|e| E::custom(format!("hex decoding failed: {}", e)))?;
+            .map_err(|e| E::custom(format!("hex decoding failed: {e}")))?;
         Ok(result)
     }
 }

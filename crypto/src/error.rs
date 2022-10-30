@@ -15,9 +15,10 @@ pub enum CeremoniesError {
 
 impl ErrorCode for CeremoniesError {
     fn to_error_code(&self) -> String {
-        match self {
-            Self::InvalidCeremony(_, inner) => inner.to_error_code(),
-            _ => format!("CeremoniesError::{}", <&str>::from(self)),
+        if let Self::InvalidCeremony(_, inner) = self {
+            inner.to_error_code()
+        } else {
+            format!("CeremoniesError::{}", <&str>::from(self))
         }
     }
 }

@@ -77,7 +77,7 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         _ => "'unknown'",
     };
     let version = connection
-        .fetch_one(format!("SELECT {sql};", sql = sql).as_str())
+        .fetch_one(format!("SELECT {sql};").as_str())
         .await
         .wrap_err("error getting database version")?
         .get::<String, _>(0);

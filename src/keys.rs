@@ -132,6 +132,6 @@ mod tests {
         let signature = keys.sign(&message).await.unwrap();
 
         let result = keys.verify(&message, &signature);
-        println!("result {:?}", result);
+        println!("result {result:?}");
     }
 }
