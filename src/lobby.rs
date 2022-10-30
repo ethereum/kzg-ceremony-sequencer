@@ -4,12 +4,7 @@ use crate::{
 };
 use clap::Parser;
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    mem,
-    num::ParseIntError,
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
+    collections::BTreeMap, mem, num::ParseIntError, str::FromStr, sync::Arc, time::Duration,
 };
 use thiserror::Error;
 use tokio::{sync::Mutex, time::Instant};
@@ -54,9 +49,9 @@ pub struct Options {
 
 #[derive(Default)]
 pub struct LobbyState {
-    pub sessions:           BTreeMap<SessionId, SessionInfo>,
-    pub lobby_participants: BTreeSet<SessionId>,
-    pub active_contributor: ActiveContributor,
+    pub sessions_in_lobby:     BTreeMap<SessionId, SessionInfo>,
+    pub sessions_out_of_lobby: BTreeMap<SessionId, SessionInfo>,
+    pub active_contributor:    ActiveContributor,
 }
 
 #[derive(Clone, Debug)]
@@ -114,11 +109,8 @@ impl SharedLobbyState {
         let mut state = self.inner.lock().await;
 
         if matches!(state.active_contributor, ActiveContributor::None) {
-            if !state.lobby_participants.contains(participant) {
-                return Err(ActiveContributorError::UserNotInLobby);
-            }
             let session_info = state
-                .sessions
+                .sessions_in_lobby
                 .remove(participant)
                 .ok_or(ActiveContributorError::UserNotInLobby)?;
 
@@ -184,21 +176,16 @@ impl SharedLobbyState {
 
     pub async fn clear_lobby(&self, predicate: impl Fn(&SessionInfo) -> bool + Copy + Send) {
         let mut lobby_state = self.inner.lock().await;
-        let mut remove_participants: Vec<SessionId> = vec![];
-        for id in &lobby_state.lobby_participants {
-            let should_delete = lobby_state.sessions.get(id).map_or(true, predicate);
-            if should_delete {
-                remove_participants.push(id.clone());
-            }
-        }
-        for participant in &remove_participants {
-            lobby_state.lobby_participants.remove(participant);
-        }
+        lobby_state
+            .sessions_in_lobby
+            .retain(|_, info| !predicate(info));
     }
 
     pub async fn clear_session(&self, predicate: impl Fn(&SessionInfo) -> bool + Send) {
         let mut lobby_state = self.inner.lock().await;
-        lobby_state.sessions.retain(|_, info| !predicate(info));
+        lobby_state
+            .sessions_out_of_lobby
+            .retain(|_, info| !predicate(info));
     }
 
     pub async fn modify_participant<R>(
@@ -207,11 +194,17 @@ impl SharedLobbyState {
         fun: impl FnOnce(&mut SessionInfo) -> R + Send,
     ) -> Option<R> {
         let mut lobby_state = self.inner.lock().await;
-        lobby_state.sessions.get_mut(session_id).map(fun)
+        if let Some(lobby_session) = lobby_state.sessions_in_lobby.get_mut(session_id) {
+            return Some(fun(lobby_session));
+        }
+        lobby_state
+            .sessions_out_of_lobby
+            .get_mut(session_id)
+            .map(fun)
     }
 
     pub async fn get_lobby_size(&self) -> usize {
-        self.inner.lock().await.lobby_participants.len()
+        self.inner.lock().await.sessions_in_lobby.len()
     }
 
     pub async fn insert_session(
@@ -220,35 +213,41 @@ impl SharedLobbyState {
         session_info: SessionInfo,
     ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
-        let sessions = &mut state.sessions;
+        let sessions = &mut state.sessions_out_of_lobby;
         if sessions.len() >= self.options.max_sessions_count && !sessions.contains_key(&session_id)
         {
             return Err(ActiveContributorError::SessionCountLimitExceeded);
         }
-        state.sessions.insert(session_id, session_info);
+        state.sessions_out_of_lobby.insert(session_id, session_info);
         Ok(())
     }
 
     pub async fn enter_lobby(&self, session_id: &SessionId) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
-        let lobby = &mut state.lobby_participants;
-        if lobby.len() >= self.options.max_lobby_size && !lobby.contains(session_id) {
-            return Err(ActiveContributorError::LobbySizeLimitExceeded);
+        {
+            let lobby = &mut state.sessions_in_lobby;
+            if lobby.len() >= self.options.max_lobby_size && !lobby.contains_key(session_id) {
+                return Err(ActiveContributorError::LobbySizeLimitExceeded);
+            }
         }
-        lobby.insert(session_id.clone());
+
+        if let Some(session) = state.sessions_out_of_lobby.remove(session_id) {
+            state.sessions_in_lobby.insert(session_id.clone(), session);
+        }
+
         Ok(())
     }
 
     #[cfg(test)]
     pub async fn get_all_participants(&self) -> Vec<SessionInfoWithId> {
-        let state = self.inner.lock().await;
-
-        state
-            .lobby_participants
+        self.inner
+            .lock()
+            .await
+            .sessions_in_lobby
             .iter()
-            .map(|id| SessionInfoWithId {
+            .map(|(id, info)| SessionInfoWithId {
                 id:   id.clone(),
-                info: state.sessions.get(id).unwrap().clone(),
+                info: info.clone(),
             })
             .collect()
     }

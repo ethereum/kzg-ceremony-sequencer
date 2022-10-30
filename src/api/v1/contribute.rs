@@ -269,7 +269,7 @@ mod tests {
             .insert_session(participant.clone(), create_test_session_info(100))
             .await
             .unwrap();
-
+        lobby_state.enter_lobby(&participant).await.unwrap();
         lobby_state
             .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
             .await
