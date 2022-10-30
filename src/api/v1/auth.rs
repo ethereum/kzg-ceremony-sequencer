@@ -448,6 +448,7 @@ async fn post_authenticate(
     let session_id = {
         let mut state = auth_state.write().await;
 
+        #[allow(clippy::option_if_let_else)]
         if let Some(session_id) = state.unique_id_session.get(&user_data.unique_id()) {
             session_id.clone()
         } else {

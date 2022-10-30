@@ -82,7 +82,7 @@ impl<'de, const N: usize> de::Visitor<'de> for StrVisitor<N> {
     type Value = [u8; N];
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "a {} byte hex string stating with `0x`", N)
+        write!(formatter, "a {N} byte hex string stating with `0x`")
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>

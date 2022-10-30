@@ -70,7 +70,7 @@ pub async fn try_contribute(
             }
             info.is_first_ping_attempt = false;
             info.last_ping_time = now;
-            Ok(info.token.unique_identifier().to_owned())
+            Ok(info.token.unique_identifier())
         })
         .await
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;

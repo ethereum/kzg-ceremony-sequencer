@@ -10,6 +10,11 @@ pub enum Identity {
 }
 
 impl Identity {
+    /// Parse Ethereum identity from address from hex string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IdentityError`] if the input is not a valid Ethereum address.
     pub fn eth_from_str(address: &str) -> Result<Self, IdentityError> {
         if address.len() != 42 || &address[..2] != "0x" {
             return Err(IdentityError::InvalidEthereumAddress);

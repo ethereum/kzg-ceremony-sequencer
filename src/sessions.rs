@@ -4,7 +4,6 @@ use axum::{
     TypedHeader,
 };
 use headers::{authorization::Bearer, Authorization};
-use http::StatusCode;
 use kzg_ceremony_crypto::{signature::identity::Identity, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
