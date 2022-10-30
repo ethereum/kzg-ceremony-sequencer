@@ -8,12 +8,13 @@ use axum::{
     Extension, Json,
 };
 use http::StatusCode;
-use kzg_ceremony_crypto::BatchContribution;
+use kzg_ceremony_crypto::{BatchContribution, ErrorCode};
 use serde::Serialize;
+use strum::IntoStaticStr;
 use thiserror::Error;
 use tokio::time::Instant;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum TryContributeError {
     #[error("unknown session id")]
     UnknownSessionId,
@@ -25,6 +26,12 @@ pub enum TryContributeError {
     LobbyIsFull,
     #[error("error in storage layer: {0}")]
     StorageError(#[from] StorageError),
+}
+
+impl ErrorCode for TryContributeError {
+    fn to_error_code(&self) -> String {
+        format!("TryContributeError::{}", <&str>::from(self))
+    }
 }
 
 impl From<ActiveContributorError> for TryContributeError {
@@ -67,7 +74,7 @@ pub async fn try_contribute(
             }
             info.is_first_ping_attempt = false;
             info.last_ping_time = now;
-            Ok(info.token.unique_identifier().to_owned())
+            Ok(info.token.unique_identifier())
         })
         .await
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;

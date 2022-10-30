@@ -9,8 +9,9 @@ mod contribution;
 mod engine;
 mod error;
 mod group;
+mod hex_format;
 mod powers;
-mod signature;
+pub mod signature;
 mod transcript;
 
 pub use crate::{
@@ -18,7 +19,7 @@ pub use crate::{
     batch_transcript::BatchTranscript,
     contribution::Contribution,
     engine::{Engine, Entropy, Tau},
-    error::{CeremoniesError, CeremonyError, ParseError},
+    error::{CeremoniesError, CeremonyError, ErrorCode, ParseError},
     group::{F, G1, G2},
     powers::Powers,
     transcript::Transcript,

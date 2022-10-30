@@ -169,6 +169,18 @@ impl Engine for Arkworks {
         }
         Ok(())
     }
+
+    fn sign_message(_tau: &Tau, _message: &[u8]) -> Option<G1> {
+        // TODO implement this. This behavior is still spec-conforming, since signatures
+        // are optional.
+        None
+    }
+
+    fn verify_signature(_sig: G1, _message: &[u8], _pk: G2) -> bool {
+        // TODO implement this. This behavior is still spec-conforming, since singatures
+        // are optional.
+        false
+    }
 }
 
 pub fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Fr> {

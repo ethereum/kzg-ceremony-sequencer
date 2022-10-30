@@ -1,6 +1,11 @@
+use strum::IntoStaticStr;
 use thiserror::Error;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
+pub trait ErrorCode {
+    fn to_error_code(&self) -> String;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, IntoStaticStr)]
 pub enum CeremoniesError {
     #[error("Unexpected number of contributions: expected {0}, got {1}")]
     UnexpectedNumContributions(usize, usize),
@@ -8,7 +13,17 @@ pub enum CeremoniesError {
     InvalidCeremony(usize, #[source] CeremonyError),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
+impl ErrorCode for CeremoniesError {
+    fn to_error_code(&self) -> String {
+        if let Self::InvalidCeremony(_, inner) = self {
+            inner.to_error_code()
+        } else {
+            format!("CeremoniesError::{}", <&str>::from(self))
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, IntoStaticStr)]
 pub enum CeremonyError {
     #[error("Unsupported number of G1 powers: {0}")]
     UnsupportedNumG1Powers(usize),
@@ -68,7 +83,13 @@ pub enum CeremonyError {
     WitnessLengthMismatch(usize, usize),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Error)]
+impl ErrorCode for CeremonyError {
+    fn to_error_code(&self) -> String {
+        format!("CeremonyError::{}", <&str>::from(self))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Error, IntoStaticStr)]
 pub enum ParseError {
     #[error("Invalid x coordinate")]
     BigIntError,
@@ -84,4 +105,27 @@ pub enum ParseError {
     InvalidXCoordinate,
     #[error("curve point is not in prime order subgroup")]
     InvalidSubgroup,
+}
+
+impl ErrorCode for ParseError {
+    fn to_error_code(&self) -> String {
+        format!("ParseError::{}", <&str>::from(self))
+    }
+}
+
+#[test]
+fn test_error_codes() {
+    assert_eq!(
+        "CeremoniesError::UnexpectedNumContributions",
+        CeremoniesError::UnexpectedNumContributions(1, 3).to_error_code()
+    );
+
+    assert_eq!(
+        "CeremonyError::InvalidG1Power",
+        CeremoniesError::InvalidCeremony(
+            1,
+            CeremonyError::InvalidG1Power(3, ParseError::InvalidInfinity)
+        )
+        .to_error_code()
+    );
 }

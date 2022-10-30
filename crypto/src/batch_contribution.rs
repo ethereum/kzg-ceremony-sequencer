@@ -1,4 +1,7 @@
-use crate::{CeremoniesError, Contribution, Engine, Entropy, Tau, G2};
+use crate::{
+    signature::{identity::Identity, EcdsaSignature},
+    CeremoniesError, Contribution, Engine, Entropy, Tau, G2,
+};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
@@ -9,7 +12,8 @@ use tracing::instrument;
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BatchContribution {
-    pub contributions: Vec<Contribution>,
+    pub contributions:   Vec<Contribution>,
+    pub ecdsa_signature: EcdsaSignature,
 }
 
 impl BatchContribution {
@@ -19,7 +23,11 @@ impl BatchContribution {
     }
 
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
-    pub fn add_entropy<E: Engine>(&mut self, entropy: &Entropy) -> Result<(), CeremoniesError> {
+    pub fn add_entropy<E: Engine>(
+        &mut self,
+        entropy: &Entropy,
+        identity: &Identity,
+    ) -> Result<(), CeremoniesError> {
         let taus = derive_taus::<E>(entropy, self.contributions.len());
         let res = self
             .contributions
@@ -28,7 +36,7 @@ impl BatchContribution {
             .enumerate()
             .try_for_each(|(i, (contribution, tau))| {
                 contribution
-                    .add_tau::<E>(tau)
+                    .add_tau::<E>(tau, identity)
                     .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             });
         res
@@ -53,6 +61,7 @@ pub mod bench {
     use super::*;
     use crate::{
         bench::{rand_entropy, BATCH_SIZE},
+        signature::identity::Identity,
         Arkworks, BatchTranscript, Both, BLST,
     };
     use criterion::{BatchSize, Criterion};
@@ -71,18 +80,24 @@ pub mod bench {
         let transcript = {
             let mut transcript = BatchTranscript::new(BATCH_SIZE.iter());
             let mut contribution = transcript.contribution();
-            contribution.add_entropy::<E>(&rand_entropy()).unwrap();
-            transcript.verify_add::<E>(contribution).unwrap();
+            contribution
+                .add_entropy::<E>(&rand_entropy(), &Identity::None)
+                .unwrap();
+            transcript
+                .verify_add::<E>(contribution, Identity::None)
+                .unwrap();
             transcript
         };
 
         criterion.bench_function(
-            &format!("batch_contribution/{}/add_tau", name),
+            &format!("batch_contribution/{name}/add_tau"),
             move |bencher| {
                 bencher.iter_batched(
                     || (transcript.contribution(), rand_entropy()),
                     |(mut contribution, entropy)| {
-                        contribution.add_entropy::<E>(&entropy).unwrap();
+                        contribution
+                            .add_entropy::<E>(&entropy, &Identity::None)
+                            .unwrap();
                     },
                     BatchSize::LargeInput,
                 );
