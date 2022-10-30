@@ -77,7 +77,7 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
         _ => "'unknown'",
     };
     let version = connection
-        .fetch_one(format!("SELECT {sql};", sql = sql).as_str())
+        .fetch_one(format!("SELECT {sql};").as_str())
         .await
         .wrap_err("error getting database version")?
         .get::<String, _>(0);
@@ -138,10 +138,13 @@ pub async fn storage_client(options: &Options) -> eyre::Result<PersistentStorage
 
 impl IntoResponse for StorageError {
     fn into_response(self) -> Response {
-        let message = match self {
+        let message = match &self {
             Self::DatabaseError(error) => error.to_string(),
         };
-        let body = Json(json!({ "error": message }));
+        let body = Json(json!({
+            "code": "StorageError::DatabaseError",
+            "error": message
+        }));
         (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
     }
 }

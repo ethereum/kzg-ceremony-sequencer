@@ -90,7 +90,7 @@ pub mod bench {
         };
 
         criterion.bench_function(
-            &format!("batch_contribution/{}/add_tau", name),
+            &format!("batch_contribution/{name}/add_tau"),
             move |bencher| {
                 bencher.iter_batched(
                     || (transcript.contribution(), rand_entropy()),

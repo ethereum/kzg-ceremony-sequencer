@@ -149,7 +149,7 @@ const G1_LAMBDA_2: [u64; 2] = [0x0000_0001_0000_0000, 0xac45_a401_0001_a402];
 fn g1_split(tau: Fr) -> (u128, u128) {
     let mut tau = tau.into_repr().0;
     let mut divisor = G1_LAMBDA_2;
-    ruint::algorithms::div_rem(&mut tau, &mut divisor);
+    ruint::algorithms::div(&mut tau, &mut divisor);
     let k0 = (divisor[0] as u128) | (divisor[1] as u128) << 64;
     let k1 = (tau[0] as u128) | (tau[1] as u128) << 64;
     (k0, k1)

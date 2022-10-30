@@ -1,15 +1,14 @@
 use async_session::async_trait;
 use axum::{
     extract::{FromRequest, RequestParts},
-    response::{IntoResponse, Response},
-    Json, TypedHeader,
+    TypedHeader,
 };
 use headers::{authorization::Bearer, Authorization};
 use http::StatusCode;
-use kzg_ceremony_crypto::signature::identity::Identity;
+use kzg_ceremony_crypto::{signature::identity::Identity, ErrorCode};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::fmt::{Display, Formatter};
+use strum::IntoStaticStr;
 use thiserror::Error;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -37,21 +36,15 @@ impl Display for SessionId {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum SessionError {
     #[error("unknown session id")]
     InvalidSessionId,
 }
 
-impl IntoResponse for SessionError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = match self {
-            Self::InvalidSessionId => (StatusCode::BAD_REQUEST, "invalid Bearer token"),
-        };
-        let body = Json(json!({
-            "error": error_message,
-        }));
-        (status, body).into_response()
+impl ErrorCode for SessionError {
+    fn to_error_code(&self) -> String {
+        format!("SessionError::{}", <&str>::from(self))
     }
 }
 

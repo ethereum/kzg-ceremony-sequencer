@@ -19,7 +19,7 @@ pub use crate::{
     batch_transcript::BatchTranscript,
     contribution::Contribution,
     engine::{Engine, Entropy, Tau},
-    error::{CeremoniesError, CeremonyError, ParseError},
+    error::{CeremoniesError, CeremonyError, ErrorCode, ParseError},
     group::{F, G1, G2},
     powers::Powers,
     transcript::Transcript,

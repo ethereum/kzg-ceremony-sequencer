@@ -1,7 +1,3 @@
-use axum::{
-    response::{IntoResponse, Response},
-    Json,
-};
 use clap::Parser;
 use ethers_core::{
     rand::thread_rng,
@@ -10,10 +6,10 @@ use ethers_core::{
 };
 use ethers_signers::{LocalWallet, Signer};
 use eyre::Result;
-use http::StatusCode;
+use kzg_ceremony_crypto::ErrorCode;
 use serde::Serialize;
-use serde_json::json;
 use std::{fmt, sync::Arc};
+use strum::IntoStaticStr;
 use thiserror::Error;
 use tracing::{info, warn};
 
@@ -28,7 +24,7 @@ pub struct Options {
 #[derive(Serialize)]
 pub struct Signature(String);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum SignatureError {
     #[error("couldn't sign the receipt")]
     SignatureCreation,
@@ -38,26 +34,9 @@ pub enum SignatureError {
     InvalidSignature,
 }
 
-impl IntoResponse for SignatureError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = match self {
-            Self::SignatureCreation => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "couldn't sign the receipt",
-            ),
-            Self::InvalidToken => (
-                StatusCode::BAD_REQUEST,
-                "signature is not a valid hex string",
-            ),
-            Self::InvalidSignature => (
-                StatusCode::BAD_REQUEST,
-                "couldn't create signature from string",
-            ),
-        };
-        let body = Json(json!({
-            "error": error_message,
-        }));
-        (status, body).into_response()
+impl ErrorCode for SignatureError {
+    fn to_error_code(&self) -> String {
+        format!("SignatureError::{}", <&str>::from(self))
     }
 }
 
@@ -153,6 +132,6 @@ mod tests {
         let signature = keys.sign(&message).await.unwrap();
 
         let result = keys.verify(&message, &signature);
-        println!("result {:?}", result);
+        println!("result {result:?}");
     }
 }

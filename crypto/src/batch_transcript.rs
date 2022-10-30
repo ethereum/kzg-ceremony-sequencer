@@ -131,7 +131,7 @@ pub mod bench {
         };
 
         criterion.bench_function(
-            &format!("batch_transcript/{}/verify_add", name),
+            &format!("batch_transcript/{name}/verify_add"),
             move |bencher| {
                 bencher.iter_batched(
                     || {

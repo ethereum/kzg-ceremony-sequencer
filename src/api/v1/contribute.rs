@@ -12,10 +12,10 @@ use axum::{
 };
 use axum_extra::response::ErasedJson;
 use http::StatusCode;
-use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
+use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, ErrorCode};
 use serde::Serialize;
-use serde_json::json;
 use std::sync::atomic::Ordering;
+use strum::IntoStaticStr;
 use thiserror::Error;
 
 #[derive(Serialize)]
@@ -30,7 +30,7 @@ impl IntoResponse for ContributeReceipt {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum ContributeError {
     #[error("not your turn to participate")]
     NotUsersTurn,
@@ -42,22 +42,9 @@ pub enum ContributeError {
     StorageError(#[from] StorageError),
 }
 
-impl IntoResponse for ContributeError {
-    fn into_response(self) -> Response {
-        let (status, body) = match self {
-            Self::NotUsersTurn => {
-                let body = Json(json!({"error" : "not your turn to participate"}));
-                (StatusCode::BAD_REQUEST, body)
-            }
-            Self::InvalidContribution(e) => {
-                let body = Json(json!({ "error": format!("contribution invalid: {}", e) }));
-                (StatusCode::BAD_REQUEST, body)
-            }
-            Self::Signature(err) => return err.into_response(),
-            Self::StorageError(err) => return err.into_response(),
-        };
-
-        (status, body).into_response()
+impl ErrorCode for ContributeError {
+    fn to_error_code(&self) -> String {
+        format!("ContributeError::{}", <&str>::from(self))
     }
 }
 

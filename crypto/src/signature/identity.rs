@@ -66,7 +66,7 @@ impl Display for Identity {
         match self {
             Self::None => write!(f, ""),
             Self::Ethereum { address } => write!(f, "eth|0x{}", hex::encode(address)),
-            Self::Github { id, username } => write!(f, "git|{}|{}", id, username),
+            Self::Github { id, username } => write!(f, "git|{id}|{username}"),
         }
     }
 }
