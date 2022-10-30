@@ -153,7 +153,7 @@ pub mod bench {
     }
 
     fn bench_validate_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/validate_g1", name);
+        let id = format!("engine/{name}/validate_g1");
         for size in G1_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),
@@ -170,7 +170,7 @@ pub mod bench {
     }
 
     fn bench_validate_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/validate_g2", name);
+        let id = format!("engine/{name}/validate_g2");
         for size in G2_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),
@@ -187,7 +187,7 @@ pub mod bench {
     }
 
     fn bench_verify_pubkey<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/verify_pubkey", name);
+        let id = format!("engine/{name}/verify_pubkey");
         criterion.bench_function(&id, move |bencher| {
             bencher.iter_batched(
                 || (rand_g1(), rand_g1(), rand_g2()),
@@ -198,7 +198,7 @@ pub mod bench {
     }
 
     fn bench_verify_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/verify_g1", name);
+        let id = format!("engine/{name}/verify_g1");
         for size in G1_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),
@@ -220,7 +220,7 @@ pub mod bench {
     }
 
     fn bench_verify_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/verify_g2", name);
+        let id = format!("engine/{name}/verify_g2");
         for size in G2_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),
@@ -242,7 +242,7 @@ pub mod bench {
     }
 
     fn bench_generate_tau<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/generate_tau", name);
+        let id = format!("engine/{name}/generate_tau");
         criterion.bench_function(&id, move |bencher| {
             bencher.iter_batched_ref(
                 rand_entropy,
@@ -253,7 +253,7 @@ pub mod bench {
     }
 
     fn bench_add_tau_g1<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/add_tau_g1", name);
+        let id = format!("engine/{name}/add_tau_g1");
         for size in G1_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),
@@ -275,7 +275,7 @@ pub mod bench {
     }
 
     fn bench_add_tau_g2<E: Engine>(criterion: &mut Criterion, name: &str) {
-        let id = format!("engine/{}/add_tau_g2", name);
+        let id = format!("engine/{name}/add_tau_g2");
         for size in G2_SIZES {
             criterion.bench_with_input(
                 BenchmarkId::new(id.clone(), size),

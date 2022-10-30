@@ -26,9 +26,9 @@ pub enum IdentityError {
 impl Display for Identity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Identity::None => write!(f, ""),
-            Identity::Ethereum { address } => write!(f, "eth|0x{}", hex::encode(address)),
-            Identity::Github { id, username } => write!(f, "git|{}|{}", id, username),
+            Self::None => write!(f, ""),
+            Self::Ethereum { address } => write!(f, "eth|0x{}", hex::encode(address)),
+            Self::Github { id, username } => write!(f, "git|{id}|{username}"),
         }
     }
 }
@@ -53,7 +53,7 @@ impl FromStr for Identity {
                     .try_into()
                     .map_err(|_| IdentityError::InvalidEthereumAddress)?;
 
-                Ok(Identity::Ethereum { address })
+                Ok(Self::Ethereum { address })
             }
             Some("git") => {
                 let id = parts.next().ok_or(IdentityError::MissingField)?;
@@ -65,13 +65,13 @@ impl FromStr for Identity {
                 let id = id.parse().map_err(|_| IdentityError::InvalidGithubId)?;
                 let username = username.to_string();
 
-                Ok(Identity::Github { id, username })
+                Ok(Self::Github { id, username })
             }
             Some("") => {
                 if parts.next().is_some() {
                     return Err(IdentityError::TooManyFields);
                 }
-                Ok(Identity::None)
+                Ok(Self::None)
             }
             _ => Err(IdentityError::UnsupportedType),
         }

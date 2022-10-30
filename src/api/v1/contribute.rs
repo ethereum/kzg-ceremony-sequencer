@@ -12,9 +12,10 @@ use axum::{
 };
 use axum_extra::response::ErasedJson;
 use http::StatusCode;
-use kzg_ceremony_crypto::{BatchContribution, CeremoniesError};
+use kzg_ceremony_crypto::{BatchContribution, CeremoniesError, ErrorCode};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
+use strum::IntoStaticStr;
 use thiserror::Error;
 
 #[derive(Serialize)]
@@ -29,7 +30,7 @@ impl IntoResponse for ContributeReceipt {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum ContributeError {
     #[error("not your turn to participate")]
     NotUsersTurn,
@@ -39,6 +40,12 @@ pub enum ContributeError {
     Signature(SignatureError),
     #[error("storage error: {0}")]
     StorageError(#[from] StorageError),
+}
+
+impl ErrorCode for ContributeError {
+    fn to_error_code(&self) -> String {
+        format!("ContributeError::{}", <&str>::from(self))
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

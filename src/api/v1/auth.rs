@@ -13,12 +13,14 @@ use axum::{
 };
 use chrono::DateTime;
 use http::StatusCode;
+use kzg_ceremony_crypto::ErrorCode;
 use oauth2::{
     reqwest::async_http_client, AuthorizationCode, CsrfToken, RequestTokenError, Scope,
     TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use strum::IntoStaticStr;
 use thiserror::Error;
 use tokio::time::Instant;
 use tracing::warn;
@@ -47,13 +49,13 @@ pub struct AuthError {
     pub payload:  AuthErrorPayload,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum AuthErrorPayload {
     #[error("lobby is full")]
     LobbyIsFull,
     #[error("user already contributed")]
     UserAlreadyContributed,
-    #[error("invalid auth code")]
+    #[error("invalid authorization code")]
     InvalidAuthCode,
     #[error("could not fetch user data from auth server")]
     FetchUserDataError,
@@ -63,6 +65,12 @@ pub enum AuthErrorPayload {
     UserCreatedAfterDeadline,
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+}
+
+impl ErrorCode for AuthErrorPayload {
+    fn to_error_code(&self) -> String {
+        format!("AuthErrorPayload::{}", <&str>::from(self))
+    }
 }
 
 pub struct UserVerifiedResponse {
@@ -381,7 +389,7 @@ pub async fn eth_callback(
     }
 
     let user_data = AuthenticatedUser {
-        uid:      format!("eth | {}", address),
+        uid:      format!("eth | {address}"),
         nickname: eth_user.preferred_username,
     };
 

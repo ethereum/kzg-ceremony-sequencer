@@ -55,11 +55,16 @@ kzg-ceremony-crypto = { path = "./crypto", features = ["arkworks", "blst"] }
 oauth2 = "4.1"
 once_cell = "1.8"
 rand = "0.8"
+reqwest = { version = "0.11", default-features = false, features = [
+    "rustls-tls", # Use Rustls because it makes it easier to cross-compile on CI
+    "json",
+] }
 secrecy = "0.8.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 small-powers-of-tau = { git = "https://github.com/crate-crypto/small-powers-of-tau" }
 sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "any", "chrono"] }
+strum = { version = "0.24.1", features = ["derive"] }
 thiserror = "1.0.35"
 tokio = { version = "1", features = ["full", "test-util"] }
 tokio-util = "0.7.4"
@@ -68,12 +73,6 @@ tower-http = { version = "0.3.4", features = ["full"] }
 tracing = "0.1.35"
 url = "2.3.1"
 uuid = { version = "1.1.2", features = ["serde", "v4"] }
-
-# Use Rustls because it makes it easier to cross-compile on CI
-reqwest = { version = "0.11", default-features = false, features = [
-    "rustls-tls",
-    "json",
-] }
 
 [build-dependencies]
 cli-batteries = "0.4.0"

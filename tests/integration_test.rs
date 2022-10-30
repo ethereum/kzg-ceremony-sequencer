@@ -346,8 +346,8 @@ async fn test_gh_auth_errors_with_custom_frontend_redirect() {
     assert_eq!(redirected_to.host_str(), Some("my.magical.frontend"));
     assert_eq!(redirected_to.path(), "/post-sign-in");
     let params: HashMap<_, _> = redirected_to.query_pairs().into_owned().collect();
+    assert!(params.get("code").is_some());
     assert!(params.get("error").is_some());
-    assert!(params.get("message").is_some());
 }
 
 #[tokio::test]
