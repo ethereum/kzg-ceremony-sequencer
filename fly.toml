@@ -21,6 +21,8 @@ processes = []
     COMPUTE_DEADLINE="480"
     LOBBY_CHECKIN_FREQUENCY="30"
     LOBBY_CHECKIN_TOLERANCE="15"
+    # Post double signing transcript
+    TRANSCRIPT_FILE="double_signed_transcript.json"
 
 # ❯ fly secrets list
 # NAME                    DIGEST                  CREATED AT
