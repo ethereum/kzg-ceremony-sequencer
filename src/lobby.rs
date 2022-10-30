@@ -213,26 +213,40 @@ impl SharedLobbyState {
         session_info: SessionInfo,
     ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
+
+        let is_active_contributor = match &state.active_contributor {
+            ActiveContributor::None => false,
+            ActiveContributor::AwaitingContribution(info)
+            | ActiveContributor::Contributing(info) => info.id == session_id,
+        };
+        let is_in_lobby = state.sessions_in_lobby.contains_key(&session_id);
+
+        if is_active_contributor || is_in_lobby {
+            return Ok(());
+        }
+
         let sessions = &mut state.sessions_out_of_lobby;
         if sessions.len() >= self.options.max_sessions_count && !sessions.contains_key(&session_id)
         {
             return Err(ActiveContributorError::SessionCountLimitExceeded);
         }
-        state.sessions_out_of_lobby.insert(session_id, session_info);
+        sessions.insert(session_id, session_info);
+
         Ok(())
     }
 
     pub async fn enter_lobby(&self, session_id: &SessionId) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
-        {
+
+        // If session is not in sessions_out_of_lobby, it was already moved to lobby or
+        // to active contributor state
+        if let Some(session) = state.sessions_out_of_lobby.remove(session_id) {
             let lobby = &mut state.sessions_in_lobby;
-            if lobby.len() >= self.options.max_lobby_size && !lobby.contains_key(session_id) {
+
+            if lobby.len() >= self.options.max_lobby_size {
                 return Err(ActiveContributorError::LobbySizeLimitExceeded);
             }
-        }
-
-        if let Some(session) = state.sessions_out_of_lobby.remove(session_id) {
-            state.sessions_in_lobby.insert(session_id.clone(), session);
+            lobby.insert(session_id.clone(), session);
         }
 
         Ok(())
