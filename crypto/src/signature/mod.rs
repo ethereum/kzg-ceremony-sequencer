@@ -9,7 +9,10 @@ use crate::{
     signature::identity::Identity,
     BatchContribution, Engine, Tau, G1, G2,
 };
-use ethers::types::transaction::eip712::{EIP712Domain, Eip712, Eip712Error, TypedData};
+use ethers_core::types::{
+    transaction::eip712::{EIP712Domain, Eip712, Eip712Error, TypedData},
+    Signature as EthSignature,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
 
@@ -61,7 +64,7 @@ impl<'de> Deserialize<'de> for BlsSignature {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct EcdsaSignature(pub Option<ethers::types::Signature>);
+pub struct EcdsaSignature(pub Option<EthSignature>);
 
 impl EcdsaSignature {
     #[must_use]
@@ -104,8 +107,7 @@ impl<'de> Deserialize<'de> for EcdsaSignature {
     {
         optional_hex_to_bytes::<_, 65>(deserializer).map(|bytes_opt| {
             Self(bytes_opt.map(|bytes| {
-                ethers::types::Signature::try_from(&bytes[..])
-                    .expect("Impossible, input is guaranteed correct")
+                EthSignature::try_from(&bytes[..]).expect("Impossible, input is guaranteed correct")
             }))
         })
     }
