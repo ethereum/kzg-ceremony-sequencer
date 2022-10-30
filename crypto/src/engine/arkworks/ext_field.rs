@@ -2,8 +2,8 @@ use ark_bls12_381::Fq;
 use ark_ff::{Field, QuadExtField, QuadExtParameters};
 
 pub trait ToBasePrimeFieldIterator
-    where
-        Self: Field,
+where
+    Self: Field,
 {
     fn base_field_iterator<'a>(
         &'a self,
@@ -19,8 +19,8 @@ impl ToBasePrimeFieldIterator for Fq {
 }
 
 impl<P: QuadExtParameters> ToBasePrimeFieldIterator for QuadExtField<P>
-    where
-        P::BaseField: ToBasePrimeFieldIterator,
+where
+    P::BaseField: ToBasePrimeFieldIterator,
 {
     fn base_field_iterator<'a>(
         &'a self,

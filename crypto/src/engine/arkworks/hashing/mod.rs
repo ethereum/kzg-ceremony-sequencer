@@ -11,7 +11,7 @@ mod tests {
         },
         group::G1,
     };
-    use ark_bls12_381::{g1::Parameters as G1Parameters};
+    use ark_bls12_381::g1::Parameters as G1Parameters;
     use blst::{blst_hash_to_g1, blst_p1};
     use proptest::proptest;
     use sha2::Sha256;
