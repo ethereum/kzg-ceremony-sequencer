@@ -44,20 +44,6 @@ pub trait HashToField<F: Field>: Sized {
 /// This field hasher constructs a Hash-To-Field based on a fixed-output hash
 /// function, like SHA2, SHA3 or Blake2.
 /// The implementation aims to follow the specification in [Hashing to Elliptic Curves (draft)](https://tools.ietf.org/pdf/draft-irtf-cfrg-hash-to-curve-13.pdf).
-///
-/// # Examples
-///
-/// ```
-/// use ark_bls12_381::Fq;
-/// use ark_ff::fields::field_hashers::{DefaultFieldHasher, HashToField};
-/// use ark_test_curves::bls12_381::Fq;
-/// use sha2::Sha256;
-///
-/// let hasher = <DefaultFieldHasher<Sha256> as HashToField<Fq>>::new(&[1, 2, 3]);
-/// let field_elements: Vec<Fq> = hasher.hash_to_field(b"Hello, World!", 2);
-///
-/// assert_eq!(field_elements.len(), 2);
-/// ```
 pub struct DefaultFieldHasher<H: Default + DynDigest + Clone, const SEC_PARAM: usize = 128> {
     expander:          ExpanderXmd<H>,
     len_per_base_elem: usize,
