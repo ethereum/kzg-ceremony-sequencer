@@ -466,12 +466,16 @@ async fn post_authenticate(
     };
 
     lobby_state
-        .insert_participant(session_id.clone(), SessionInfo {
+        .insert_session(session_id.clone(), SessionInfo {
             token:                 id_token.clone(),
             last_ping_time:        Instant::now(),
             is_first_ping_attempt: true,
         })
-        .await;
+        .await
+        .map_err(|_| AuthError {
+            redirect: redirect_to.clone(),
+            payload:  AuthErrorPayload::LobbyIsFull,
+        })?;
 
     Ok(UserVerifiedResponse {
         id_token,

@@ -36,12 +36,22 @@ pub struct Options {
     /// Maximum number of participants in the lobby.
     #[clap(long, env, default_value = "1000")]
     pub max_lobby_size: usize,
+
+    /// How long the session is valid if user doesn't take any actions, in
+    /// seconds. Default: 24 hours
+    #[clap(long, env, value_parser=duration_from_str, default_value="86400")]
+    pub session_expiration: Duration,
+
+    /// Maximum number of active sessions.
+    #[clap(long, env, default_value = "100000")]
+    pub max_sessions_count: usize,
 }
 
 #[derive(Default)]
 pub struct LobbyState {
-    pub participants:       BTreeMap<SessionId, SessionInfo>,
-    pub active_contributor: ActiveContributor,
+    pub sessions_in_lobby:     BTreeMap<SessionId, SessionInfo>,
+    pub sessions_out_of_lobby: BTreeMap<SessionId, SessionInfo>,
+    pub active_contributor:    ActiveContributor,
 }
 
 #[derive(Clone, Debug)]
@@ -70,14 +80,26 @@ pub enum ActiveContributorError {
     NotUsersTurn,
     #[error("user not in the lobby")]
     UserNotInLobby,
+    #[error("session count limit exceeded")]
+    SessionCountLimitExceeded,
+    #[error("lobby size limit exceeded")]
+    LobbySizeLimitExceeded,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct SharedLobbyState {
-    inner: Arc<Mutex<LobbyState>>,
+    inner:   Arc<Mutex<LobbyState>>,
+    options: Options,
 }
 
 impl SharedLobbyState {
+    pub fn new(options: Options) -> Self {
+        Self {
+            inner: Arc::default(),
+            options,
+        }
+    }
+
     pub async fn set_current_contributor(
         &self,
         participant: &SessionId,
@@ -88,7 +110,7 @@ impl SharedLobbyState {
 
         if matches!(state.active_contributor, ActiveContributor::None) {
             let session_info = state
-                .participants
+                .sessions_in_lobby
                 .remove(participant)
                 .ok_or(ActiveContributorError::UserNotInLobby)?;
 
@@ -152,9 +174,18 @@ impl SharedLobbyState {
         state.active_contributor = ActiveContributor::None;
     }
 
-    pub async fn clear_lobby(&self, predicate: impl Fn(&SessionInfo) -> bool + Send) {
+    pub async fn clear_lobby(&self, predicate: impl Fn(&SessionInfo) -> bool + Copy + Send) {
         let mut lobby_state = self.inner.lock().await;
-        lobby_state.participants.retain(|_, info| !predicate(info));
+        lobby_state
+            .sessions_in_lobby
+            .retain(|_, info| !predicate(info));
+    }
+
+    pub async fn clear_session(&self, predicate: impl Fn(&SessionInfo) -> bool + Send) {
+        let mut lobby_state = self.inner.lock().await;
+        lobby_state
+            .sessions_out_of_lobby
+            .retain(|_, info| !predicate(info));
     }
 
     pub async fn modify_participant<R>(
@@ -163,19 +194,62 @@ impl SharedLobbyState {
         fun: impl FnOnce(&mut SessionInfo) -> R + Send,
     ) -> Option<R> {
         let mut lobby_state = self.inner.lock().await;
-        lobby_state.participants.get_mut(session_id).map(fun)
+        if let Some(lobby_session) = lobby_state.sessions_in_lobby.get_mut(session_id) {
+            return Some(fun(lobby_session));
+        }
+        lobby_state
+            .sessions_out_of_lobby
+            .get_mut(session_id)
+            .map(fun)
     }
 
     pub async fn get_lobby_size(&self) -> usize {
-        self.inner.lock().await.participants.len()
+        self.inner.lock().await.sessions_in_lobby.len()
     }
 
-    pub async fn insert_participant(&self, session_id: SessionId, session_info: SessionInfo) {
-        self.inner
-            .lock()
-            .await
-            .participants
-            .insert(session_id, session_info);
+    pub async fn insert_session(
+        &self,
+        session_id: SessionId,
+        session_info: SessionInfo,
+    ) -> Result<(), ActiveContributorError> {
+        let mut state = self.inner.lock().await;
+
+        let is_active_contributor = match &state.active_contributor {
+            ActiveContributor::None => false,
+            ActiveContributor::AwaitingContribution(info)
+            | ActiveContributor::Contributing(info) => info.id == session_id,
+        };
+        let is_in_lobby = state.sessions_in_lobby.contains_key(&session_id);
+
+        if is_active_contributor || is_in_lobby {
+            return Ok(());
+        }
+
+        let sessions = &mut state.sessions_out_of_lobby;
+        if sessions.len() >= self.options.max_sessions_count && !sessions.contains_key(&session_id)
+        {
+            return Err(ActiveContributorError::SessionCountLimitExceeded);
+        }
+        sessions.insert(session_id, session_info);
+
+        Ok(())
+    }
+
+    pub async fn enter_lobby(&self, session_id: &SessionId) -> Result<(), ActiveContributorError> {
+        let mut state = self.inner.lock().await;
+
+        // If session is not in sessions_out_of_lobby, it was already moved to lobby or
+        // to active contributor state
+        if let Some(session) = state.sessions_out_of_lobby.remove(session_id) {
+            let lobby = &mut state.sessions_in_lobby;
+
+            if lobby.len() >= self.options.max_lobby_size {
+                return Err(ActiveContributorError::LobbySizeLimitExceeded);
+            }
+            lobby.insert(session_id.clone(), session);
+        }
+
+        Ok(())
     }
 
     #[cfg(test)]
@@ -183,7 +257,7 @@ impl SharedLobbyState {
         self.inner
             .lock()
             .await
-            .participants
+            .sessions_in_lobby
             .iter()
             .map(|(id, info)| SessionInfoWithId {
                 id:   id.clone(),
@@ -213,7 +287,8 @@ impl SharedLobbyState {
 }
 
 pub async fn clear_lobby_on_interval(state: SharedLobbyState, options: Options) {
-    let max_diff = options.lobby_checkin_frequency + options.lobby_checkin_tolerance;
+    let max_lobby_diff = options.lobby_checkin_frequency + options.lobby_checkin_tolerance;
+    let max_session_diff = options.session_expiration;
 
     let mut interval = tokio::time::interval(options.lobby_flush_interval);
 
@@ -222,18 +297,26 @@ pub async fn clear_lobby_on_interval(state: SharedLobbyState, options: Options) 
 
         let now = Instant::now();
         // Predicate that returns true whenever users go over the ping deadline
-        let predicate = |session_info: &SessionInfo| -> bool {
+        let lobby_predicate = |session_info: &SessionInfo| -> bool {
             let time_diff = now - session_info.last_ping_time;
-            time_diff > max_diff
+            time_diff > max_lobby_diff
         };
+        state.clear_lobby(lobby_predicate).await;
 
-        state.clear_lobby(predicate).await;
+        let session_predicate = |session_info: &SessionInfo| -> bool {
+            let time_diff = now - session_info.last_ping_time;
+            time_diff > max_session_diff
+        };
+        state.clear_session(session_predicate).await;
     }
 }
 
 #[tokio::test]
 async fn flush_on_predicate() {
-    use crate::{sessions::SessionId, test_util::create_test_session_info};
+    use crate::{
+        sessions::SessionId,
+        test_util::{create_test_session_info, test_options},
+    };
 
     // We want to test that the clear_lobby_on_interval function works as expected.
     //
@@ -247,13 +330,17 @@ async fn flush_on_predicate() {
 
     let to_add = 100;
 
-    let arc_state = SharedLobbyState::default();
+    let arc_state = SharedLobbyState::new(test_options().lobby);
 
     {
         for i in 0..to_add {
             let id = SessionId::new();
             let session_info = create_test_session_info(i as u64);
-            arc_state.insert_participant(id, session_info).await;
+            arc_state
+                .insert_session(id.clone(), session_info)
+                .await
+                .unwrap();
+            arc_state.enter_lobby(&id).await.unwrap();
         }
     }
 

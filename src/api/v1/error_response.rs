@@ -96,7 +96,9 @@ impl IntoResponse for TryContributeError {
     fn into_response(self) -> Response {
         let (status, body) = match self {
             Self::UnknownSessionId => (StatusCode::UNAUTHORIZED, error_to_json(&self)),
-            Self::RateLimited => (StatusCode::BAD_REQUEST, error_to_json(&self)),
+            Self::RateLimited | Self::LobbyIsFull => {
+                (StatusCode::BAD_REQUEST, error_to_json(&self))
+            }
             Self::AnotherContributionInProgress => (StatusCode::OK, error_to_json(&self)),
             Self::StorageError(err) => return err.into_response(),
         };
