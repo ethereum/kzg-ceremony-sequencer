@@ -29,11 +29,7 @@ impl Contribution {
         tau: &Tau,
         identity: &Identity,
     ) -> Result<(), CeremonyError> {
-        // Validate points
-        // TODO: Do this after we submit result to contribute faster.
-        E::validate_g1(&self.powers.g1)?;
-        E::validate_g2(&self.powers.g2)?;
-        E::validate_g2(&[self.pot_pubkey])?;
+        // Validate points after computation to contribute faster
 
         // Add powers of tau
         E::add_tau_g1(tau, &mut self.powers.g1)?;
@@ -43,6 +39,18 @@ impl Contribution {
         self.bls_signature = BlsSignature::sign::<E>(identity.to_string().as_bytes(), tau);
         self.pot_pubkey = temp[1];
 
+        Ok(())
+    }
+
+    /// Performs validations in the contribution.
+    #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
+    pub fn validate<E: Engine>(
+        &mut self,
+    ) -> Result<(), CeremonyError> {
+        // Validate points
+        E::validate_g1(&self.powers.g1)?;
+        E::validate_g2(&self.powers.g2)?;
+        E::validate_g2(&[self.pot_pubkey])?;
         Ok(())
     }
 }
