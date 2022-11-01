@@ -14,7 +14,7 @@ mod blst;
 mod both;
 
 use crate::{CeremonyError, F, G1, G2};
-use secrecy::Secret;
+pub use secrecy::Secret;
 
 #[cfg(feature = "arkworks")]
 pub use self::arkworks::Arkworks;
