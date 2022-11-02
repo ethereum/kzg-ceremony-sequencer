@@ -137,7 +137,7 @@ pub async fn start_server(
 
     // TODO: figure it out from the transcript
     let ceremony_status = Arc::new(AtomicUsize::new(0));
-    let lobby_state = SharedLobbyState::default();
+    let lobby_state = SharedLobbyState::new(options.lobby.clone());
     let auth_state = SharedAuthState::default();
 
     // Spawn automatic queue flusher -- flushes those in the lobby whom have not

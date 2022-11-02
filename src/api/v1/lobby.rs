@@ -22,6 +22,8 @@ pub enum TryContributeError {
     RateLimited,
     #[error("another contribution in progress")]
     AnotherContributionInProgress,
+    #[error("lobby is full")]
+    LobbyIsFull,
     #[error("error in storage layer: {0}")]
     StorageError(#[from] StorageError),
 }
@@ -38,6 +40,8 @@ impl From<ActiveContributorError> for TryContributeError {
             ActiveContributorError::AnotherContributionInProgress
             | ActiveContributorError::NotUsersTurn => Self::AnotherContributionInProgress,
             ActiveContributorError::UserNotInLobby => Self::UnknownSessionId,
+            ActiveContributorError::SessionCountLimitExceeded
+            | ActiveContributorError::LobbySizeLimitExceeded => Self::LobbyIsFull,
         }
     }
 }
@@ -75,6 +79,8 @@ pub async fn try_contribute(
         .await
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
 
+    lobby_state.enter_lobby(&session_id).await?;
+
     lobby_state
         .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
         .await
@@ -104,7 +110,7 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     async fn lobby_try_contribute_test() {
         let opts = test_options();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let transcript = Arc::new(RwLock::new(test_transcript()));
         let db = storage_client(&opts.storage).await.unwrap();
 
@@ -125,11 +131,13 @@ mod tests {
             Err(TryContributeError::UnknownSessionId)
         ));
         lobby_state
-            .insert_participant(session_id.clone(), create_test_session_info(100))
-            .await;
+            .insert_session(session_id.clone(), create_test_session_info(100))
+            .await
+            .unwrap();
         lobby_state
-            .insert_participant(other_session_id.clone(), create_test_session_info(100))
-            .await;
+            .insert_session(other_session_id.clone(), create_test_session_info(100))
+            .await
+            .unwrap();
 
         // "other participant" is contributing
         try_contribute(

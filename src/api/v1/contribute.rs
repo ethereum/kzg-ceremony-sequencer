@@ -157,7 +157,7 @@ mod tests {
     async fn rejects_out_of_turn_contribution() {
         let opts = test_options();
         let db = storage_client(&opts.storage).await.unwrap();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let transcript = test_transcript();
         let contrbution = valid_contribution(&transcript, 1);
         let result = contribute(
@@ -178,11 +178,13 @@ mod tests {
     async fn rejects_invalid_contribution() {
         let opts = test_options();
         let db = storage_client(&opts.storage).await.unwrap();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let participant = SessionId::new();
         lobby_state
-            .insert_participant(participant.clone(), create_test_session_info(100))
-            .await;
+            .insert_session(participant.clone(), create_test_session_info(100))
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&participant).await.unwrap();
         lobby_state
             .set_current_contributor(&participant, opts.lobby.compute_deadline, db.clone())
             .await
@@ -208,10 +210,10 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_valid_contribution() {
-        let keys = shared_keys();
-        let lobby_state = SharedLobbyState::default();
-        let participant = SessionId::new();
         let cfg = test_options();
+        let keys = shared_keys();
+        let lobby_state = SharedLobbyState::new(cfg.lobby.clone());
+        let participant = SessionId::new();
         let db = storage_client(&cfg.storage).await.unwrap();
         let transcript = test_transcript();
         let contribution_1 = valid_contribution(&transcript, 1);
@@ -239,8 +241,10 @@ mod tests {
         let shared_transcript = Arc::new(RwLock::new(transcript));
 
         lobby_state
-            .insert_participant(participant.clone(), create_test_session_info(100))
-            .await;
+            .insert_session(participant.clone(), create_test_session_info(100))
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&participant).await.unwrap();
 
         lobby_state
             .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
@@ -262,9 +266,10 @@ mod tests {
         let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
         assert_eq!(transcript, transcript_1);
         lobby_state
-            .insert_participant(participant.clone(), create_test_session_info(100))
-            .await;
-
+            .insert_session(participant.clone(), create_test_session_info(100))
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&participant).await.unwrap();
         lobby_state
             .set_current_contributor(&participant, cfg.lobby.compute_deadline, db.clone())
             .await
@@ -289,7 +294,7 @@ mod tests {
     #[tokio::test]
     async fn aborts_contribution() {
         let opts = test_options();
-        let lobby_state = SharedLobbyState::default();
+        let lobby_state = SharedLobbyState::new(opts.lobby.clone());
         let transcript = Arc::new(RwLock::new(test_transcript()));
         let db = storage_client(&opts.storage).await.unwrap();
 
@@ -297,11 +302,15 @@ mod tests {
         let other_session_id = SessionId::new();
 
         lobby_state
-            .insert_participant(session_id.clone(), create_test_session_info(100))
-            .await;
+            .insert_session(session_id.clone(), create_test_session_info(100))
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&session_id).await.unwrap();
         lobby_state
-            .insert_participant(other_session_id.clone(), create_test_session_info(100))
-            .await;
+            .insert_session(other_session_id.clone(), create_test_session_info(100))
+            .await
+            .unwrap();
+        lobby_state.enter_lobby(&other_session_id).await.unwrap();
 
         lobby_state
             .set_current_contributor(&session_id, opts.lobby.compute_deadline, db.clone())
