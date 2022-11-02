@@ -6,7 +6,7 @@ kill_timeout = 30 # Seconds
 processes = []
 
 [build]
-    image = "remcob/kzg-ceremony-sequencer:latest"
+    image = "ethereum/kzg-ceremony-sequencer:latest"
 
 [[mounts]]
     source = "kzg_ceremony_sequencer_dev_data"
@@ -29,7 +29,6 @@ processes = []
 # ETH_RPC_URL             a8398a69ef7ec386        2022-09-23T15:29:47Z
 # GH_CLIENT_ID            4d65ba30fd35bf64        2022-09-23T15:33:10Z
 # GH_CLIENT_SECRET        8112a28c3c5544c1        2022-09-23T15:33:38Z
-
 
 [experimental]
     allowed_public_ports = []
