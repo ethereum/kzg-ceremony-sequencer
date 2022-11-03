@@ -15,11 +15,10 @@ pub mod signature;
 mod transcript;
 
 pub use crate::{
-    batch_contribution::BatchContribution,
-    batch_contribution::get_pot_pubkeys,
+    batch_contribution::{get_pot_pubkeys, BatchContribution},
     batch_transcript::BatchTranscript,
     contribution::Contribution,
-    engine::{Engine, Entropy, Tau, Secret},
+    engine::{Engine, Entropy, Secret, Tau},
     error::{CeremoniesError, CeremonyError, ErrorCode, ParseError},
     group::{F, G1, G2},
     powers::Powers,

@@ -4,9 +4,9 @@ use blst::{
     blst_fr, blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1,
     blst_p1_from_affine, blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress,
     blst_p1s_mult_pippenger, blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine,
-    blst_scalar, limb_t,
+    blst_scalar, blst_scalar_from_fr, byte, limb_t,
 };
-use std::mem::size_of;
+use std::{mem::size_of, ptr};
 
 impl TryFrom<G1> for blst_p1_affine {
     type Error = ParseError;
@@ -99,28 +99,29 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
     let npoints = bases.len();
 
     // Get vec of pointers to bases
-    let bases = bases
-        .iter()
-        .map(|x| x as *const blst_p1_affine)
-        .collect::<Vec<_>>();
+    let points_ptrs = [bases.as_ptr(), ptr::null()];
 
-    // Convert scalars to blst_scalar
-    let scalars = scalars.iter().map(scalar_from_fr).collect::<Vec<_>>();
+    // Concatenate bytes of scalars
+    debug_assert_eq!(size_of::<blst_scalar>(), 32);
+    let mut scalar_buffer = vec![0_u8; npoints * size_of::<blst_scalar>()];
+    scalar_buffer
+        .chunks_exact_mut(size_of::<blst_scalar>())
+        .zip(scalars.iter())
+        .for_each(|(buffer, s)| {
+            #[cfg(target_endian = "little")]
+            let scalar_ptr = buffer.as_mut_ptr().cast();
+            unsafe { blst_scalar_from_fr(scalar_ptr, s) };
+        });
+    let scalar_ptrs = [scalar_buffer.as_ptr(), ptr::null()];
 
-    // Get vec of pointers to scalars
-    let scalar_ptrs = scalars.iter().map(|x| x.b.as_ptr()).collect::<Vec<_>>();
-
+    let scratch_size = unsafe { blst_p1s_mult_pippenger_scratch_sizeof(npoints) };
+    let mut scratch = vec![limb_t::default(); scratch_size / size_of::<limb_t>()];
     let mut msm_result = blst_p1::default();
     let mut ret = blst_p1_affine::default();
-
     unsafe {
-        let mut scratch = vec![
-            limb_t::default();
-            blst_p1s_mult_pippenger_scratch_sizeof(npoints) / size_of::<limb_t>()
-        ];
         blst_p1s_mult_pippenger(
             &mut msm_result,
-            bases.as_ptr(),
+            points_ptrs.as_ptr(),
             npoints,
             scalar_ptrs.as_ptr(),
             256,
