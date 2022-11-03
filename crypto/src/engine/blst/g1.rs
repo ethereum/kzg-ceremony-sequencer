@@ -1,12 +1,10 @@
-use super::scalar::scalar_from_fr;
 use crate::{ParseError, G1};
 use blst::{
-    blst_fr, blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1,
-    blst_p1_from_affine, blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress,
-    blst_p1s_mult_pippenger, blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine,
-    blst_scalar, limb_t,
+    blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1, blst_p1_from_affine,
+    blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress, blst_p1s_mult_pippenger,
+    blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine, blst_scalar, limb_t,
 };
-use std::mem::size_of;
+use std::{mem::size_of, ptr};
 
 impl TryFrom<G1> for blst_p1_affine {
     type Error = ParseError;
@@ -80,7 +78,7 @@ pub fn p1s_to_affine(ps: &[blst_p1]) -> Vec<blst_p1_affine> {
     out
 }
 
-pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst_p1_affine {
+pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_scalar]) -> blst_p1_affine {
     assert_eq!(bases.len(), scalars.len());
     if bases.is_empty() {
         // NOTE: Without this special case the `blst_p1s_mult_pippenger` will
@@ -91,38 +89,29 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
         // NOTE: Without this special case the `blst_p1s_mult_pippenger` will
         // SIGSEGV.
         let base = p1_from_affine(&bases[0]);
-        let scalar = scalar_from_fr(&scalars[0]);
-        let result = p1_mult(&base, &scalar);
+        let result = p1_mult(&base, &scalars[0]);
         return p1_to_affine(&result);
     }
 
     let npoints = bases.len();
 
     // Get vec of pointers to bases
-    let bases = bases
-        .iter()
-        .map(|x| x as *const blst_p1_affine)
-        .collect::<Vec<_>>();
-
-    // Convert scalars to blst_scalar
-    let scalars = scalars.iter().map(scalar_from_fr).collect::<Vec<_>>();
+    let points_ptrs = [bases.as_ptr(), ptr::null()];
 
     // Get vec of pointers to scalars
-    let scalar_ptrs = scalars.iter().map(|x| x.b.as_ptr()).collect::<Vec<_>>();
+    assert_eq!(size_of::<blst_scalar>(), 32);
+    let scalar_ptrs = [scalars.as_ptr(), ptr::null()];
 
+    let scratch_size = unsafe { blst_p1s_mult_pippenger_scratch_sizeof(npoints) };
+    let mut scratch = vec![limb_t::default(); scratch_size / size_of::<limb_t>()];
     let mut msm_result = blst_p1::default();
     let mut ret = blst_p1_affine::default();
-
     unsafe {
-        let mut scratch = vec![
-            limb_t::default();
-            blst_p1s_mult_pippenger_scratch_sizeof(npoints) / size_of::<limb_t>()
-        ];
         blst_p1s_mult_pippenger(
             &mut msm_result,
-            bases.as_ptr(),
+            points_ptrs.as_ptr(),
             npoints,
-            scalar_ptrs.as_ptr(),
+            scalar_ptrs.as_ptr().cast(),
             256,
             scratch.as_mut_ptr(),
         );
@@ -135,7 +124,7 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
 #[cfg(test)]
 mod tests {
     use super::{
-        super::scalar::{fr_add, fr_from_scalar, fr_mul, fr_zero},
+        super::scalar::{fr_add, fr_from_scalar, fr_mul, fr_zero, scalar_from_fr},
         *,
     };
     use blst::blst_scalar_from_lendian;
@@ -158,11 +147,9 @@ mod tests {
         const SIZES: [usize; 7] = [0, 1, 2, 3, 4, 5, 100];
         for size in SIZES {
             proptest!(|(base in arb_vec(arb_scalar(), size), scalars in arb_vec(arb_scalar(), size))| {
-                let scalars = scalars.iter().map(fr_from_scalar).collect::<Vec<_>>();
-
                 // Compute expected value
                 let sum = base.iter().zip(scalars.iter()).fold(fr_zero(), |a, (l, r)| {
-                    let product = fr_mul(&fr_from_scalar(l), r);
+                    let product = fr_mul(&fr_from_scalar(l), &fr_from_scalar(r));
                     fr_add(&a, &product)
                 });
                 let sum = scalar_from_fr(&sum);

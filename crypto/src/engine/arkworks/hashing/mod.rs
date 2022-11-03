@@ -37,7 +37,7 @@ mod tests {
                     msg.len(),
                     suite.as_ptr(),
                     suite.len(),
-                    [0 as u8; 0].as_ptr(),
+                    [0_u8; 0].as_ptr(),
                     0,
                 );
                 G1::try_from(out).unwrap()
