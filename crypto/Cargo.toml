@@ -27,8 +27,10 @@ required-features = ["bench"]
 ark-bls12-381 = "0.3.0"
 ark-ec = { version = "0.3.0", features = ["parallel"] }
 ark-ff = { version = "0.3.0", features = ["parallel", "asm"] }
+ark-poly = { version = "0.3.0", features = ["parallel"] }
 blst = { version = "0.3.10", optional = true }
 criterion = { version = "0.4.0", optional = true } # Dev dep for bench
+digest = "0.10"
 ethers-core = { version = "1.0.0", features = ["eip712"] }
 hex = "0.4.3"
 hex-literal = "0.3.4"
@@ -39,6 +41,7 @@ ruint = { version = "1.5.0", features = ["ark-ff"], optional = true }
 secrecy = "0.8.0"
 serde = { version = "1.0.147", features = ["derive"] }
 serde_json = "1.0.87"
+sha2 = "0.10"
 strum = { version = "0.24.1", features = ["derive"] }
 thiserror = "1.0.34"
 tracing = "0.1.36"

@@ -193,24 +193,36 @@ impl Eip712 for ContributionTypedData {
 #[cfg(all(test, feature = "arkworks", feature = "blst"))]
 mod tests {
     use crate::{
-        engine::tests::arb_f, signature::BlsSignature, Arkworks, Engine, Entropy, BLST, F, G2,
+        engine::tests::arb_f, signature::BlsSignature, Arkworks, Both, Engine, Entropy, BLST, F, G2,
     };
     use proptest::proptest;
     use rand::{thread_rng, Rng};
     use secrecy::Secret;
+
+    type BothEngines = Both<BLST, Arkworks>;
+
+    #[test]
+    fn test_sign_both_engines() {
+        proptest!(|(f in arb_f(), msg in ".*")| {
+            let bytes = msg.as_bytes();
+            let tau = Secret::new(f);
+            let signed_blst = BlsSignature::sign::<BLST>(bytes, &tau);
+            let signed_ark = BlsSignature::sign::<Arkworks>(bytes, &tau);
+            assert_eq!(signed_blst, signed_ark);
+        });
+    }
 
     #[test]
     fn test_bls_prune_after_encode() {
         proptest!(|(f in arb_f(), msg in ".*")| {
             let bytes = msg.as_bytes();
             let tau = Secret::new(f);
-            let signed = BlsSignature::sign::<BLST>(bytes, &tau);
+            let signed = BlsSignature::sign::<BothEngines>(bytes, &tau);
             assert!(signed.0.is_some());
-            // use the Arkworks engine to cross-check with BLST
             let mut tmp = vec![G2::one(), G2::one()];
-            Arkworks::add_tau_g2(&tau, &mut tmp).unwrap();
+            BothEngines::add_tau_g2(&tau, &mut tmp).unwrap();
             let pubkey = tmp[1];
-            let recovered = signed.prune::<BLST>(bytes, pubkey);
+            let recovered = signed.prune::<BothEngines>(bytes, pubkey);
             assert_eq!(signed, recovered);
         });
     }
@@ -220,26 +232,26 @@ mod tests {
         let message = b"git|1234|foobar";
         let wrong_msg = b"git|4567|bazbaz";
         let tau = Secret::new(F::one());
-        let signed = BlsSignature::sign::<BLST>(message, &tau);
+        let signed = BlsSignature::sign::<BothEngines>(message, &tau);
         assert!(signed.0.is_some());
         let mut tmp = vec![G2::one(), G2::one()];
-        Arkworks::add_tau_g2(&tau, &mut tmp).unwrap();
+        BothEngines::add_tau_g2(&tau, &mut tmp).unwrap();
         let pubkey = tmp[1];
-        let recovered = signed.prune::<BLST>(wrong_msg, pubkey);
+        let recovered = signed.prune::<BothEngines>(wrong_msg, pubkey);
         assert_eq!(recovered, BlsSignature(None));
     }
 
     #[test]
     fn test_bls_prune_wrong_sig() {
         let message = b"git|1234|foobar";
-        let tau = Arkworks::generate_tau(&Entropy::new(thread_rng().gen()));
-        let wrong_tau = Arkworks::generate_tau(&Entropy::new(thread_rng().gen()));
-        let signed = BlsSignature::sign::<BLST>(message, &tau);
+        let tau = BothEngines::generate_tau(&Entropy::new(thread_rng().gen()));
+        let wrong_tau = BothEngines::generate_tau(&Entropy::new(thread_rng().gen()));
+        let signed = BlsSignature::sign::<BothEngines>(message, &tau);
         assert!(signed.0.is_some());
         let mut tmp = vec![G2::one(), G2::one()];
-        Arkworks::add_tau_g2(&wrong_tau, &mut tmp).unwrap();
+        BothEngines::add_tau_g2(&wrong_tau, &mut tmp).unwrap();
         let wrong_pubkey = tmp[1];
-        let recovered = signed.prune::<BLST>(message, wrong_pubkey);
+        let recovered = signed.prune::<BothEngines>(message, wrong_pubkey);
         assert_eq!(recovered, BlsSignature(None));
     }
 }

@@ -1,12 +1,12 @@
-use crate::{ParseError, G1, G2};
-use ark_bls12_381::{Fq, G1Affine, G2Affine};
+use crate::{engine::arkworks::ext_field::ToBasePrimeFieldIterator, ParseError, G1, G2};
+use ark_bls12_381::{G1Affine, G2Affine};
 use ark_ec::{
     models::{ModelParameters, SWModelParameters},
     short_weierstrass_jacobian::GroupAffine,
 };
 use ark_ff::{
     fields::{Field, FpParameters, PrimeField},
-    BigInteger, QuadExtField, QuadExtParameters, Zero,
+    BigInteger, Zero,
 };
 
 impl TryFrom<G1> for G1Affine {
@@ -44,38 +44,6 @@ impl From<G1Affine> for G1 {
 impl From<G2Affine> for G2 {
     fn from(g2: G2Affine) -> Self {
         Self(write_g(&g2))
-    }
-}
-
-pub trait ToBasePrimeFieldIterator
-where
-    Self: Field,
-{
-    fn base_field_iterator<'a>(
-        &'a self,
-    ) -> Box<dyn DoubleEndedIterator<Item = &Self::BasePrimeField> + 'a>;
-}
-
-impl ToBasePrimeFieldIterator for Fq {
-    fn base_field_iterator<'a>(
-        &'a self,
-    ) -> Box<dyn DoubleEndedIterator<Item = &Self::BasePrimeField> + 'a> {
-        Box::new(std::iter::once(self))
-    }
-}
-
-impl<P: QuadExtParameters> ToBasePrimeFieldIterator for QuadExtField<P>
-where
-    P::BaseField: ToBasePrimeFieldIterator,
-{
-    fn base_field_iterator<'a>(
-        &'a self,
-    ) -> Box<dyn DoubleEndedIterator<Item = &Self::BasePrimeField> + 'a> {
-        Box::new(
-            self.c0
-                .base_field_iterator()
-                .chain(self.c1.base_field_iterator()),
-        )
     }
 }
 

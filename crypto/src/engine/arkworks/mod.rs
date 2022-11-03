@@ -3,12 +3,22 @@
 #![cfg(feature = "arkworks")]
 
 mod endomorphism;
+mod ext_field;
+mod hashing;
 mod zcash_format;
 
 use self::endomorphism::{g1_mul_glv, g1_subgroup_check, g2_subgroup_check};
 use super::Engine;
-use crate::{CeremonyError, Entropy, ParseError, Tau, F, G1, G2};
-use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+use crate::{
+    engine::arkworks::hashing::{
+        hash_to_curve::{HashToCurve, MapToCurveBasedHasher, WBMap},
+        hash_to_field::DefaultFieldHasher,
+    },
+    CeremonyError, Entropy, ParseError, Tau, F, G1, G2,
+};
+use ark_bls12_381::{
+    g1::Parameters as G1Parameters, Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective,
+};
 use ark_ec::{
     msm::VariableBaseMSM, wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve,
 };
@@ -17,6 +27,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 use secrecy::{ExposeSecret, Secret, SecretVec};
+use sha2::Sha256;
 use std::iter;
 use tracing::instrument;
 
@@ -170,23 +181,59 @@ impl Engine for Arkworks {
         Ok(())
     }
 
-    fn sign_message(_tau: &Tau, _message: &[u8]) -> Option<G1> {
-        // TODO implement this. This behavior is still spec-conforming, since signatures
-        // are optional.
-        None
+    fn sign_message(tau: &Tau, message: &[u8]) -> Option<G1> {
+        let mapper = MapToCurveBasedHasher::<
+            G1Parameters,
+            DefaultFieldHasher<Sha256, 128>,
+            WBMap<G1Parameters>,
+        >::new(Self::CYPHER_SUITE.as_bytes())
+        .ok()?;
+        let point = mapper.hash(message).ok()?;
+        let sig = point.mul(Fr::from(tau.expose_secret())).into_affine();
+        Some(G1::from(sig))
     }
 
-    fn verify_signature(_sig: G1, _message: &[u8], _pk: G2) -> bool {
-        // TODO implement this. This behavior is still spec-conforming, since singatures
-        // are optional.
-        false
+    fn verify_signature(sig: G1, message: &[u8], pk: G2) -> bool {
+        let sig = match G1Affine::try_from(sig) {
+            Ok(sig) => sig,
+            _ => return false,
+        };
+        if !g1_subgroup_check(&sig) {
+            return false;
+        }
+        let pk = match G2Affine::try_from(pk) {
+            Ok(pk) => pk,
+            _ => return false,
+        };
+        if !g2_subgroup_check(&pk) {
+            return false;
+        }
+        let mapper = match MapToCurveBasedHasher::<
+            G1Parameters,
+            DefaultFieldHasher<Sha256, 128>,
+            WBMap<G1Parameters>,
+        >::new(Self::CYPHER_SUITE.as_bytes())
+        {
+            Ok(mapper) => mapper,
+            _ => return false,
+        };
+
+        let msg = match mapper.hash(message) {
+            Ok(msg) => msg,
+            _ => return false,
+        };
+
+        let c1 = Bls12_381::pairing(msg, pk);
+        let c2 = Bls12_381::pairing(sig, G2Affine::prime_subgroup_generator());
+
+        c1 == c2
     }
 }
 
 pub fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Fr> {
     // Convert tau
     // TODO: Throw error instead of reducing
-    let tau = Secret::new(Fr::from_le_bytes_mod_order(&tau.expose_secret().0[..]));
+    let tau = Secret::new(Fr::from(tau.expose_secret()));
 
     // Compute powers
     Secret::new(
@@ -207,6 +254,12 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
     .take(n)
     .collect::<Vec<_>>();
     (factors, sum)
+}
+
+impl From<&F> for Fr {
+    fn from(f: &F) -> Self {
+        Fr::from_le_bytes_mod_order(&f.0[..])
+    }
 }
 
 #[cfg(test)]
