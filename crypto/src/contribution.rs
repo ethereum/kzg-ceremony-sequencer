@@ -44,9 +44,7 @@ impl Contribution {
 
     /// Performs validations in the contribution.
     #[instrument(level = "info", skip_all, , fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
-    pub fn validate<E: Engine>(
-        &mut self,
-    ) -> Result<(), CeremonyError> {
+    pub fn validate<E: Engine>(&mut self) -> Result<(), CeremonyError> {
         // Validate points
         E::validate_g1(&self.powers.g1)?;
         E::validate_g2(&self.powers.g2)?;
