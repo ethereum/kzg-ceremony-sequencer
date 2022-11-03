@@ -5,7 +5,7 @@ mod scalar;
 use self::{
     g1::{p1_affine_in_g1, p1_from_affine, p1_mult, p1s_mult_pippenger, p1s_to_affine},
     g2::{p2_affine_in_g2, p2_from_affine, p2_mult, p2_to_affine, p2s_to_affine},
-    scalar::{fr_mul, fr_one, random_fr, scalar_from_fr},
+    scalar::{fr_from_scalar, fr_mul, fr_one, random_fr, scalar_from_fr},
 };
 use crate::{
     engine::blst::{g1::p1_to_affine, g2::p2s_mult_pippenger},
@@ -14,7 +14,8 @@ use crate::{
 use blst::{
     blst_core_verify_pk_in_g2, blst_final_exp, blst_fp12, blst_fr, blst_fr_add, blst_hash_to_g1,
     blst_miller_loop, blst_p1, blst_p1_affine, blst_p1_generator, blst_p2_affine,
-    blst_p2_affine_generator, blst_p2_generator, blst_scalar, blst_sign_pk_in_g2, BLST_ERROR,
+    blst_p2_affine_generator, blst_p2_generator, blst_scalar, blst_scalar_from_le_bytes,
+    blst_sign_pk_in_g2, BLST_ERROR,
 };
 use rand::Rng;
 use rayon::prelude::{
@@ -143,10 +144,10 @@ impl Engine for BLST {
         let g2 = unsafe { *blst_p2_generator() };
 
         let lhs_g1 = p1s_mult_pippenger(&powers[1..], &factors[..]);
-        let lhs_g2 = p2_to_affine(&p2_mult(&g2, &scalar_from_fr(&sum)));
+        let lhs_g2 = p2_to_affine(&p2_mult(&g2, &sum));
 
         let rhs_g1 = p1s_mult_pippenger(&powers[..factors.len()], &factors[..]);
-        let rhs_g2 = p2_to_affine(&p2_mult(&tau, &scalar_from_fr(&sum)));
+        let rhs_g2 = p2_to_affine(&p2_mult(&tau, &sum));
 
         // Check pairing
         if pairing(&lhs_g1, &lhs_g2) != pairing(&rhs_g1, &rhs_g2) {
@@ -176,9 +177,9 @@ impl Engine for BLST {
         let g2_generator = unsafe { *blst_p2_generator() };
 
         let lhs_g1 = p1s_mult_pippenger(&g1, &factors[..]);
-        let lhs_g2 = p2_to_affine(&p2_mult(&g2_generator, &scalar_from_fr(&sum)));
+        let lhs_g2 = p2_to_affine(&p2_mult(&g2_generator, &sum));
 
-        let rhs_g1 = p1_to_affine(&p1_mult(&g1_generator, &scalar_from_fr(&sum)));
+        let rhs_g1 = p1_to_affine(&p1_mult(&g1_generator, &sum));
         let rhs_g2 = p2s_mult_pippenger(&g2, &factors[..]);
 
         // Check pairing
@@ -261,16 +262,18 @@ fn random_factors(n: usize) -> (Vec<blst_scalar>, blst_scalar) {
     let factors = iter::from_fn(|| {
         let mut scalar = blst_scalar::default();
         rng.fill(&mut entropy);
-        blst_scalar_from_le_bytes(&mut scalar, &entropy[..]);
+        unsafe {
+            blst_scalar_from_le_bytes(&mut scalar, entropy.as_ptr(), entropy.len());
+        }
 
-        let r = random_fr(entropy);
+        let r = fr_from_scalar(&scalar);
         unsafe { blst_fr_add(&mut sum, &sum, &r) };
-        Some(r)
+        Some(scalar_from_fr(&r))
     })
     .take(n)
     .collect::<Vec<_>>();
 
-    (factors, scalar_from_fr(sum))
+    (factors, scalar_from_fr(&sum))
 }
 
 #[cfg(test)]

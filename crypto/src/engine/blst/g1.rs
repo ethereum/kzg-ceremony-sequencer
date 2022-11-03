@@ -80,7 +80,7 @@ pub fn p1s_to_affine(ps: &[blst_p1]) -> Vec<blst_p1_affine> {
     out
 }
 
-pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst_p1_affine {
+pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_scalar]) -> blst_p1_affine {
     assert_eq!(bases.len(), scalars.len());
     if bases.is_empty() {
         // NOTE: Without this special case the `blst_p1s_mult_pippenger` will
@@ -91,8 +91,7 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
         // NOTE: Without this special case the `blst_p1s_mult_pippenger` will
         // SIGSEGV.
         let base = p1_from_affine(&bases[0]);
-        let scalar = scalar_from_fr(&scalars[0]);
-        let result = p1_mult(&base, &scalar);
+        let result = p1_mult(&base, &scalars[0]);
         return p1_to_affine(&result);
     }
 
@@ -101,18 +100,9 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
     // Get vec of pointers to bases
     let points_ptrs = [bases.as_ptr(), ptr::null()];
 
-    // Concatenate bytes of scalars
-    debug_assert_eq!(size_of::<blst_scalar>(), 32);
-    let mut scalar_buffer = vec![0_u8; npoints * size_of::<blst_scalar>()];
-    scalar_buffer
-        .chunks_exact_mut(size_of::<blst_scalar>())
-        .zip(scalars.iter())
-        .for_each(|(buffer, s)| {
-            #[cfg(target_endian = "little")]
-            let scalar_ptr = buffer.as_mut_ptr().cast();
-            unsafe { blst_scalar_from_fr(scalar_ptr, s) };
-        });
-    let scalar_ptrs = [scalar_buffer.as_ptr(), ptr::null()];
+    // Get vec of pointers to scalars
+    assert_eq!(size_of::<blst_scalar>(), 32);
+    let scalar_ptrs = [scalars.as_ptr(), ptr::null()];
 
     let scratch_size = unsafe { blst_p1s_mult_pippenger_scratch_sizeof(npoints) };
     let mut scratch = vec![limb_t::default(); scratch_size / size_of::<limb_t>()];
@@ -123,7 +113,7 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_fr]) -> blst
             &mut msm_result,
             points_ptrs.as_ptr(),
             npoints,
-            scalar_ptrs.as_ptr(),
+            scalar_ptrs.as_ptr().cast(),
             256,
             scratch.as_mut_ptr(),
         );
@@ -159,11 +149,9 @@ mod tests {
         const SIZES: [usize; 7] = [0, 1, 2, 3, 4, 5, 100];
         for size in SIZES {
             proptest!(|(base in arb_vec(arb_scalar(), size), scalars in arb_vec(arb_scalar(), size))| {
-                let scalars = scalars.iter().map(fr_from_scalar).collect::<Vec<_>>();
-
                 // Compute expected value
                 let sum = base.iter().zip(scalars.iter()).fold(fr_zero(), |a, (l, r)| {
-                    let product = fr_mul(&fr_from_scalar(l), r);
+                    let product = fr_mul(&fr_from_scalar(l), &fr_from_scalar(&r));
                     fr_add(&a, &product)
                 });
                 let sum = scalar_from_fr(&sum);
