@@ -41,8 +41,8 @@ ENV LOG_FORMAT="tiny"
 # Volume for data
 VOLUME /data
 ENV DATABASE_URL="sqlite:///data/storage.sqlite"
-ENV TRANSCRIPT_FILE="/data/transcript.json"
-ENV TRANSCRIPT_IN_PROGRESS_FILE="/data/transcript.json.wip"
+ENV TRANSCRIPT_FILE="/data/signed_transcript.json"
+ENV TRANSCRIPT_IN_PROGRESS_FILE="/data/signed_transcript.json.wip"
 
 # Metrics server
 ENV PROMETHEUS="http://0.0.0.0:9998/metrics"
