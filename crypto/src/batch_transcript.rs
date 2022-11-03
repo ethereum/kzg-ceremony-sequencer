@@ -29,6 +29,12 @@ impl BatchTranscript {
         }
     }
 
+    /// Returns the number of participants that contributed to this transcript.
+    #[must_use]
+    pub fn num_participants(&self) -> usize {
+        self.participant_ids.len() - 1
+    }
+
     /// Creates the start of a new batch contribution.
     #[must_use]
     pub fn contribution(&self) -> BatchContribution {
