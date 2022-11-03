@@ -258,7 +258,7 @@ fn random_factors(n: usize) -> (Vec<<Fr as PrimeField>::BigInt>, Fr) {
 
 impl From<&F> for Fr {
     fn from(f: &F) -> Self {
-        Fr::from_le_bytes_mod_order(&f.0[..])
+        Self::from_le_bytes_mod_order(&f.0[..])
     }
 }
 

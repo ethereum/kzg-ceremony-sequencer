@@ -1,10 +1,8 @@
-use super::scalar::scalar_from_fr;
 use crate::{ParseError, G1};
 use blst::{
-    blst_fr, blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1,
-    blst_p1_from_affine, blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress,
-    blst_p1s_mult_pippenger, blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine,
-    blst_scalar, blst_scalar_from_fr, byte, limb_t,
+    blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1, blst_p1_from_affine,
+    blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress, blst_p1s_mult_pippenger,
+    blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine, blst_scalar, limb_t,
 };
 use std::{mem::size_of, ptr};
 
@@ -126,7 +124,7 @@ pub fn p1s_mult_pippenger(bases: &[blst_p1_affine], scalars: &[blst_scalar]) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        super::scalar::{fr_add, fr_from_scalar, fr_mul, fr_zero},
+        super::scalar::{fr_add, fr_from_scalar, fr_mul, fr_zero, scalar_from_fr},
         *,
     };
     use blst::blst_scalar_from_lendian;
@@ -151,7 +149,7 @@ mod tests {
             proptest!(|(base in arb_vec(arb_scalar(), size), scalars in arb_vec(arb_scalar(), size))| {
                 // Compute expected value
                 let sum = base.iter().zip(scalars.iter()).fold(fr_zero(), |a, (l, r)| {
-                    let product = fr_mul(&fr_from_scalar(l), &fr_from_scalar(&r));
+                    let product = fr_mul(&fr_from_scalar(l), &fr_from_scalar(r));
                     fr_add(&a, &product)
                 });
                 let sum = scalar_from_fr(&sum);

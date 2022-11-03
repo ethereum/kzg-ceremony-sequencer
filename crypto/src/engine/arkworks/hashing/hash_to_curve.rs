@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unreadable_literal,
+    clippy::similar_names,
+    clippy::use_self,
+    clippy::if_not_else,
+    clippy::unnecessary_lazy_evaluations,
+    clippy::no_effect_underscore_binding,
+    clippy::used_underscore_binding
+)]
 // This code is backported from arkworks-rs,
 // https://github.com/arkworks-rs/algebra/, which is licensed under the
 // MIT license.

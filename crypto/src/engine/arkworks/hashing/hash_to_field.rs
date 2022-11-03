@@ -1,3 +1,4 @@
+#![allow(clippy::use_self, clippy::cast_possible_truncation)]
 // This code is backported from arkworks-rs,
 // https://github.com/arkworks-rs/algebra/, which is licensed under the
 // MIT license.

@@ -69,6 +69,8 @@ fn derive_taus<E: Engine>(entropy: &Entropy, size: usize) -> Vec<Tau> {
         .collect()
 }
 
+#[allow(clippy::missing_panics_doc)] // Does not panic.
+#[must_use]
 pub fn get_pot_pubkeys<E: Engine>(entropy: &Entropy) -> Vec<G2> {
     let taus = derive_taus::<E>(entropy, 4);
     let result: Vec<G2> = taus
@@ -76,8 +78,7 @@ pub fn get_pot_pubkeys<E: Engine>(entropy: &Entropy) -> Vec<G2> {
         .map(|tau| {
             let mut temp = [G2::one(), G2::one()];
             E::add_tau_g2(&tau, &mut temp).unwrap();
-            let g2 = temp[1];
-            g2
+            temp[1]
         })
         .collect();
     result

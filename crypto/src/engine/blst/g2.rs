@@ -1,10 +1,8 @@
-use super::scalar::scalar_from_fr;
 use crate::{ParseError, G2};
 use blst::{
-    blst_fr, blst_p2, blst_p2_affine, blst_p2_affine_compress, blst_p2_affine_in_g2,
-    blst_p2_from_affine, blst_p2_mult, blst_p2_to_affine, blst_p2_uncompress,
-    blst_p2s_mult_pippenger, blst_p2s_mult_pippenger_scratch_sizeof, blst_p2s_to_affine,
-    blst_scalar, limb_t,
+    blst_p2, blst_p2_affine, blst_p2_affine_compress, blst_p2_affine_in_g2, blst_p2_from_affine,
+    blst_p2_mult, blst_p2_to_affine, blst_p2_uncompress, blst_p2s_mult_pippenger,
+    blst_p2s_mult_pippenger_scratch_sizeof, blst_p2s_to_affine, blst_scalar, limb_t,
 };
 use std::{mem::size_of, ptr};
 
@@ -120,7 +118,7 @@ pub fn p2s_mult_pippenger(bases: &[blst_p2_affine], scalars: &[blst_scalar]) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        super::scalar::{fr_add, fr_from_scalar, fr_mul, fr_zero},
+        super::scalar::{fr_add, fr_from_scalar, fr_mul, fr_zero, scalar_from_fr},
         *,
     };
     use blst::blst_scalar_from_lendian;
