@@ -43,18 +43,16 @@ impl BatchContribution {
     }
 
     #[instrument(level = "info", skip_all, fields(n=self.contributions.len()))]
-    pub fn validate<E: Engine>(
-        &mut self,
-    ) -> Result<(), CeremoniesError> {
-        let res = self
-            .contributions
-            .par_iter_mut()
-            .enumerate()
-            .try_for_each(|(i, contribution)| {
-                contribution
-                    .validate::<E>()
-                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
-            });
+    pub fn validate<E: Engine>(&mut self) -> Result<(), CeremoniesError> {
+        let res =
+            self.contributions
+                .par_iter_mut()
+                .enumerate()
+                .try_for_each(|(i, contribution)| {
+                    contribution
+                        .validate::<E>()
+                        .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
+                });
         res
     }
 }
