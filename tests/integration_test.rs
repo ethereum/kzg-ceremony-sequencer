@@ -149,7 +149,7 @@ async fn test_gh_contribution_happy_path() {
     let num_contributions = transcript
         .transcripts
         .iter()
-        .map(|t| t.num_contributions())
+        .map(|t| t.num_participants())
         .collect::<Vec<_>>();
     assert_eq!(
         num_contributions,
@@ -365,11 +365,11 @@ async fn test_large_lobby_with_slow_compute_users() {
     assert!(
         final_transcript.transcripts[..]
             .windows(2)
-            .all(|w| w[0].num_contributions() == w[1].num_contributions()),
+            .all(|w| w[0].num_participants() == w[1].num_participants()),
         "all ceremonies should have the same number of contributions"
     );
     assert!(!final_transcript.transcripts.is_empty());
-    let actual_count = final_transcript.transcripts[0].num_contributions();
+    let actual_count = final_transcript.transcripts[0].num_participants();
     assert_eq!(should_accept_count, actual_count);
 }
 

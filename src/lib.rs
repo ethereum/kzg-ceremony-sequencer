@@ -135,8 +135,10 @@ pub async fn start_server(
     )
     .await?;
 
-    // TODO: figure it out from the transcript
-    let ceremony_status = Arc::new(AtomicUsize::new(0));
+    let ceremony_status = {
+        let lock = transcript.read().await;
+        Arc::new(AtomicUsize::new(lock.num_participants()))
+    };
     let lobby_state = SharedLobbyState::new(options.lobby.clone());
     let auth_state = SharedAuthState::default();
 

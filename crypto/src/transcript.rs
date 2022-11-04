@@ -24,16 +24,6 @@ pub struct Witness {
 }
 
 impl Transcript {
-    #[must_use]
-    pub fn num_contributions(&self) -> usize {
-        self.witness.pubkeys.len() - 1
-    }
-
-    #[must_use]
-    pub fn has_entropy(&self) -> bool {
-        self.num_contributions() > 0
-    }
-
     /// Create a new transcript for a ceremony of a given size.
     ///
     /// # Panics
@@ -53,6 +43,18 @@ impl Transcript {
                 signatures: vec![BlsSignature::empty()],
             },
         }
+    }
+
+    /// Returns the number of participants that contributed to this transcript.
+    #[must_use]
+    pub fn num_participants(&self) -> usize {
+        self.witness.pubkeys.len() - 1
+    }
+
+    /// True if there is at least one contribution.
+    #[must_use]
+    pub fn has_entropy(&self) -> bool {
+        self.num_participants() > 0
     }
 
     /// Creates the start of a new contribution.
