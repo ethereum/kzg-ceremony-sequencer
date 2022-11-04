@@ -97,6 +97,7 @@ pub async fn read_or_create_transcript(
         info!(?path, "Opening transcript file");
         let transcript = read_json_file::<BatchTranscript>(path).await;
         ceremony_sizes.validate_batch_transcript(&transcript)?;
+        transcript.validate()?;
         Ok(Arc::new(RwLock::new(transcript)))
     } else {
         warn!(?path, "No transcript found, creating new transcript file");
