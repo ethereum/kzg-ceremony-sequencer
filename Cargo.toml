@@ -43,7 +43,7 @@ chrono = "0.4"
 clap = { version = "4.0", features = ["derive"] }
 cli-batteries = { version = "0.4.0", features = ["signals", "prometheus", "metered-allocator", "otlp"] }
 ethers-core = "1.0.0"
-ethers-signers = "1.0.0"
+ethers-signers = "1.0.2"
 eyre = "0.6.8"
 headers = "0.3"
 hex = "0.4.3"
