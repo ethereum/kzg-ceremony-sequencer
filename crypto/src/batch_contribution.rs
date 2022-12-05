@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BatchContribution {
     pub contributions:   Vec<Contribution>,
     pub ecdsa_signature: EcdsaSignature,
