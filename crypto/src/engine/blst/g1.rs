@@ -2,7 +2,7 @@ use crate::{ParseError, G1};
 use blst::{
     blst_p1, blst_p1_affine, blst_p1_affine_compress, blst_p1_affine_in_g1, blst_p1_from_affine,
     blst_p1_mult, blst_p1_to_affine, blst_p1_uncompress, blst_p1s_mult_pippenger,
-    blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine, blst_scalar, limb_t,
+    blst_p1s_mult_pippenger_scratch_sizeof, blst_p1s_to_affine, blst_scalar, limb_t, BLST_ERROR,
 };
 use std::{mem::size_of, ptr};
 
@@ -10,11 +10,12 @@ impl TryFrom<G1> for blst_p1_affine {
     type Error = ParseError;
 
     fn try_from(g1: G1) -> Result<Self, Self::Error> {
-        unsafe {
-            let mut p = Self::default();
-            blst_p1_uncompress(&mut p, g1.0.as_ptr());
-            Ok(p)
+        let mut p = Self::default();
+        let result = unsafe { blst_p1_uncompress(&mut p, g1.0.as_ptr()) };
+        if result != BLST_ERROR::BLST_SUCCESS {
+            return Err(ParseError::InvalidCompression);
         }
+        Ok(p)
     }
 }
 

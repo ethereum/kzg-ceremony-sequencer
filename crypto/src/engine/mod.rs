@@ -110,6 +110,20 @@ pub mod tests {
             assert_eq!(points1, points2);
         });
     }
+
+    #[test]
+    fn test_validate_g1() {
+        let g1 = G1([0u8; 48]);
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+    }
+
+    #[test]
+    fn test_validate_g2() {
+        let g2 = G2([0u8; 96]);
+        assert!(BLST::validate_g2(&[g2]).is_err());
+        assert!(Arkworks::validate_g2(&[g2]).is_err());
+    }
 }
 
 #[cfg(feature = "bench")]
