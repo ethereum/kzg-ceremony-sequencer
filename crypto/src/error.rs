@@ -105,6 +105,8 @@ pub enum ParseError {
     InvalidXCoordinate,
     #[error("curve point is not in prime order subgroup")]
     InvalidSubgroup,
+    #[error("Error while uncompressing point")]
+    InvalidCompression,
 }
 
 impl ErrorCode for ParseError {
