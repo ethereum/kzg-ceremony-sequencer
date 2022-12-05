@@ -12,7 +12,7 @@ use kzg_ceremony_crypto::{BatchContribution, ErrorCode};
 use serde::Serialize;
 use strum::IntoStaticStr;
 use thiserror::Error;
-use tokio::time::Instant;
+use tokio::{task::JoinError, time::Instant};
 
 #[derive(Debug, Error, IntoStaticStr)]
 pub enum TryContributeError {
@@ -26,6 +26,8 @@ pub enum TryContributeError {
     LobbyIsFull,
     #[error("error in storage layer: {0}")]
     StorageError(#[from] StorageError),
+    #[error("background task error: {0}")]
+    TaskError(#[from] JoinError),
 }
 
 impl ErrorCode for TryContributeError {
@@ -79,19 +81,23 @@ pub async fn try_contribute(
         .await
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
 
-    lobby_state.enter_lobby(&session_id).await?;
+    tokio::spawn(async move {
+        lobby_state.enter_lobby(&session_id).await?;
 
-    lobby_state
-        .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
-        .await
-        .map_err(TryContributeError::from)?;
+        lobby_state
+            .set_current_contributor(&session_id, options.lobby.compute_deadline, storage.clone())
+            .await
+            .map_err(TryContributeError::from)?;
 
-    storage.insert_contributor(&uid).await?;
-    let transcript = transcript.read().await;
+        storage.insert_contributor(&uid).await?;
+        let transcript = transcript.read().await;
 
-    Ok(TryContributeResponse {
-        contribution: transcript.contribution(),
+        Ok(TryContributeResponse {
+            contribution: transcript.contribution(),
+        })
     })
+    .await
+    .unwrap_or_else(|e| Err(TryContributeError::TaskError(e)))
 }
 
 #[cfg(test)]

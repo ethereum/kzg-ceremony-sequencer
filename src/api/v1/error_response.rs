@@ -102,6 +102,7 @@ impl IntoResponse for TryContributeError {
             }
             Self::AnotherContributionInProgress => (StatusCode::OK, error_to_json(&self)),
             Self::StorageError(err) => return err.into_response(),
+            Self::TaskError(_) => (StatusCode::INTERNAL_SERVER_ERROR, error_to_json(&self)),
         };
 
         (status, body).into_response()

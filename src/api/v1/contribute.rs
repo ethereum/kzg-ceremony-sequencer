@@ -133,12 +133,16 @@ pub async fn contribute_abort(
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
 ) -> Result<(), ContributeError> {
-    lobby_state
-        .abort_contribution(&session_id)
-        .await
-        .map_err(|_| ContributeError::NotUsersTurn)?;
-    storage.expire_contribution(&session_id.0).await?;
-    Ok(())
+    tokio::spawn(async move {
+        lobby_state
+            .abort_contribution(&session_id)
+            .await
+            .map_err(|_| ContributeError::NotUsersTurn)?;
+        storage.expire_contribution(&session_id.0).await?;
+        Ok(())
+    })
+    .await
+    .unwrap_or_else(|e| Err(ContributeError::TaskError(e)))
 }
 
 #[cfg(test)]
