@@ -133,6 +133,8 @@ pub async fn contribute_abort(
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
 ) -> Result<(), ContributeError> {
+    // Abort the contribution in the background,
+    // so that request cancelation doesn't interrupt it inbetween the lobby_state and storage calls.
     tokio::spawn(async move {
         lobby_state
             .abort_contribution(&session_id)
