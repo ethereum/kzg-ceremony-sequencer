@@ -38,8 +38,8 @@ pub enum ContributeError {
     NotUsersTurn,
     #[error("contribution invalid: {0}")]
     InvalidContribution(#[from] CeremoniesError),
-    #[error("our signature error: {0}")]
-    OurSignature(SignatureError),
+    #[error("receipt signing error: {0}")]
+    ReceiptSigning(SignatureError),
     #[error("storage error: {0}")]
     StorageError(#[from] StorageError),
     #[error("background task error: {0}")]
@@ -94,7 +94,7 @@ pub async fn contribute(
         let (signed_msg, signature) = receipt
             .sign(&keys)
             .await
-            .map_err(ContributeError::OurSignature)?;
+            .map_err(ContributeError::ReceiptSigning)?;
 
         write_json_file(
             options.transcript_file,
@@ -118,7 +118,7 @@ pub async fn contribute(
     if let Err(err) = &res {
         if matches!(
             err,
-            ContributeError::OurSignature(_)
+            ContributeError::ReceiptSigning(_)
                 | ContributeError::StorageError(_)
                 | ContributeError::TaskError(_)
         ) {
