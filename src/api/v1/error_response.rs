@@ -84,8 +84,9 @@ impl IntoResponse for ContributeError {
         let (status, body) = match self {
             Self::NotUsersTurn => (StatusCode::BAD_REQUEST, error_to_json(&self)),
             Self::InvalidContribution(e) => return CeremoniesErrorFormatter(e).into_response(),
-            Self::Signature(err) => return err.into_response(),
+            Self::OurSignature(err) => return err.into_response(),
             Self::StorageError(err) => return err.into_response(),
+            Self::TaskError(_) => (StatusCode::INTERNAL_SERVER_ERROR, error_to_json(&self)),
         };
 
         (status, body).into_response()
