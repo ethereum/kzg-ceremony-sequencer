@@ -22,7 +22,7 @@ use tracing::error;
 
 #[derive(Serialize)]
 pub struct ContributeReceipt {
-    receipt: String,
+    receipt:   String,
     signature: Signature,
 }
 
@@ -63,7 +63,8 @@ pub async fn contribute(
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
 ) -> Result<ContributeReceipt, ContributeError> {
-    // Handle the contribution in the background, so that request cancelation doesn't interrupt it.
+    // Handle the contribution in the background, so that request cancelation
+    // doesn't interrupt it.
     let res = tokio::spawn(async move {
         let id_token = lobby_state
             .begin_contributing(&session_id)
@@ -88,7 +89,7 @@ pub async fn contribute(
 
         let receipt = Receipt {
             identity: id_token.identity,
-            witness: contribution.receipt(),
+            witness:  contribution.receipt(),
         };
 
         let (signed_msg, signature) = receipt
@@ -134,7 +135,8 @@ pub async fn contribute_abort(
     Extension(storage): Extension<PersistentStorage>,
 ) -> Result<(), ContributeError> {
     // Abort the contribution in the background,
-    // so that request cancelation doesn't interrupt it inbetween the lobby_state and storage calls.
+    // so that request cancelation doesn't interrupt it inbetween the lobby_state
+    // and storage calls.
     tokio::spawn(async move {
         lobby_state
             .abort_contribution(&session_id)
@@ -246,13 +248,10 @@ mod tests {
         let transcript_1 = {
             let mut transcript = transcript.clone();
             transcript
-                .verify_add::<Engine>(
-                    contribution_1.clone(),
-                    Identity::Github {
-                        id: 1234,
-                        username: "test_user".to_string(),
-                    },
-                )
+                .verify_add::<Engine>(contribution_1.clone(), Identity::Github {
+                    id:       1234,
+                    username: "test_user".to_string(),
+                })
                 .unwrap();
             transcript
         };
@@ -260,13 +259,10 @@ mod tests {
         let transcript_2 = {
             let mut transcript = transcript_1.clone();
             transcript
-                .verify_add::<Engine>(
-                    contribution_2.clone(),
-                    Identity::Github {
-                        id: 1234,
-                        username: "test_user".to_string(),
-                    },
-                )
+                .verify_add::<Engine>(contribution_2.clone(), Identity::Github {
+                    id:       1234,
+                    username: "test_user".to_string(),
+                })
                 .unwrap();
             transcript
         };

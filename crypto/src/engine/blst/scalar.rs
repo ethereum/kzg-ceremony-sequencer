@@ -1,8 +1,7 @@
 use crate::F;
 use blst::{
     blst_fr, blst_fr_add, blst_fr_from_scalar, blst_fr_mul, blst_keygen, blst_lendian_from_scalar,
-    blst_scalar, blst_scalar_from_fr, blst_scalar_from_lendian,
-    blst_scalar_from_uint64,
+    blst_scalar, blst_scalar_from_fr, blst_scalar_from_lendian, blst_scalar_from_uint64,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;

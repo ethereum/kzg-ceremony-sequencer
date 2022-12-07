@@ -1,8 +1,8 @@
 use super::Engine;
 use crate::{CeremonyError, Entropy, Tau, G1, G2};
 use rayon::join;
-use std::marker::PhantomData;
 use secrecy::ExposeSecret;
+use std::marker::PhantomData;
 
 /// Implementation of [`Engine`] that combines two existing engines for
 /// redundancy.
