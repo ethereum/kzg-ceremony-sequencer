@@ -118,7 +118,13 @@ pub mod tests {
         assert!(BLST::validate_g1(&[g1]).is_err());
         assert!(Arkworks::validate_g1(&[g1]).is_err());
 
+        //deserialization_fails_not_in_G1
         let g1 = G1(hex!("8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        //ddeserialization_fails_not_in_curve
+        let g1 = G1(hex!("8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde0"));
         assert!(BLST::validate_g1(&[g1]).is_err());
         assert!(Arkworks::validate_g1(&[g1]).is_err());
     }
