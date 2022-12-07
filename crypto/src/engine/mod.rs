@@ -69,7 +69,8 @@ pub trait Engine {
 #[cfg(all(test, feature = "arkworks", feature = "blst"))]
 pub mod tests {
     use super::*;
-    use proptest::{proptest, strategy::Strategy};
+    use proptest::{arbitrary::any, proptest, strategy::Strategy};
+    use secrecy::ExposeSecret;
 
     pub fn arb_f() -> impl Strategy<Value = F> {
         arkworks::test::arb_fr().prop_map(F::from)
@@ -81,6 +82,20 @@ pub mod tests {
 
     pub fn arb_g2() -> impl Strategy<Value = G2> {
         arkworks::test::arb_g2().prop_map(G2::from)
+    }
+
+    pub fn arb_entropy() -> impl Strategy<Value = [u8; 32]> {
+        proptest::array::uniform32(any::<u8>())
+    }
+
+    #[test]
+    fn test_generate_tau() {
+        proptest!(|(entropy in arb_entropy())| {
+            let entropy = Secret::new(entropy);
+            let tau1 = Arkworks::generate_tau(&entropy);
+            let tau2 = BLST::generate_tau(&entropy);
+            assert_eq!(tau1.expose_secret(), tau2.expose_secret());
+        });
     }
 
     #[test]

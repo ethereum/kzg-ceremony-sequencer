@@ -2163,6 +2163,7 @@ dependencies = [
  "ethers-core",
  "hex",
  "hex-literal",
+ "hkdf",
  "proptest",
  "rand",
  "rand_chacha",

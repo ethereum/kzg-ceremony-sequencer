@@ -2,6 +2,7 @@ use super::Engine;
 use crate::{CeremonyError, Entropy, Tau, G1, G2};
 use rayon::join;
 use std::marker::PhantomData;
+use secrecy::ExposeSecret;
 
 /// Implementation of [`Engine`] that combines two existing engines for
 /// redundancy.
@@ -50,10 +51,8 @@ impl<A: Engine, B: Engine> Engine for Both<A, B> {
     }
 
     fn generate_tau(entropy: &Entropy) -> Tau {
-        let (a, _b) = join(|| A::generate_tau(entropy), || B::generate_tau(entropy));
-
-        // TODO: Standardize the derivation so we can check this
-        // assert_eq!(a.expose_secret(), b.expose_secret());
+        let (a, b) = join(|| A::generate_tau(entropy), || B::generate_tau(entropy));
+        assert_eq!(a.expose_secret(), b.expose_secret());
         a
     }
 

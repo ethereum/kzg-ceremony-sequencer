@@ -1,7 +1,7 @@
 use crate::F;
 use blst::{
-    blst_fr, blst_fr_add, blst_fr_from_scalar, blst_fr_mul, blst_lendian_from_scalar, blst_scalar,
-    blst_scalar_from_be_bytes, blst_scalar_from_fr, blst_scalar_from_lendian,
+    blst_fr, blst_fr_add, blst_fr_from_scalar, blst_fr_mul, blst_keygen, blst_lendian_from_scalar,
+    blst_scalar, blst_scalar_from_fr, blst_scalar_from_lendian,
     blst_scalar_from_uint64,
 };
 use rand::{Rng, SeedableRng};
@@ -19,7 +19,13 @@ pub fn random_fr(entropy: [u8; 32]) -> blst_fr {
     let mut ret = blst_fr::default();
 
     unsafe {
-        blst_scalar_from_be_bytes(&mut scalar, buffer.as_ptr(), 32);
+        blst_keygen(
+            &mut scalar,
+            buffer.as_ptr(),
+            buffer.len(),
+            [0; 0].as_ptr(),
+            0,
+        );
         blst_fr_from_scalar(&mut ret, &scalar);
     }
 
