@@ -14,6 +14,7 @@ mod blst;
 mod both;
 
 use crate::{CeremonyError, F, G1, G2};
+use hex_literal::hex;
 pub use secrecy::Secret;
 
 #[cfg(feature = "arkworks")]
@@ -114,6 +115,10 @@ pub mod tests {
     #[test]
     fn test_validate_g1() {
         let g1 = G1([0u8; 48]);
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        let g1 = G1(hex!("8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
         assert!(BLST::validate_g1(&[g1]).is_err());
         assert!(Arkworks::validate_g1(&[g1]).is_err());
     }
