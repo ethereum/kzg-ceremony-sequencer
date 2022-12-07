@@ -17,10 +17,12 @@ use serde::Serialize;
 use std::sync::atomic::Ordering;
 use strum::IntoStaticStr;
 use thiserror::Error;
+use tokio::task::JoinError;
+use tracing::error;
 
 #[derive(Serialize)]
 pub struct ContributeReceipt {
-    receipt:   String,
+    receipt: String,
     signature: Signature,
 }
 
@@ -36,10 +38,12 @@ pub enum ContributeError {
     NotUsersTurn,
     #[error("contribution invalid: {0}")]
     InvalidContribution(#[from] CeremoniesError),
-    #[error("signature error: {0}")]
-    Signature(SignatureError),
+    #[error("receipt signing error: {0}")]
+    ReceiptSigning(SignatureError),
     #[error("storage error: {0}")]
     StorageError(#[from] StorageError),
+    #[error("background task error: {0}")]
+    TaskError(#[from] JoinError),
 }
 
 impl ErrorCode for ContributeError {
@@ -59,53 +63,69 @@ pub async fn contribute(
     Extension(num_contributions): Extension<SharedCeremonyStatus>,
     Extension(keys): Extension<SharedKeys>,
 ) -> Result<ContributeReceipt, ContributeError> {
-    let id_token = lobby_state
-        .begin_contributing(&session_id)
-        .await
-        .map_err(|_| ContributeError::NotUsersTurn)?
-        .token;
+    // Handle the contribution in the background, so that request cancelation doesn't interrupt it.
+    let res = tokio::spawn(async move {
+        let id_token = lobby_state
+            .begin_contributing(&session_id)
+            .await
+            .map_err(|_| ContributeError::NotUsersTurn)?
+            .token;
 
-    let result = {
-        let mut transcript = shared_transcript.write().await;
-        transcript
-            .verify_add::<Engine>(contribution.clone(), id_token.identity.clone())
-            .map_err(ContributeError::InvalidContribution)
-    };
+        let result = {
+            let mut transcript = shared_transcript.write().await;
+            transcript
+                .verify_add::<Engine>(contribution.clone(), id_token.identity.clone())
+                .map_err(ContributeError::InvalidContribution)
+        };
 
-    if let Err(e) = result {
+        if let Err(e) = result {
+            lobby_state.clear_current_contributor().await;
+            storage
+                .expire_contribution(&id_token.unique_identifier())
+                .await?;
+            return Err(e);
+        }
+
+        let receipt = Receipt {
+            identity: id_token.identity,
+            witness: contribution.receipt(),
+        };
+
+        let (signed_msg, signature) = receipt
+            .sign(&keys)
+            .await
+            .map_err(ContributeError::ReceiptSigning)?;
+
+        write_json_file(
+            options.transcript_file,
+            options.transcript_in_progress_file,
+            shared_transcript,
+        )
+        .await;
+
         lobby_state.clear_current_contributor().await;
-        storage
-            .expire_contribution(&id_token.unique_identifier())
-            .await?;
-        return Err(e);
-    }
+        storage.finish_contribution(&session_id.0).await?;
 
-    let receipt = Receipt {
-        identity: id_token.identity,
-        witness:  contribution.receipt(),
-    };
+        num_contributions.fetch_add(1, Ordering::Relaxed);
 
-    let (signed_msg, signature) = receipt
-        .sign(&keys)
-        .await
-        .map_err(ContributeError::Signature)?;
-
-    write_json_file(
-        options.transcript_file,
-        options.transcript_in_progress_file,
-        shared_transcript,
-    )
-    .await;
-
-    lobby_state.clear_current_contributor().await;
-    storage.finish_contribution(&session_id.0).await?;
-
-    num_contributions.fetch_add(1, Ordering::Relaxed);
-
-    Ok(ContributeReceipt {
-        receipt: signed_msg,
-        signature,
+        Ok(ContributeReceipt {
+            receipt: signed_msg,
+            signature,
+        })
     })
+    .await
+    .unwrap_or_else(|e| Err(ContributeError::TaskError(e)));
+    if let Err(err) = &res {
+        if matches!(
+            err,
+            ContributeError::ReceiptSigning(_)
+                | ContributeError::StorageError(_)
+                | ContributeError::TaskError(_)
+        ) {
+            error!(?err, "unexpected error recording contribution");
+        }
+    }
+    res
 }
 
 pub async fn contribute_abort(
@@ -113,12 +133,18 @@ pub async fn contribute_abort(
     Extension(lobby_state): Extension<SharedLobbyState>,
     Extension(storage): Extension<PersistentStorage>,
 ) -> Result<(), ContributeError> {
-    lobby_state
-        .abort_contribution(&session_id)
-        .await
-        .map_err(|_| ContributeError::NotUsersTurn)?;
-    storage.expire_contribution(&session_id.0).await?;
-    Ok(())
+    // Abort the contribution in the background,
+    // so that request cancelation doesn't interrupt it inbetween the lobby_state and storage calls.
+    tokio::spawn(async move {
+        lobby_state
+            .abort_contribution(&session_id)
+            .await
+            .map_err(|_| ContributeError::NotUsersTurn)?;
+        storage.expire_contribution(&session_id.0).await?;
+        Ok(())
+    })
+    .await
+    .unwrap_or_else(|e| Err(ContributeError::TaskError(e)))
 }
 
 #[cfg(test)]
@@ -220,10 +246,13 @@ mod tests {
         let transcript_1 = {
             let mut transcript = transcript.clone();
             transcript
-                .verify_add::<Engine>(contribution_1.clone(), Identity::Github {
-                    id:       1234,
-                    username: "test_user".to_string(),
-                })
+                .verify_add::<Engine>(
+                    contribution_1.clone(),
+                    Identity::Github {
+                        id: 1234,
+                        username: "test_user".to_string(),
+                    },
+                )
                 .unwrap();
             transcript
         };
@@ -231,10 +260,13 @@ mod tests {
         let transcript_2 = {
             let mut transcript = transcript_1.clone();
             transcript
-                .verify_add::<Engine>(contribution_2.clone(), Identity::Github {
-                    id:       1234,
-                    username: "test_user".to_string(),
-                })
+                .verify_add::<Engine>(
+                    contribution_2.clone(),
+                    Identity::Github {
+                        id: 1234,
+                        username: "test_user".to_string(),
+                    },
+                )
                 .unwrap();
             transcript
         };
