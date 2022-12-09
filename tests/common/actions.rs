@@ -196,11 +196,10 @@ pub async fn contribute_successfully(
 ) {
     let response = request_contribute(harness, http_client, session_id, contribution).await;
 
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "Response must be successful"
-    );
+    if response.status() != StatusCode::OK {
+        println!("Response: {:?}", response.text().await);
+        panic!("Response must be successful");
+    }
 
     let response_json = response
         .json::<Value>()
