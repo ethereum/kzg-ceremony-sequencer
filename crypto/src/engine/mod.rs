@@ -131,7 +131,7 @@ pub mod tests {
 }
 
 #[cfg(feature = "bench")]
-#[no_coverage]
+#[cfg(not(tarpaulin_include))]
 #[doc(hidden)]
 pub mod bench {
     use super::*;
