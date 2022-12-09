@@ -101,3 +101,16 @@ impl<'de> Deserialize<'de> for G2 {
         hex_to_bytes(deserializer).map(Self)
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use crate::{G1, G2};
+
+    pub fn invalid_g1() -> G1 {
+        return G1([0; 48]);
+    }
+
+    pub fn invalid_g2() -> G2 {
+        return G2([0; 96]);
+    }
+}

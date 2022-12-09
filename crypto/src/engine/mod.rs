@@ -70,6 +70,11 @@ pub trait Engine {
 pub mod tests {
     use super::*;
     use proptest::{proptest, strategy::Strategy};
+    use proptest::arbitrary::any;
+
+    pub fn arb_entropy() -> impl Strategy<Value = [u8; 32]> {
+        proptest::array::uniform32(any::<u8>())
+    }
 
     pub fn arb_f() -> impl Strategy<Value = F> {
         arkworks::test::arb_fr().prop_map(F::from)
