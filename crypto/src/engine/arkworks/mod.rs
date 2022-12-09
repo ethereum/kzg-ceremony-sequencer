@@ -236,13 +236,12 @@ impl Engine for Arkworks {
 // Implementation of the KeyGen function as specified in
 // https://datatracker.ietf.org/doc/draft-irtf-cfrg-bls-signature/
 fn bls_keygen(ikm: [u8; 64]) -> Fr {
+    // the `L` value, precomputed from the formula given in the spec
+    const L: u8 = 48;
     let mut full_ikm = [0u8; 65];
     full_ikm[..64].copy_from_slice(&ikm);
     full_ikm[64] = 0;
-
-    // the `L` value, precomputed from the formula given in the spec
-    const L: u8 = 48;
-    let key_info = [0 as u8, L];
+    let key_info = [0, L];
 
     let mut hasher = Sha256::new();
     hasher.update(b"BLS-SIG-KEYGEN-SALT-");
@@ -250,7 +249,7 @@ fn bls_keygen(ikm: [u8; 64]) -> Fr {
 
     loop {
         let hk = Hkdf::<Sha256>::new(Some(&salt), &full_ikm);
-        let mut out = [0 as u8; 48];
+        let mut out = [0; L as usize];
         hk.expand(&key_info, &mut out).unwrap();
         let fr = Fr::from_be_bytes_mod_order(&out);
         if fr != Fr::zero() {
