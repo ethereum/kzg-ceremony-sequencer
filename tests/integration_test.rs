@@ -2,7 +2,7 @@
 
 use crate::common::{
     actions, harness,
-    harness::{run_test_harness, Harness},
+    harness::{run_test_harness, Builder, Harness},
     mock_auth_service::{AnyTestUser, GhUser, TestUser},
 };
 use common::participants;
@@ -373,7 +373,13 @@ async fn test_large_lobby_with_slow_compute_users() {
 
 #[tokio::test]
 async fn test_various_contributors() {
-    let harness = Arc::new(run_test_harness().await);
+    let harness = Arc::new(
+        Builder::new()
+            .set_compute_deadline(Duration::from_millis(4000))
+            .set_lobby_checkin_frequency(Duration::from_millis(2000))
+            .set_lobby_checkin_tolerance(Duration::from_millis(2000))
+            .run(),
+    );
     let client = Arc::new(reqwest::Client::new());
     let n = 40;
     let handles = (0..n).into_iter().map(|i| {
