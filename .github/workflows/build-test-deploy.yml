@@ -116,17 +116,13 @@ jobs:
       - name: Install cargo-tarpaulin
         run: |
           cargo install cargo-tarpaulin
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: nightly
       - name: Generate RSA Test Keys
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.key
           openssl rsa -in private.key -pubout -out publickey.pem
       - name: Generate code coverage
         run: |
-          cargo +nightly tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml --avoid-cfg-tarpaulin
+          cargo tarpaulin --verbose --all-features --out Xml --avoid-cfg-tarpaulin
       - name: Submit to codecov.io
         uses: codecov/codecov-action@v3.1.1
         with:
