@@ -19,6 +19,7 @@ use kzg_ceremony_crypto::{
 use rand::thread_rng;
 use secrecy::Secret;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 use url::Url;
 
 mod common;
@@ -504,4 +505,67 @@ async fn test_wrong_bls_signature() {
     let transcript = harness.read_transcript_file().await;
 
     assert_includes_contribution(&transcript, &contribution, &user, false, false)
+}
+
+#[tokio::test]
+async fn test_graceful_restart() {
+    let harness = Arc::new(RwLock::new(run_test_harness().await));
+    let client = Arc::new(reqwest::Client::new());
+    let n = 10;
+    let handles = (0..n).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        tokio::spawn(async move {
+            let h = h.read().await;
+            let user = if i % 2 == 0 {
+                h.create_gh_user(format!("user {i}")).await
+            } else {
+                h.create_eth_user().await
+            };
+            // modulus here must be odd to test the full user / participant matrix.
+            match i % 5 {
+                0 => participants::wrong_ecdsa(&h, c.as_ref(), user).await,
+                1 => participants::slow_compute(&h, c.as_ref(), user).await,
+                2 => participants::wrong_bls(&h, c.as_ref(), user).await,
+                _ => participants::well_behaved(&h, c.as_ref(), user).await,
+            }
+        })
+    });
+
+    let post_conditions_pre_restart = futures::future::join_all(handles).await;
+
+    {
+        let mut h = harness.write().await;
+        h.stop().await;
+        h.start().await;
+    }
+
+    let handles = (0..n).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        tokio::spawn(async move {
+            let h = h.read().await;
+            let user = if i % 2 == 0 {
+                h.create_gh_user(format!("user restarted {i}")).await
+            } else {
+                h.create_eth_user().await
+            };
+            // modulus here must be odd to test the full user / participant matrix.
+            match i % 5 {
+                0 => participants::wrong_ecdsa(&h, c.as_ref(), user).await,
+                1 => participants::slow_compute(&h, c.as_ref(), user).await,
+                2 => participants::wrong_bls(&h, c.as_ref(), user).await,
+                _ => participants::well_behaved(&h, c.as_ref(), user).await,
+            }
+        })
+    });
+
+    let post_conditions_post_restart = futures::future::join_all(handles).await;
+
+    let final_transcript = harness.read().await.read_transcript_file().await;
+    post_conditions_pre_restart
+        .into_iter()
+        .chain(post_conditions_post_restart.into_iter())
+        .map(|r| r.expect("must terminate successfully"))
+        .for_each(|check| check(&final_transcript));
 }

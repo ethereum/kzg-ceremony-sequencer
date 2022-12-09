@@ -42,15 +42,18 @@ fn test_options() -> Options {
 }
 
 pub struct Harness {
-    pub options:     Options,
-    pub auth_state:  AuthState,
-    shutdown_sender: broadcast::Sender<()>,
+    pub options:          Options,
+    pub auth_state:       AuthState,
+    app_shutdown_sender:  broadcast::Sender<()>,
+    auth_shutdown_sender: broadcast::Sender<()>,
     /// Needed to keep the lock on the server port for the duration of a test.
     #[allow(dead_code)]
-    lock:            MutexGuard<'static, ()>,
+    lock:                 MutexGuard<'static, ()>,
     /// Needed to keep the temp directory alive throughout the test.
     #[allow(dead_code)]
-    temp_dir:        TempDir,
+    temp_dir:             TempDir,
+    app_handle:           Option<tokio::task::JoinHandle<()>>,
+    auth_handle:          Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Harness {
@@ -81,24 +84,38 @@ impl Harness {
 
 impl Drop for Harness {
     fn drop(&mut self) {
-        self.shutdown_sender.send(()).unwrap();
+        self.app_shutdown_sender.send(()).unwrap();
+        self.auth_shutdown_sender.send(()).unwrap();
     }
 }
 
 impl Harness {
-    pub async fn run(mut options: Options) -> Harness {
-        let lock = server_lock().await.lock().await;
-        let temp_dir = tempdir().unwrap();
-        let transcript = temp_dir.path().join("transcript.json");
-        let transcript_wip = temp_dir.path().join("transcript.json.next");
-        options.transcript_file = transcript;
-        options.transcript_in_progress_file = transcript_wip;
-        let server_options = options.clone();
-        let (shutdown_sender, mut app_shutdown_receiver) = broadcast::channel::<()>(1);
-        let mut auth_shutdown_receiver = shutdown_sender.subscribe();
+    pub async fn stop(&mut self) {
+        self.app_shutdown_sender.send(()).unwrap();
+        self.auth_shutdown_sender.send(()).unwrap();
+
+        if let Some(handle) = self.app_handle.take() {
+            handle.await.unwrap();
+        }
+
+        if let Some(handle) = self.auth_handle.take() {
+            handle.await.unwrap();
+        }
+    }
+
+    pub async fn start(&mut self) {
+        assert!(self.app_handle.is_none());
+        assert!(self.auth_handle.is_none());
+        self.start_app().await;
+        self.start_auth().await;
+    }
+
+    async fn start_app(&mut self) {
+        let options = self.options.clone();
+        let mut app_shutdown_receiver = self.app_shutdown_sender.subscribe();
         let (app_start_sender, app_start_receiver) = oneshot::channel::<()>();
-        tokio::spawn(async move {
-            let server = start_server(server_options).await.unwrap();
+        let app_handle = tokio::spawn(async move {
+            let server = start_server(options).await.unwrap();
             app_start_sender.send(()).unwrap();
             server
                 .with_graceful_shutdown(async move { app_shutdown_receiver.recv().await.unwrap() })
@@ -106,11 +123,15 @@ impl Harness {
                 .unwrap();
         });
         app_start_receiver.await.unwrap();
+        self.app_handle = Some(app_handle);
+    }
+
+    async fn start_auth(&mut self) {
         let (auth_start_sender, auth_start_receiver) = oneshot::channel::<()>();
-        let auth_state = AuthState::default();
-        let auth_state_for_server = auth_state.clone();
-        tokio::spawn(async move {
-            let server = mock_auth_service::start_server(auth_state_for_server);
+        let mut auth_shutdown_receiver = self.auth_shutdown_sender.subscribe();
+        let auth_state = self.auth_state.clone();
+        let auth_handle = tokio::spawn(async move {
+            let server = mock_auth_service::start_server(auth_state);
             auth_start_sender.send(()).unwrap();
             server
                 .with_graceful_shutdown(async move { auth_shutdown_receiver.recv().await.unwrap() })
@@ -118,13 +139,32 @@ impl Harness {
                 .unwrap();
         });
         auth_start_receiver.await.unwrap();
-        Harness {
+        self.auth_handle = Some(auth_handle);
+    }
+
+    pub async fn run(mut options: Options) -> Harness {
+        let lock = server_lock().await.lock().await;
+        let temp_dir = tempdir().unwrap();
+        let transcript = temp_dir.path().join("transcript.json");
+        let transcript_wip = temp_dir.path().join("transcript.json.next");
+        options.transcript_file = transcript;
+        options.transcript_in_progress_file = transcript_wip;
+        let (app_shutdown_sender, _) = broadcast::channel::<()>(1);
+        let (auth_shutdown_sender, _) = broadcast::channel::<()>(1);
+        let auth_state = AuthState::default();
+        let mut harness = Harness {
             options: options.clone(),
             auth_state,
-            shutdown_sender,
+            app_shutdown_sender,
+            auth_shutdown_sender,
             lock,
             temp_dir,
-        }
+            app_handle: None,
+            auth_handle: None,
+        };
+        harness.start_app().await;
+        harness.start_auth().await;
+        harness
     }
 }
 
