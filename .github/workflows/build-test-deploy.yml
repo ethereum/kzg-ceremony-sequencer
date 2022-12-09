@@ -122,7 +122,7 @@ jobs:
           openssl rsa -in private.key -pubout -out publickey.pem
       - name: Generate code coverage
         run: |
-          cargo tarpaulin --verbose --all-features --out Xml --avoid-cfg-tarpaulin
+          cargo tarpaulin --out Xml --avoid-cfg-tarpaulin --timeout 180 --features arkworks blst --workspace
       - name: Submit to codecov.io
         uses: codecov/codecov-action@v3.1.1
         with:

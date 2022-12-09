@@ -1,12 +1,9 @@
 #![cfg(test)]
 
-use crate::{
-    actions::assert_includes_contribution,
-    common::{
-        actions, harness,
-        harness::{run_test_harness, Harness},
-        mock_auth_service::{AnyTestUser, GhUser, TestUser},
-    },
+use crate::common::{
+    actions, harness,
+    harness::{run_test_harness, Harness},
+    mock_auth_service::{AnyTestUser, GhUser, TestUser},
 };
 use common::participants;
 use ethers_core::types::Address;
@@ -474,7 +471,7 @@ async fn test_wrong_ecdsa_signature() {
 
     let transcript = harness.read_transcript_file().await;
 
-    assert_includes_contribution(&transcript, &contribution, &user, false, true)
+    actions::assert_includes_contribution(&transcript, &contribution, &user, false, true)
 }
 
 #[tokio::test]
@@ -504,7 +501,7 @@ async fn test_wrong_bls_signature() {
 
     let transcript = harness.read_transcript_file().await;
 
-    assert_includes_contribution(&transcript, &contribution, &user, false, false)
+    actions::assert_includes_contribution(&transcript, &contribution, &user, false, false)
 }
 
 #[tokio::test]
