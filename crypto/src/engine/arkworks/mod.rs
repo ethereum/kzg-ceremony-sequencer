@@ -299,6 +299,7 @@ pub mod test {
 }
 
 #[cfg(feature = "bench")]
+#[cfg(not(tarpaulin_include))]
 #[doc(hidden)]
 pub mod bench {
     use super::{super::bench::bench_engine, *};
