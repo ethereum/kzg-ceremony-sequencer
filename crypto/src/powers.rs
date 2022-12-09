@@ -69,3 +69,39 @@ impl Powers {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_invalid_powers_json() {
+        let g1 = "0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        let g2 = "0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        let wrong_number_g1_powers = json!({
+            "numG1Powers": 1,
+            "numG2Powers": 1,
+            "powersOfTau": {
+                "G1Powers": [g1, g1],
+                "G2Powers": [g2],
+            },
+        });
+        let result = serde_json::from_value::<super::Powers>(wrong_number_g1_powers)
+            .err()
+            .unwrap();
+        assert!(format!("{}", result).contains("Inconsistent number of G1 powers"));
+
+        let wrong_number_g2_powers = json!({
+            "numG1Powers": 1,
+            "numG2Powers": 1,
+            "powersOfTau": {
+                "G1Powers": [g1],
+                "G2Powers": [g2, g2],
+            },
+        });
+        let result = serde_json::from_value::<super::Powers>(wrong_number_g2_powers)
+            .err()
+            .unwrap();
+        assert!(format!("{}", result).contains("Inconsistent number of G2 powers"));
+    }
+}

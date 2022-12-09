@@ -82,7 +82,8 @@ pub async fn try_contribute(
         .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
 
     // Attempt to set ourselves as the current contributor in the background,
-    // so that request cancelation doesn't interrupt it inbetween the lobby_state and storage calls.
+    // so that request cancelation doesn't interrupt it inbetween the lobby_state
+    // and storage calls.
     tokio::spawn(async move {
         lobby_state.enter_lobby(&session_id).await?;
 
