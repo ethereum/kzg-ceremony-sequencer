@@ -279,11 +279,8 @@ fn random_factors(n: usize) -> (Vec<blst_scalar>, blst_scalar) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{
-        tests::arb_g1,
-    };
+    use crate::engine::tests::{arb_g1, arb_g2};
     use proptest::proptest;
-    use crate::engine::tests::arb_g2;
 
     #[test]
     fn test_verify_g1() {
