@@ -1,10 +1,13 @@
 use crate::common::{
     mock_auth_service,
-    mock_auth_service::{AuthState, GhUser, TestUser},
+    mock_auth_service::{AuthState, EthUser, GhUser, TestUser},
 };
+use chrono::{DateTime, FixedOffset};
 use clap::Parser;
+use ethers_signers::LocalWallet;
 use kzg_ceremony_crypto::BatchTranscript;
 use kzg_ceremony_sequencer::{io::read_json_file, start_server, Options};
+use rand::thread_rng;
 use std::{path::PathBuf, time::Duration};
 use tempfile::{tempdir, TempDir};
 use tokio::sync::{broadcast, oneshot, Mutex, MutexGuard, OnceCell};
@@ -70,8 +73,25 @@ impl Harness {
             .await
     }
 
+    pub async fn create_gh_user_with_time(&self, name: String, created_at: String) -> TestUser {
+        self.auth_state
+            .register_gh_user(GhUser { created_at, name })
+            .await
+    }
+
     pub async fn create_eth_user(&self) -> TestUser {
-        self.auth_state.register_eth_user().await
+        let wallet = LocalWallet::new(&mut thread_rng());
+        let nonce = 42;
+        self.auth_state
+            .register_eth_user(EthUser { wallet, nonce })
+            .await
+    }
+
+    pub async fn create_eth_user_with_nonce(&self, nonce: usize) -> TestUser {
+        let wallet = LocalWallet::new(&mut thread_rng());
+        self.auth_state
+            .register_eth_user(EthUser { wallet, nonce })
+            .await
     }
 
     pub fn app_path(&self, path: &str) -> Url {
@@ -213,6 +233,21 @@ impl Builder {
 
     pub fn allow_multi_contribution(mut self) -> Self {
         self.options.multi_contribution = true;
+        self
+    }
+
+    pub fn set_max_sessions_count(mut self, size: usize) -> Self {
+        self.options.lobby.max_sessions_count = size;
+        self
+    }
+
+    pub fn set_gh_max_account_creation_time(mut self, time: DateTime<FixedOffset>) -> Self {
+        self.options.github.gh_max_account_creation_time = time;
+        self
+    }
+
+    pub fn set_eth_min_nonce(mut self, min_nonce: u64) -> Self {
+        self.options.ethereum.eth_min_nonce = min_nonce;
         self
     }
 

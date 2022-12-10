@@ -207,6 +207,10 @@ impl SharedLobbyState {
         self.inner.lock().await.sessions_in_lobby.len()
     }
 
+    pub async fn get_session_count(&self) -> usize {
+        self.inner.lock().await.sessions_out_of_lobby.len()
+    }
+
     pub async fn insert_session(
         &self,
         session_id: SessionId,

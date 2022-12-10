@@ -5,6 +5,7 @@ use crate::common::{
     harness::{run_test_harness, Builder, Harness},
     mock_auth_service::{AnyTestUser, GhUser, TestUser},
 };
+use chrono::DateTime;
 use common::participants;
 use ethers_core::types::Address;
 use ethers_signers::{LocalWallet, Signer};
@@ -40,6 +41,113 @@ async fn test_eth_auth_happy_path() {
     let http_client = reqwest::Client::new();
     let user = harness.create_eth_user().await;
     actions::login(&harness, &http_client, &user).await;
+}
+
+#[tokio::test]
+async fn test_malformed_auth_request() {
+    let harness = run_test_harness().await;
+    let http_client = reqwest::Client::new();
+    let url = harness.app_path("auth/callback/eth");
+
+    let mut malformed_url_encoded = url.clone();
+    malformed_url_encoded.set_query(Some("foo=bar"));
+    let response = http_client.get(malformed_url_encoded).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let mut bad_base_64 = url.clone();
+    bad_base_64.set_query(Some("state=bad+base+64&code=1234"));
+    let response = http_client.get(bad_base_64).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("invalid base64 data in state parameter"));
+
+    let mut bad_json = url.clone();
+    bad_json.set_query(Some("state=bbbc&code=1234"));
+    let response = http_client.get(bad_json).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("invalid json in state parameter"));
+}
+
+#[tokio::test]
+async fn test_sessions_limit() {
+    let harness = harness::Builder::new()
+        // Set all these to giant values to make sure we can run the whole test without anyone
+        // getting kicked out of the lobby.
+        .set_lobby_checkin_tolerance(Duration::from_secs(100))
+        .set_lobby_checkin_frequency(Duration::from_secs(100))
+        .set_compute_deadline(Duration::from_secs(100))
+        .set_max_sessions_count(3)
+        .run()
+        .await;
+    let client = reqwest::Client::new();
+    // pre-compute this before we fill the lobby up
+    let csrf = actions::get_and_validate_csrf_token(&harness, None).await;
+    for _ in 0..3 {
+        let user = harness.create_eth_user().await;
+        actions::login(&harness, &client, &user).await;
+    }
+
+    let response = client
+        .get(harness.app_path("auth/request_link"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::LobbyIsFull"));
+
+    let user = harness.create_eth_user().await;
+    let response = actions::request_auth_callback(&harness, &client, &user, &csrf).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::LobbyIsFull"));
+}
+
+#[tokio::test]
+async fn test_too_new_accounts() {
+    let harness = harness::Builder::new()
+        .set_gh_max_account_creation_time(
+            DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z").unwrap(),
+        )
+        .set_eth_min_nonce(42)
+        .run()
+        .await;
+    let http_client = reqwest::Client::new();
+
+    let csrf = actions::get_and_validate_csrf_token(&harness, None).await;
+
+    let user = harness
+        .create_gh_user_with_time("kustosz".to_string(), "2021-01-01T00:00:00Z".to_string())
+        .await;
+    let response = actions::request_auth_callback(&harness, &http_client, &user, &csrf).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::UserCreatedAfterDeadline"));
+
+    let user = harness.create_eth_user_with_nonce(10).await;
+    let response = actions::request_auth_callback(&harness, &http_client, &user, &csrf).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::UserCreatedAfterDeadline"));
 }
 
 #[tokio::test]
