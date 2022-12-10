@@ -58,6 +58,7 @@ pub struct SessionInfoWithId {
     info: SessionInfo,
 }
 
+#[derive(Debug)]
 pub enum ActiveContributor {
     None,
     AwaitingContribution(SessionInfoWithId),
@@ -281,6 +282,14 @@ impl SharedLobbyState {
 
             drop(state);
             storage.expire_contribution(&participant.0).await.unwrap();
+        }
+    }
+
+    pub async fn is_awaiting_contribution_from(&self, session_id: &SessionId) -> bool {
+        let lobby_state = self.inner.lock().await;
+        match &lobby_state.active_contributor {
+            ActiveContributor::AwaitingContribution(contributor) => &contributor.id == session_id,
+            _ => false,
         }
     }
 }

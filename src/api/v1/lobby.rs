@@ -48,7 +48,7 @@ impl From<ActiveContributorError> for TryContributeError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TryContributeResponse<C> {
     contribution: C,
 }
@@ -66,6 +66,14 @@ pub async fn try_contribute(
     Extension(transcript): Extension<SharedTranscript>,
     Extension(options): Extension<crate::Options>,
 ) -> Result<TryContributeResponse<BatchContribution>, TryContributeError> {
+    if lobby_state.is_awaiting_contribution_from(&session_id).await {
+        let transcript = transcript.read().await;
+
+        return Ok(TryContributeResponse {
+            contribution: transcript.contribution(),
+        });
+    }
+
     let uid = lobby_state
         .modify_participant(&session_id, |mut info| {
             let now = Instant::now();
@@ -211,6 +219,8 @@ mod tests {
 
         // wait enough time to be able to contribute
         tokio::time::advance(Duration::from_secs(19)).await;
+        // the auto-advance of paused time can expire our contribution unexpectedly
+        tokio::time::resume();
         let success_response = try_contribute(
             session_id.clone(),
             Extension(lobby_state.clone()),
@@ -218,12 +228,21 @@ mod tests {
             Extension(transcript.clone()),
             Extension(test_options()),
         )
-        .await;
-        assert!(matches!(
-            success_response,
-            Ok(TryContributeResponse {
-                contribution: BatchContribution { .. },
-            })
-        ));
+        .await
+        .expect("try_contribute that should succeed failed");
+
+        // users should be able to retry calling try_contribute if we're awaiting a
+        // contribution from them
+        let success_response_again = try_contribute(
+            session_id.clone(),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await
+        .expect("second try_contribute that should succeed failed");
+
+        assert_eq!(success_response, success_response_again);
     }
 }
