@@ -1,5 +1,5 @@
 use crate::{
-    lobby::{ActiveContributorError, ReRequestTranscriptResult, SharedLobbyState},
+    lobby::{ActiveContributorError, SharedLobbyState},
     storage::{PersistentStorage, StorageError},
     SessionId, SharedTranscript,
 };
@@ -41,9 +41,11 @@ impl From<ActiveContributorError> for TryContributeError {
         match err {
             ActiveContributorError::AnotherContributionInProgress
             | ActiveContributorError::NotUsersTurn => Self::AnotherContributionInProgress,
-            ActiveContributorError::UserNotInLobby => Self::UnknownSessionId,
+            ActiveContributorError::UserNotInLobby
+            | ActiveContributorError::NotActiveContributor => Self::UnknownSessionId,
             ActiveContributorError::SessionCountLimitExceeded
             | ActiveContributorError::LobbySizeLimitExceeded => Self::LobbyIsFull,
+            ActiveContributorError::RateLimited => Self::RateLimited,
         }
     }
 }
@@ -84,20 +86,15 @@ pub async fn try_contribute(
         Some(inner) => inner?,
         None => {
             // Session not found. Check if they're the active contributor, and
-            // if so, if we can give them back the transcript they need.
-            return match lobby_state.re_request_transcript(&session_id).await {
-                ReRequestTranscriptResult::Allowed => {
-                    let transcript = transcript.read().await;
+            // if so, if we can give them back the contribution base they need.
+            lobby_state
+                .request_contribution_file_again(&session_id)
+                .await?;
 
-                    Ok(TryContributeResponse {
-                        contribution: transcript.contribution(),
-                    })
-                }
-                ReRequestTranscriptResult::RateLimited => Err(TryContributeError::RateLimited),
-                ReRequestTranscriptResult::NotAwaitingContribution => {
-                    Err(TryContributeError::UnknownSessionId)
-                }
-            };
+            let transcript = transcript.read().await;
+            return Ok(TryContributeResponse {
+                contribution: transcript.contribution(),
+            });
         }
     };
 

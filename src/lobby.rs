@@ -69,10 +69,10 @@ pub struct SessionInfoWithId {
 pub enum ActiveContributor {
     None,
     AwaitingContribution {
-        session:        SessionInfoWithId,
+        session: SessionInfoWithId,
         /// The last time this session requested the contribution base.
         /// This is large, so we only allow them to re-request it infrequently.
-        last_requested: Instant,
+        last_contribution_file_request: Instant,
     },
     Contributing(SessionInfoWithId),
 }
@@ -91,17 +91,14 @@ pub enum ActiveContributorError {
     NotUsersTurn,
     #[error("user not in the lobby")]
     UserNotInLobby,
+    #[error("user not active contributor")]
+    NotActiveContributor,
     #[error("session count limit exceeded")]
     SessionCountLimitExceeded,
     #[error("lobby size limit exceeded")]
     LobbySizeLimitExceeded,
-}
-
-#[derive(Debug)]
-pub enum ReRequestTranscriptResult {
-    Allowed,
+    #[error("call came too early. rate limited")]
     RateLimited,
-    NotAwaitingContribution,
 }
 
 #[derive(Clone)]
@@ -133,11 +130,11 @@ impl SharedLobbyState {
                 .ok_or(ActiveContributorError::UserNotInLobby)?;
 
             state.active_contributor = ActiveContributor::AwaitingContribution {
-                session:        SessionInfoWithId {
+                session: SessionInfoWithId {
                     id:   participant.clone(),
                     info: session_info,
                 },
-                last_requested: Instant::now(),
+                last_contribution_file_request: Instant::now(),
             };
 
             let inner = self.inner.clone();
@@ -308,22 +305,25 @@ impl SharedLobbyState {
         }
     }
 
-    pub async fn re_request_transcript(&self, session_id: &SessionId) -> ReRequestTranscriptResult {
+    pub async fn request_contribution_file_again(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<(), ActiveContributorError> {
         let mut lobby_state = self.inner.lock().await;
         if let ActiveContributor::AwaitingContribution {
             session,
-            last_requested,
+            last_contribution_file_request,
         } = &mut lobby_state.active_contributor
         {
             if &session.id == session_id {
-                if last_requested.elapsed() < self.options.min_checkin_delay() {
-                    return ReRequestTranscriptResult::RateLimited;
+                if last_contribution_file_request.elapsed() < self.options.min_checkin_delay() {
+                    return Err(ActiveContributorError::RateLimited);
                 }
-                *last_requested = Instant::now();
-                return ReRequestTranscriptResult::Allowed;
+                *last_contribution_file_request = Instant::now();
+                return Ok(());
             }
         }
-        ReRequestTranscriptResult::NotAwaitingContribution
+        Err(ActiveContributorError::NotActiveContributor)
     }
 }
 
