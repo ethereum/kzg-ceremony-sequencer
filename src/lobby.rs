@@ -46,7 +46,7 @@ pub struct Options {
 }
 
 impl Options {
-    pub fn min_checkin_delay(&self) -> Duration {
+    pub const fn min_checkin_delay(&self) -> Duration {
         self.lobby_checkin_frequency
             .saturating_sub(self.lobby_checkin_tolerance)
     }
@@ -316,12 +316,11 @@ impl SharedLobbyState {
         } = &mut lobby_state.active_contributor
         {
             if &session.id == session_id {
-                if last_requested.elapsed() >= self.options.min_checkin_delay() {
-                    *last_requested = Instant::now();
-                    return ReRequestTranscriptResult::Allowed;
-                } else {
+                if last_requested.elapsed() < self.options.min_checkin_delay() {
                     return ReRequestTranscriptResult::RateLimited;
                 }
+                *last_requested = Instant::now();
+                return ReRequestTranscriptResult::Allowed;
             }
         }
         ReRequestTranscriptResult::NotAwaitingContribution
