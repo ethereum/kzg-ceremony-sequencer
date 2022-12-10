@@ -252,6 +252,9 @@ async fn test_double_contribution() {
 async fn test_double_contribution_when_allowed() {
     let harness = harness::Builder::new()
         .allow_multi_contribution()
+        .set_lobby_checkin_frequency(Duration::from_secs(2))
+        .set_lobby_checkin_tolerance(Duration::from_secs(2))
+        .set_compute_deadline(Duration::from_secs(4))
         .run()
         .await;
     let http_client = reqwest::Client::new();
