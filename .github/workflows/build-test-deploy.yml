@@ -1,7 +1,8 @@
 name: Build, Test & Deploy
 
 on:
-  push
+  - push
+  - pull_request
 
 env:
   RUST_VERSION: "1.64"
