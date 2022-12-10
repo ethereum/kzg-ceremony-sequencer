@@ -45,6 +45,13 @@ pub struct Options {
     pub max_sessions_count: usize,
 }
 
+impl Options {
+    pub fn min_checkin_delay(&self) -> Duration {
+        self.lobby_checkin_frequency
+            .saturating_sub(self.lobby_checkin_tolerance)
+    }
+}
+
 #[derive(Default)]
 pub struct LobbyState {
     pub sessions_in_lobby:     BTreeMap<SessionId, SessionInfo>,
@@ -61,7 +68,12 @@ pub struct SessionInfoWithId {
 #[derive(Debug)]
 pub enum ActiveContributor {
     None,
-    AwaitingContribution(SessionInfoWithId),
+    AwaitingContribution {
+        session:        SessionInfoWithId,
+        /// The last time this session requested the contribution base.
+        /// This is large, so we only allow them to re-request it infrequently.
+        last_requested: Instant,
+    },
     Contributing(SessionInfoWithId),
 }
 
@@ -83,6 +95,13 @@ pub enum ActiveContributorError {
     SessionCountLimitExceeded,
     #[error("lobby size limit exceeded")]
     LobbySizeLimitExceeded,
+}
+
+#[derive(Debug)]
+pub enum ReRequestTranscriptResult {
+    Allowed,
+    RateLimited,
+    NotAwaitingContribution,
 }
 
 #[derive(Clone)]
@@ -113,10 +132,13 @@ impl SharedLobbyState {
                 .remove(participant)
                 .ok_or(ActiveContributorError::UserNotInLobby)?;
 
-            state.active_contributor = ActiveContributor::AwaitingContribution(SessionInfoWithId {
-                id:   participant.clone(),
-                info: session_info,
-            });
+            state.active_contributor = ActiveContributor::AwaitingContribution {
+                session:        SessionInfoWithId {
+                    id:   participant.clone(),
+                    info: session_info,
+                },
+                last_requested: Instant::now(),
+            };
 
             let inner = self.inner.clone();
             let participant = participant.clone();
@@ -141,9 +163,10 @@ impl SharedLobbyState {
         let mut state = self.inner.lock().await;
 
         match &state.active_contributor {
-            ActiveContributor::AwaitingContribution(info_with_id)
-                if &info_with_id.id == participant =>
-            {
+            ActiveContributor::AwaitingContribution {
+                session: info_with_id,
+                ..
+            } if &info_with_id.id == participant => {
                 let next_state = ActiveContributor::Contributing(info_with_id.clone());
                 let info = info_with_id.info.clone();
                 state.active_contributor = next_state;
@@ -159,7 +182,7 @@ impl SharedLobbyState {
     ) -> Result<(), ActiveContributorError> {
         let mut state = self.inner.lock().await;
 
-        if !matches!(&state.active_contributor, ActiveContributor::AwaitingContribution(x) if &x.id == participant)
+        if !matches!(&state.active_contributor, ActiveContributor::AwaitingContribution { session: x, .. } if &x.id == participant)
         {
             return Err(ActiveContributorError::NotUsersTurn);
         }
@@ -216,7 +239,7 @@ impl SharedLobbyState {
 
         let is_active_contributor = match &state.active_contributor {
             ActiveContributor::None => false,
-            ActiveContributor::AwaitingContribution(info)
+            ActiveContributor::AwaitingContribution { session: info, .. }
             | ActiveContributor::Contributing(info) => info.id == session_id,
         };
         let is_in_lobby = state.sessions_in_lobby.contains_key(&session_id);
@@ -276,7 +299,7 @@ impl SharedLobbyState {
 
         let mut state = inner.lock().await;
 
-        if matches!(&state.active_contributor, ActiveContributor::AwaitingContribution(x) if x.id == participant)
+        if matches!(&state.active_contributor, ActiveContributor::AwaitingContribution{ session: x, .. } if x.id == participant)
         {
             state.active_contributor = ActiveContributor::None;
 
@@ -285,12 +308,23 @@ impl SharedLobbyState {
         }
     }
 
-    pub async fn is_awaiting_contribution_from(&self, session_id: &SessionId) -> bool {
-        let lobby_state = self.inner.lock().await;
-        match &lobby_state.active_contributor {
-            ActiveContributor::AwaitingContribution(contributor) => &contributor.id == session_id,
-            _ => false,
+    pub async fn re_request_transcript(&self, session_id: &SessionId) -> ReRequestTranscriptResult {
+        let mut lobby_state = self.inner.lock().await;
+        if let ActiveContributor::AwaitingContribution {
+            session,
+            last_requested,
+        } = &mut lobby_state.active_contributor
+        {
+            if &session.id == session_id {
+                if last_requested.elapsed() >= self.options.min_checkin_delay() {
+                    *last_requested = Instant::now();
+                    return ReRequestTranscriptResult::Allowed;
+                } else {
+                    return ReRequestTranscriptResult::RateLimited;
+                }
+            }
         }
+        ReRequestTranscriptResult::NotAwaitingContribution
     }
 }
 

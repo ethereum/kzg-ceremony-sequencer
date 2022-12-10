@@ -1,5 +1,5 @@
 use crate::{
-    lobby::{ActiveContributorError, SharedLobbyState},
+    lobby::{ActiveContributorError, ReRequestTranscriptResult, SharedLobbyState},
     storage::{PersistentStorage, StorageError},
     SessionId, SharedTranscript,
 };
@@ -66,28 +66,40 @@ pub async fn try_contribute(
     Extension(transcript): Extension<SharedTranscript>,
     Extension(options): Extension<crate::Options>,
 ) -> Result<TryContributeResponse<BatchContribution>, TryContributeError> {
-    if lobby_state.is_awaiting_contribution_from(&session_id).await {
-        let transcript = transcript.read().await;
-
-        return Ok(TryContributeResponse {
-            contribution: transcript.contribution(),
-        });
-    }
-
-    let uid = lobby_state
+    let res = lobby_state
         .modify_participant(&session_id, |mut info| {
             let now = Instant::now();
-            let min_diff =
-                options.lobby.lobby_checkin_frequency - options.lobby.lobby_checkin_tolerance;
-            if !info.is_first_ping_attempt && now < info.last_ping_time + min_diff {
+            if !info.is_first_ping_attempt
+                && now < info.last_ping_time + options.lobby.min_checkin_delay()
+            {
                 return Err(TryContributeError::RateLimited);
             }
             info.is_first_ping_attempt = false;
             info.last_ping_time = now;
             Ok(info.token.unique_identifier())
         })
-        .await
-        .unwrap_or(Err(TryContributeError::UnknownSessionId))?;
+        .await;
+
+    let uid = match res {
+        Some(inner) => inner?,
+        None => {
+            // Session not found. Check if they're the active contributor, and
+            // if so, if we can give them back the transcript they need.
+            return match lobby_state.re_request_transcript(&session_id).await {
+                ReRequestTranscriptResult::Allowed => {
+                    let transcript = transcript.read().await;
+
+                    Ok(TryContributeResponse {
+                        contribution: transcript.contribution(),
+                    })
+                }
+                ReRequestTranscriptResult::RateLimited => Err(TryContributeError::RateLimited),
+                ReRequestTranscriptResult::NotAwaitingContribution => {
+                    Err(TryContributeError::UnknownSessionId)
+                }
+            };
+        }
+    };
 
     // Attempt to set ourselves as the current contributor in the background,
     // so that request cancelation doesn't interrupt it inbetween the lobby_state
@@ -231,9 +243,23 @@ mod tests {
         .await
         .expect("try_contribute that should succeed failed");
 
-        // users should be able to retry calling try_contribute if we're awaiting a
-        // contribution from them
-        let success_response_again = try_contribute(
+        // if a user attempts to try_contribute again they should get rate limited
+        let check_again = try_contribute(
+            session_id.clone(),
+            Extension(lobby_state.clone()),
+            Extension(db.clone()),
+            Extension(transcript.clone()),
+            Extension(test_options()),
+        )
+        .await;
+        assert!(matches!(check_again, Err(TryContributeError::RateLimited)));
+
+        tokio::time::pause();
+        tokio::time::advance(test_options().lobby.min_checkin_delay()).await;
+        tokio::time::resume();
+
+        // but after waiting a bit they should be able to re-fetch their transcript
+        let refetch_transcript = try_contribute(
             session_id.clone(),
             Extension(lobby_state.clone()),
             Extension(db.clone()),
@@ -241,8 +267,7 @@ mod tests {
             Extension(test_options()),
         )
         .await
-        .expect("second try_contribute that should succeed failed");
-
-        assert_eq!(success_response, success_response_again);
+        .expect("re-fetching the transcript with try_contribute failed");
+        assert_eq!(success_response, refetch_transcript);
     }
 }
