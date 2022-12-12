@@ -38,7 +38,7 @@ members = [
 async-session = "3.0.0"
 axum = { version = "0.5.15", features = ["headers"] }
 axum-extra = { version = "0.3.7", features = ["erased-json"] }
-base64 = "0.13"
+base64 = "0.20"
 chrono = "0.4"
 clap = { version = "4.0", features = ["derive"] }
 cli-batteries = { version = "0.4.0", features = ["signals", "prometheus", "metered-allocator", "otlp"] }
