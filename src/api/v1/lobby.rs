@@ -82,20 +82,19 @@ pub async fn try_contribute(
         })
         .await;
 
-    let uid = match res {
-        Some(inner) => inner?,
-        None => {
-            // Session not found. Check if they're the active contributor, and
-            // if so, if we can give them back the contribution base they need.
-            lobby_state
-                .request_contribution_file_again(&session_id)
-                .await?;
+    let uid = if let Some(inner) = res {
+        inner?
+    } else {
+        // Session not found. Check if they're the active contributor, and
+        // if so, if we can give them back the contribution base they need.
+        lobby_state
+            .request_contribution_file_again(&session_id)
+            .await?;
 
-            let transcript = transcript.read().await;
-            return Ok(TryContributeResponse {
-                contribution: transcript.contribution(),
-            });
-        }
+        let transcript = transcript.read().await;
+        return Ok(TryContributeResponse {
+            contribution: transcript.contribution(),
+        });
     };
 
     // Attempt to set ourselves as the current contributor in the background,
