@@ -41,7 +41,7 @@ axum-extra = { version = "0.3.7", features = ["erased-json"] }
 base64 = "0.13"
 chrono = "0.4"
 clap = { version = "4.0", features = ["derive"] }
-cli-batteries = { version = "0.4.0", features = ["signals", "prometheus", "metered-allocator", "otlp"] }
+cli-batteries = { version = "0.4.1", features = ["signals", "prometheus", "metered-allocator", "otlp"] }
 ethers-core = "1.0.0"
 ethers-signers = "1.0.0"
 eyre = "0.6.8"
@@ -75,7 +75,7 @@ url = "2.3.1"
 uuid = { version = "1.1.2", features = ["serde", "v4"] }
 
 [build-dependencies]
-cli-batteries = "0.4.0"
+cli-batteries = "0.4.1"
 
 [dev-dependencies]
 futures = "0.3"
