@@ -301,3 +301,19 @@ pub fn assert_includes_contribution(
             }
         })
 }
+
+pub async fn get_transcript(harness: &Harness, client: &reqwest::Client) -> BatchTranscript {
+    let response = client
+        .get(harness.app_path("info/current_state"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let from_app = response
+        .json::<BatchTranscript>()
+        .await
+        .expect("must be a valid transcript");
+    let from_file = harness.read_transcript_file().await;
+    assert_eq!(from_app, from_file);
+    from_app
+}

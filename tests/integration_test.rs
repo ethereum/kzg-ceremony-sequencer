@@ -527,7 +527,7 @@ async fn test_various_contributors() {
     });
 
     let post_conditions = futures::future::join_all(handles).await;
-    let final_transcript = harness.read_transcript_file().await;
+    let final_transcript = actions::get_transcript(harness.as_ref(), client.as_ref()).await;
     post_conditions
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
@@ -600,7 +600,7 @@ async fn test_wrong_ecdsa_signature() {
     )
     .await;
 
-    let transcript = harness.read_transcript_file().await;
+    let transcript = actions::get_transcript(&harness, &http_client).await;
 
     actions::assert_includes_contribution(&transcript, &contribution, &user, false, true)
 }

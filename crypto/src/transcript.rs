@@ -126,6 +126,7 @@ mod test {
     use crate::{
         CeremonyError::{
             G1PairingFailed, G2PairingFailed, InvalidG1Power, InvalidG2Power, PubKeyPairingFailed,
+            UnexpectedNumG1Powers, UnexpectedNumG2Powers,
         },
         DefaultEngine,
         ParseError::InvalidSubgroup,
@@ -314,5 +315,29 @@ mod test {
                 .unwrap(),
             G2PairingFailed
         );
+    }
+
+    #[test]
+    fn test_verify_wrong_g1_point_count() {
+        let transcript = Transcript::new(3, 3);
+        let mut contribution = transcript.contribution();
+        contribution.powers.g1 = contribution.powers.g1[0..2].to_vec();
+        let result = transcript
+            .verify::<DefaultEngine>(&contribution)
+            .err()
+            .unwrap();
+        assert_eq!(result, UnexpectedNumG1Powers(3, 2));
+    }
+
+    #[test]
+    fn test_verify_wrong_g2_point_count() {
+        let transcript = Transcript::new(3, 3);
+        let mut contribution = transcript.contribution();
+        contribution.powers.g2 = contribution.powers.g2[0..2].to_vec();
+        let result = transcript
+            .verify::<DefaultEngine>(&contribution)
+            .err()
+            .unwrap();
+        assert_eq!(result, UnexpectedNumG2Powers(3, 2));
     }
 }
