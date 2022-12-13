@@ -69,6 +69,7 @@ fn derive_taus<E: Engine>(entropy: &Entropy, size: usize) -> Vec<Tau> {
         .collect()
 }
 
+#[allow(clippy::missing_panics_doc)] // Does not panic.
 #[must_use]
 pub fn get_pot_pubkeys<E: Engine>(entropy: &Entropy) -> Vec<G2> {
     let taus = derive_taus::<E>(entropy, 4);
@@ -127,10 +128,8 @@ pub mod tests {
             let result = get_pot_pubkeys::<DefaultEngine>(&secret);
             let taus = derive_taus::<DefaultEngine>(&secret, 4)
                 .into_iter()
-                .map(|tau| tau.expose_secret().clone())
-                .collect::<Vec<_>>();
+                .map(|tau| *tau.expose_secret());
             let expected: Vec<_> = taus
-                .into_iter()
                 .map(|tau| {
                     let fr = Fr::from(&tau);
                     let g2 = G2Affine::prime_subgroup_generator()
@@ -140,7 +139,7 @@ pub mod tests {
                 })
                 .collect();
             assert_eq!(result, expected);
-        })
+        });
     }
 }
 

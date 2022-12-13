@@ -50,9 +50,9 @@ pub enum HexDecodingError {
 }
 
 impl HexDecodingError {
-    pub fn to_de_error<'de, E: de::Error>(self, visitor: impl de::Visitor<'de>) -> E {
+    pub fn into_de_error<'de, E: de::Error>(self, visitor: &'_ impl de::Visitor<'de>) -> E {
         match self {
-            InvalidLength(len) => E::invalid_length(len, &visitor),
+            InvalidLength(len) => E::invalid_length(len, visitor),
             _ => E::custom(self),
         }
     }
@@ -115,7 +115,7 @@ impl<'de, const N: usize> de::Visitor<'de> for OptionalHexStrVisitor<N> {
             Ok(None)
         } else {
             hex_str_to_bytes::<N>(v)
-                .map_err(|e| e.to_de_error(self))
+                .map_err(|e| e.into_de_error(&self))
                 .map(Some)
         }
     }

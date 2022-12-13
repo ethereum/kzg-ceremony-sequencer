@@ -89,7 +89,7 @@ mod tests {
         let result = serde_json::from_value::<super::Powers>(wrong_number_g1_powers)
             .err()
             .unwrap();
-        assert!(format!("{}", result).contains("Inconsistent number of G1 powers"));
+        assert!(format!("{result}").contains("Inconsistent number of G1 powers"));
 
         let wrong_number_g2_powers = json!({
             "numG1Powers": 1,
@@ -102,6 +102,6 @@ mod tests {
         let result = serde_json::from_value::<super::Powers>(wrong_number_g2_powers)
             .err()
             .unwrap();
-        assert!(format!("{}", result).contains("Inconsistent number of G2 powers"));
+        assert!(format!("{result}").contains("Inconsistent number of G2 powers"));
     }
 }

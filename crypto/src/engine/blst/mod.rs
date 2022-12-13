@@ -285,8 +285,8 @@ mod tests {
     fn test_verify_g1() {
         proptest!(|(g1 in arb_g1(), g2 in arb_g2())| {
             let powers = [g1];
-            let _ = BLST::verify_g1(&powers, g2).unwrap();
-        })
+            BLST::verify_g1(&powers, g2).unwrap();
+        });
     }
 }
 

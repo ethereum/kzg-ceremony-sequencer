@@ -247,7 +247,7 @@ mod test {
                 .err()
                 .unwrap(),
             PubKeyPairingFailed
-        )
+        );
     }
 
     #[test]

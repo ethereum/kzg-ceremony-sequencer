@@ -106,11 +106,11 @@ impl<'de> Deserialize<'de> for G2 {
 pub mod tests {
     use crate::{G1, G2};
 
-    pub fn invalid_g1() -> G1 {
-        return G1([0; 48]);
+    pub const fn invalid_g1() -> G1 {
+        G1([0; 48])
     }
 
-    pub fn invalid_g2() -> G2 {
-        return G2([0; 96]);
+    pub const fn invalid_g2() -> G2 {
+        G2([0; 96])
     }
 }
