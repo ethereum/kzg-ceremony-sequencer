@@ -3,9 +3,7 @@ use crate::{
     storage::PersistentStorage,
 };
 use clap::Parser;
-use std::{
-    collections::BTreeMap, mem, num::ParseIntError, str::FromStr, sync::Arc, time::Duration,
-};
+use std::{collections::BTreeMap, num::ParseIntError, str::FromStr, sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::{sync::Mutex, time::Instant};
 
@@ -141,15 +139,16 @@ impl SharedLobbyState {
     ) -> Result<SessionInfo, ActiveContributorError> {
         let mut state = self.inner.lock().await;
 
-        match mem::replace(&mut state.active_contributor, ActiveContributor::None) {
-            ActiveContributor::AwaitingContribution(info) if &info.id == participant => {
-                state.active_contributor = ActiveContributor::Contributing(info.clone());
-                Ok(info.info)
+        match &state.active_contributor {
+            ActiveContributor::AwaitingContribution(info_with_id)
+                if &info_with_id.id == participant =>
+            {
+                let next_state = ActiveContributor::Contributing(info_with_id.clone());
+                let info = info_with_id.info.clone();
+                state.active_contributor = next_state;
+                Ok(info)
             }
-            other => {
-                state.active_contributor = other;
-                Err(ActiveContributorError::NotUsersTurn)
-            }
+            _ => Err(ActiveContributorError::NotUsersTurn),
         }
     }
 

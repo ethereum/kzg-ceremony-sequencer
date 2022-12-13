@@ -29,7 +29,6 @@ pub struct BLST;
 
 impl Engine for BLST {
     fn generate_tau(entropy: &Entropy) -> Tau {
-        // TODO: Use `blst_keygen` or one of its versions (EIP-2333).
         let fr = random_fr(*entropy.expose_secret());
         Secret::new((&fr).into())
     }
