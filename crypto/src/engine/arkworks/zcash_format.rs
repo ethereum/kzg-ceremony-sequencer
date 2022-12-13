@@ -134,6 +134,7 @@ pub fn parse_g<P: SWModelParameters, const N: usize>(
                 return Err(ParseError::BigIntError);
             }
             if x >= modulus {
+                println!("this one!");
                 return Err(ParseError::InvalidPrimeField(i));
             }
             let x = Prime::<P>::from_repr(x).ok_or(ParseError::InvalidPrimeField(i))?;
@@ -212,6 +213,33 @@ mod test {
         proptest!(|(g in arb_g2())| {
             assert_eq!(g, parse_g(write_g::<_, 96>(&g)).expect("must be able to parse"));
         });
+    }
+
+    #[test]
+    fn test_parse_invalid_points() {
+        let too_large = hex!("1FFFF0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        assert!(matches!(
+            parse_g::<ark_bls12_381::g1::Parameters, 48>(too_large),
+            Err(ParseError::InvalidPrimeField(_))
+        ));
+
+        let bad_inf = hex!("c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
+        assert_eq!(
+            parse_g::<ark_bls12_381::g1::Parameters, 48>(bad_inf),
+            Err(ParseError::InvalidInfinity)
+        );
+
+        let not_compressed = hex!("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002");
+        assert_eq!(
+            parse_g::<ark_bls12_381::g1::Parameters, 48>(not_compressed),
+            Err(ParseError::NotCompressed)
+        );
+
+        let not_a_point = hex!("800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
+        assert_eq!(
+            parse_g::<ark_bls12_381::g1::Parameters, 48>(not_a_point),
+            Err(ParseError::InvalidXCoordinate)
+        );
     }
 }
 
