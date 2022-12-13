@@ -124,14 +124,15 @@ impl Transcript {
 mod test {
     use super::*;
     use crate::{
-        CeremonyError::{G1PairingFailed, InvalidG1Power, InvalidG2Power, PubKeyPairingFailed},
+        CeremonyError::{
+            G1PairingFailed, G2PairingFailed, InvalidG1Power, InvalidG2Power, PubKeyPairingFailed,
+        },
         DefaultEngine,
         ParseError::InvalidSubgroup,
     };
     use ark_bls12_381::{Fr, G1Affine, G2Affine};
     use ark_ec::{AffineCurve, ProjectiveCurve};
     use hex_literal::hex;
-    use crate::CeremonyError::G2PairingFailed;
 
     #[test]
     fn transcript_json() {
@@ -255,26 +256,24 @@ mod test {
     #[test]
     fn test_verify_wrong_g1_powers() {
         let transcript = Transcript::new(3, 2);
-        let g1_1 = G1Affine::prime_subgroup_generator()
-            .mul(Fr::from(1))
-            .into_affine();
+        let g1_1 = G1Affine::prime_subgroup_generator();
         let g1_2 = G1Affine::prime_subgroup_generator()
             .mul(Fr::from(2))
             .into_affine();
         let g1_3 = G1Affine::prime_subgroup_generator()
             .mul(Fr::from(3))
             .into_affine();
+        let g2_1 = G2Affine::prime_subgroup_generator();
+        let g2_2 = G2Affine::prime_subgroup_generator()
+            .mul(Fr::from(2))
+            .into_affine();
         let contribution = Contribution {
-            powers:        Powers {
+            powers:     Powers {
                 // Pretend Tau is 2, but make the third element g1^3 instead of g1^4.
                 g1: vec![G1::from(g1_1), G1::from(g1_2), G1::from(g1_3)],
-                g2: vec![G2::one(), G2::one()],
+                g2: vec![G2::from(g2_1), G2::from(g2_2)],
             },
-            pot_pubkey:    G2::from(
-                G2Affine::prime_subgroup_generator()
-                    .mul(Fr::from(2))
-                    .into_affine(),
-            ),
+            pot_pubkey: G2::from(g2_2),
             bls_signature: BlsSignature::empty(),
         };
         assert_eq!(
@@ -288,10 +287,15 @@ mod test {
 
     #[test]
     fn test_verify_wrong_g2_powers() {
-        let transcript = Transcript::new(2, 3);
-        let g2_1 = G2Affine::prime_subgroup_generator()
-            .mul(Fr::from(1))
+        let transcript = Transcript::new(3, 3);
+        let g1_1 = G1Affine::prime_subgroup_generator();
+        let g1_2 = G1Affine::prime_subgroup_generator()
+            .mul(Fr::from(2))
             .into_affine();
+        let g1_4 = G1Affine::prime_subgroup_generator()
+            .mul(Fr::from(4))
+            .into_affine();
+        let g2_1 = G2Affine::prime_subgroup_generator();
         let g2_2 = G2Affine::prime_subgroup_generator()
             .mul(Fr::from(2))
             .into_affine();
@@ -300,11 +304,11 @@ mod test {
             .into_affine();
         let contribution = Contribution {
             powers:        Powers {
-                g1: vec![G1::one(), G1::one()],
+                g1: vec![G1::from(g1_1), G1::from(g1_2), G1::from(g1_4)],
                 // Pretend Tau is 2, but make the third element g2^3 instead of g2^4.
                 g2: vec![G2::from(g2_1), G2::from(g2_2), G2::from(g2_3)],
             },
-            pot_pubkey:    G2::one(),
+            pot_pubkey:    G2::from(g2_2),
             bls_signature: BlsSignature::empty(),
         };
         assert_eq!(
