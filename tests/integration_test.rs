@@ -151,6 +151,20 @@ async fn test_too_new_accounts() {
 }
 
 #[tokio::test]
+async fn test_nonexistent_eth_user() {
+    let harness = run_test_harness().await;
+    let http_client = reqwest::Client::new();
+    let csrf = actions::get_and_validate_csrf_token(&harness, None).await;
+    let response = http_client
+        .get(harness.app_path("auth/callback/eth"))
+        .query(&[("state", csrf), ("code", "1234".to_string())])
+        .send()
+        .await
+        .expect("Could not call the endpoint");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn test_gh_auth_with_custom_frontend_redirect() {
     let harness = run_test_harness().await;
     let client = reqwest::Client::builder()
