@@ -182,13 +182,11 @@ mod test {
             pot_pubkey:    G2::zero(),
             bls_signature: BlsSignature::empty(),
         };
-        assert_eq!(
-            transcript
-                .verify::<DefaultEngine>(&bad_g1_contribution)
-                .err()
-                .unwrap(),
-            InvalidG1Power(0, InvalidSubgroup)
-        );
+        let result = transcript
+            .verify::<DefaultEngine>(&bad_g1_contribution)
+            .err()
+            .unwrap();
+        assert!(matches!(result, InvalidG1Power(_, InvalidSubgroup)));
     }
 
     #[test]
@@ -204,13 +202,11 @@ mod test {
             pot_pubkey:    G2::zero(),
             bls_signature: BlsSignature::empty(),
         };
-        assert_eq!(
-            transcript
-                .verify::<DefaultEngine>(&bad_g2_contribution)
-                .err()
-                .unwrap(),
-            InvalidG2Power(0, InvalidSubgroup)
-        );
+        let result = transcript
+            .verify::<DefaultEngine>(&bad_g2_contribution)
+            .err()
+            .unwrap();
+        assert!(matches!(result, InvalidG2Power(_, InvalidSubgroup)));
     }
 
     #[test]
@@ -268,12 +264,12 @@ mod test {
             .mul(Fr::from(2))
             .into_affine();
         let contribution = Contribution {
-            powers:     Powers {
+            powers:        Powers {
                 // Pretend Tau is 2, but make the third element g1^3 instead of g1^4.
                 g1: vec![G1::from(g1_1), G1::from(g1_2), G1::from(g1_3)],
                 g2: vec![G2::from(g2_1), G2::from(g2_2)],
             },
-            pot_pubkey: G2::from(g2_2),
+            pot_pubkey:    G2::from(g2_2),
             bls_signature: BlsSignature::empty(),
         };
         assert_eq!(
