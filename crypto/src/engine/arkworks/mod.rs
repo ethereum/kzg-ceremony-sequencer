@@ -263,7 +263,6 @@ fn bls_keygen(ikm: [u8; 64]) -> Fr {
 
 pub fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Fr> {
     // Convert tau
-    // TODO: Throw error instead of reducing
     let tau = Secret::new(Fr::from(tau.expose_secret()));
 
     // Compute powers

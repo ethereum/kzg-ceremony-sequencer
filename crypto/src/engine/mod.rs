@@ -69,6 +69,7 @@ pub trait Engine {
 #[cfg(all(test, feature = "arkworks", feature = "blst"))]
 pub mod tests {
     use super::*;
+    use hex_literal::hex;
     use proptest::{arbitrary::any, proptest, strategy::Strategy};
     use secrecy::ExposeSecret;
 
@@ -124,6 +125,24 @@ pub mod tests {
 
             assert_eq!(points1, points2);
         });
+    }
+
+    #[test]
+    fn test_tau_larger_than_modulus() {
+        let f = F(hex!(
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ));
+        let tau = Secret::new(f);
+        let mut g1_for_blst: &mut [G1] = &mut [G1::one(); 16];
+        let mut g1_for_arkworks: &mut [G1] = &mut [G1::one(); 16];
+        let add_g1_blst = BLST::add_tau_g1(&tau, &mut g1_for_blst).unwrap();
+        let add_g1_arkworks = Arkworks::add_tau_g1(&tau, &mut g1_for_arkworks).unwrap();
+        assert_eq!(add_g1_blst, add_g1_arkworks);
+        let mut g2_for_blst: &mut [G2] = &mut [G2::one(); 16];
+        let mut g2_for_arkworks: &mut [G2] = &mut [G2::one(); 16];
+        let add_g2_blst = BLST::add_tau_g2(&tau, &mut g2_for_blst).unwrap();
+        let add_g2_arkworks = Arkworks::add_tau_g2(&tau, &mut g2_for_arkworks).unwrap();
+        assert_eq!(add_g2_blst, add_g2_arkworks);
     }
 
     #[test]
