@@ -123,6 +123,17 @@ impl Transcript {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{
+        CeremonyError::{
+            G1PairingFailed, G2PairingFailed, InvalidG1Power, InvalidG2Power, PubKeyPairingFailed,
+            UnexpectedNumG1Powers, UnexpectedNumG2Powers,
+        },
+        DefaultEngine,
+        ParseError::InvalidSubgroup,
+    };
+    use ark_bls12_381::{Fr, G1Affine, G2Affine};
+    use ark_ec::{AffineCurve, ProjectiveCurve};
+    use hex_literal::hex;
 
     #[test]
     fn transcript_json() {
@@ -158,5 +169,175 @@ mod test {
         );
         let deser = serde_json::from_value::<Transcript>(json).unwrap();
         assert_eq!(deser, t);
+    }
+
+    #[test]
+    fn test_verify_g1_not_in_subgroup() {
+        let transcript = Transcript::new(2, 2);
+        let point_not_in_g1 = G1(hex!("800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
+        let bad_g1_contribution = Contribution {
+            powers:        Powers {
+                g1: vec![point_not_in_g1, point_not_in_g1],
+                g2: vec![G2::zero(), G2::zero()],
+            },
+            pot_pubkey:    G2::zero(),
+            bls_signature: BlsSignature::empty(),
+        };
+        let result = transcript
+            .verify::<DefaultEngine>(&bad_g1_contribution)
+            .err()
+            .unwrap();
+        assert!(matches!(result, InvalidG1Power(_, InvalidSubgroup)));
+    }
+
+    #[test]
+    fn test_verify_g2_not_in_subgroup() {
+        let transcript = Transcript::new(2, 2);
+        let point_not_in_g2 = G2(hex!("a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002"));
+
+        let bad_g2_contribution = Contribution {
+            powers:        Powers {
+                g1: vec![G1::zero(), G1::zero()],
+                g2: vec![point_not_in_g2, point_not_in_g2],
+            },
+            pot_pubkey:    G2::zero(),
+            bls_signature: BlsSignature::empty(),
+        };
+        let result = transcript
+            .verify::<DefaultEngine>(&bad_g2_contribution)
+            .err()
+            .unwrap();
+        assert!(matches!(result, InvalidG2Power(_, InvalidSubgroup)));
+    }
+
+    #[test]
+    fn test_verify_wrong_pubkey() {
+        let transcript = Transcript::new(2, 2);
+
+        let secret = Fr::from(42);
+        let bad_secret = Fr::from(43);
+        let g1_gen = G1::from(G1Affine::prime_subgroup_generator());
+        let g1_elem = G1::from(
+            G1Affine::prime_subgroup_generator()
+                .mul(secret)
+                .into_affine(),
+        );
+        let g2_gen = G2::from(G2Affine::prime_subgroup_generator());
+        let g2_elem = G2::from(
+            G2Affine::prime_subgroup_generator()
+                .mul(secret)
+                .into_affine(),
+        );
+        let pubkey = G2::from(
+            G2Affine::prime_subgroup_generator()
+                .mul(bad_secret)
+                .into_affine(),
+        );
+        let bad_pot_pubkey = Contribution {
+            powers:        Powers {
+                g1: vec![g1_gen, g1_elem],
+                g2: vec![g2_gen, g2_elem],
+            },
+            pot_pubkey:    pubkey,
+            bls_signature: BlsSignature::empty(),
+        };
+        assert_eq!(
+            transcript
+                .verify::<DefaultEngine>(&bad_pot_pubkey)
+                .err()
+                .unwrap(),
+            PubKeyPairingFailed
+        );
+    }
+
+    #[test]
+    fn test_verify_wrong_g1_powers() {
+        let transcript = Transcript::new(3, 2);
+        let g1_1 = G1Affine::prime_subgroup_generator();
+        let g1_2 = G1Affine::prime_subgroup_generator()
+            .mul(Fr::from(2))
+            .into_affine();
+        let g1_3 = G1Affine::prime_subgroup_generator()
+            .mul(Fr::from(3))
+            .into_affine();
+        let g2_1 = G2Affine::prime_subgroup_generator();
+        let g2_2 = G2Affine::prime_subgroup_generator()
+            .mul(Fr::from(2))
+            .into_affine();
+        let contribution = Contribution {
+            powers:        Powers {
+                // Pretend Tau is 2, but make the third element g1^3 instead of g1^4.
+                g1: vec![G1::from(g1_1), G1::from(g1_2), G1::from(g1_3)],
+                g2: vec![G2::from(g2_1), G2::from(g2_2)],
+            },
+            pot_pubkey:    G2::from(g2_2),
+            bls_signature: BlsSignature::empty(),
+        };
+        assert_eq!(
+            transcript
+                .verify::<DefaultEngine>(&contribution)
+                .err()
+                .unwrap(),
+            G1PairingFailed
+        );
+    }
+
+    #[test]
+    fn test_verify_wrong_g2_powers() {
+        let transcript = Transcript::new(3, 3);
+        let g1_1 = G1Affine::prime_subgroup_generator();
+        let g1_2 = G1Affine::prime_subgroup_generator()
+            .mul(Fr::from(2))
+            .into_affine();
+        let g1_4 = G1Affine::prime_subgroup_generator()
+            .mul(Fr::from(4))
+            .into_affine();
+        let g2_1 = G2Affine::prime_subgroup_generator();
+        let g2_2 = G2Affine::prime_subgroup_generator()
+            .mul(Fr::from(2))
+            .into_affine();
+        let g2_3 = G2Affine::prime_subgroup_generator()
+            .mul(Fr::from(3))
+            .into_affine();
+        let contribution = Contribution {
+            powers:        Powers {
+                g1: vec![G1::from(g1_1), G1::from(g1_2), G1::from(g1_4)],
+                // Pretend Tau is 2, but make the third element g2^3 instead of g2^4.
+                g2: vec![G2::from(g2_1), G2::from(g2_2), G2::from(g2_3)],
+            },
+            pot_pubkey:    G2::from(g2_2),
+            bls_signature: BlsSignature::empty(),
+        };
+        assert_eq!(
+            transcript
+                .verify::<DefaultEngine>(&contribution)
+                .err()
+                .unwrap(),
+            G2PairingFailed
+        );
+    }
+
+    #[test]
+    fn test_verify_wrong_g1_point_count() {
+        let transcript = Transcript::new(3, 3);
+        let mut contribution = transcript.contribution();
+        contribution.powers.g1 = contribution.powers.g1[0..2].to_vec();
+        let result = transcript
+            .verify::<DefaultEngine>(&contribution)
+            .err()
+            .unwrap();
+        assert_eq!(result, UnexpectedNumG1Powers(3, 2));
+    }
+
+    #[test]
+    fn test_verify_wrong_g2_point_count() {
+        let transcript = Transcript::new(3, 3);
+        let mut contribution = transcript.contribution();
+        contribution.powers.g2 = contribution.powers.g2[0..2].to_vec();
+        let result = transcript
+            .verify::<DefaultEngine>(&contribution)
+            .err()
+            .unwrap();
+        assert_eq!(result, UnexpectedNumG2Powers(3, 2));
     }
 }

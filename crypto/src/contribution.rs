@@ -54,8 +54,73 @@ impl Contribution {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
+    use crate::{
+        group::tests::{invalid_g1, invalid_g2},
+        DefaultEngine, G1,
+    };
+
+    pub fn valid_contribution() -> Contribution {
+        Contribution {
+            powers:        Powers {
+                g1: vec![G1::one()],
+                g2: vec![G2::one()],
+            },
+            pot_pubkey:    G2::one(),
+            bls_signature: BlsSignature::empty(),
+        }
+    }
+
+    pub fn invalid_g1_contribution() -> Contribution {
+        Contribution {
+            powers:        Powers {
+                g1: vec![invalid_g1()],
+                g2: vec![G2::one()],
+            },
+            pot_pubkey:    G2::one(),
+            bls_signature: BlsSignature::empty(),
+        }
+    }
+
+    pub fn invalid_g2_contribution() -> Contribution {
+        Contribution {
+            powers:        Powers {
+                g1: vec![G1::one()],
+                g2: vec![invalid_g2()],
+            },
+            pot_pubkey:    G2::one(),
+            bls_signature: BlsSignature::empty(),
+        }
+    }
+
+    pub fn invalid_pot_pubkey_contribution() -> Contribution {
+        Contribution {
+            powers:        Powers {
+                g1: vec![G1::one()],
+                g2: vec![G2::one()],
+            },
+            pot_pubkey:    invalid_g2(),
+            bls_signature: BlsSignature::empty(),
+        }
+    }
+
+    #[test]
+    fn test_validate() {
+        assert!(matches!(
+            invalid_g1_contribution().validate::<DefaultEngine>(),
+            Err(CeremonyError::InvalidG1Power(_, _))
+        ));
+        assert!(matches!(
+            invalid_g2_contribution().validate::<DefaultEngine>(),
+            Err(CeremonyError::InvalidG2Power(_, _))
+        ));
+        assert!(matches!(
+            invalid_pot_pubkey_contribution().validate::<DefaultEngine>(),
+            Err(CeremonyError::InvalidG2Power(_, _))
+        ));
+        assert!(valid_contribution().validate::<DefaultEngine>().is_ok());
+    }
 
     #[test]
     fn contribution_json() {

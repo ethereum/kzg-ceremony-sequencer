@@ -1,13 +1,11 @@
 #![cfg(test)]
 
-use crate::{
-    actions::assert_includes_contribution,
-    common::{
-        actions, harness,
-        harness::{run_test_harness, Harness},
-        mock_auth_service::{AnyTestUser, GhUser, TestUser},
-    },
+use crate::common::{
+    actions, harness,
+    harness::{run_test_harness, Builder, Harness},
+    mock_auth_service::{AnyTestUser, GhUser, TestUser},
 };
+use chrono::DateTime;
 use common::participants;
 use ethers_core::types::Address;
 use ethers_signers::{LocalWallet, Signer};
@@ -19,6 +17,7 @@ use kzg_ceremony_crypto::{
 use rand::thread_rng;
 use secrecy::Secret;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 use url::Url;
 
 mod common;
@@ -42,6 +41,127 @@ async fn test_eth_auth_happy_path() {
     let http_client = reqwest::Client::new();
     let user = harness.create_eth_user().await;
     actions::login(&harness, &http_client, &user).await;
+}
+
+#[tokio::test]
+async fn test_malformed_auth_request() {
+    let harness = run_test_harness().await;
+    let http_client = reqwest::Client::new();
+    let url = harness.app_path("auth/callback/eth");
+
+    let mut malformed_url_encoded = url.clone();
+    malformed_url_encoded.set_query(Some("foo=bar"));
+    let response = http_client.get(malformed_url_encoded).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let mut bad_base_64 = url.clone();
+    bad_base_64.set_query(Some("state=bad+base+64&code=1234"));
+    let response = http_client.get(bad_base_64).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("invalid base64 data in state parameter"));
+
+    let mut bad_json = url.clone();
+    bad_json.set_query(Some("state=bbbc&code=1234"));
+    let response = http_client.get(bad_json).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("invalid json in state parameter"));
+}
+
+#[tokio::test]
+async fn test_sessions_limit() {
+    let harness = harness::Builder::new()
+        // Set all these to giant values to make sure we can run the whole test without anyone
+        // getting kicked out of the lobby.
+        .set_lobby_checkin_tolerance(Duration::from_secs(100))
+        .set_lobby_checkin_frequency(Duration::from_secs(100))
+        .set_compute_deadline(Duration::from_secs(100))
+        .set_max_sessions_count(3)
+        .run()
+        .await;
+    let client = reqwest::Client::new();
+    // pre-compute this before we fill the lobby up
+    let csrf = actions::get_and_validate_csrf_token(&harness, None).await;
+    for _ in 0..3 {
+        let user = harness.create_eth_user().await;
+        actions::login(&harness, &client, &user).await;
+    }
+
+    let response = client
+        .get(harness.app_path("auth/request_link"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::LobbyIsFull"));
+
+    let user = harness.create_eth_user().await;
+    let response = actions::request_auth_callback(&harness, &client, &user, &csrf).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::LobbyIsFull"));
+}
+
+#[tokio::test]
+async fn test_too_new_accounts() {
+    let harness = harness::Builder::new()
+        .set_gh_max_account_creation_time(
+            DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z").unwrap(),
+        )
+        .set_eth_min_nonce(42)
+        .run()
+        .await;
+    let http_client = reqwest::Client::new();
+
+    let csrf = actions::get_and_validate_csrf_token(&harness, None).await;
+
+    let user = harness
+        .create_gh_user_with_time("kustosz".to_string(), "2021-01-01T00:00:00Z".to_string())
+        .await;
+    let response = actions::request_auth_callback(&harness, &http_client, &user, &csrf).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::UserCreatedAfterDeadline"));
+
+    let user = harness.create_eth_user_with_nonce(10).await;
+    let response = actions::request_auth_callback(&harness, &http_client, &user, &csrf).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("AuthErrorPayload::UserCreatedAfterDeadline"));
+}
+
+#[tokio::test]
+async fn test_nonexistent_eth_user() {
+    let harness = run_test_harness().await;
+    let http_client = reqwest::Client::new();
+    let csrf = actions::get_and_validate_csrf_token(&harness, None).await;
+    let response = http_client
+        .get(harness.app_path("auth/callback/eth"))
+        .query(&[("state", csrf), ("code", "1234".to_string())])
+        .send()
+        .await
+        .expect("Could not call the endpoint");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -254,6 +374,9 @@ async fn test_double_contribution() {
 async fn test_double_contribution_when_allowed() {
     let harness = harness::Builder::new()
         .allow_multi_contribution()
+        .set_lobby_checkin_frequency(Duration::from_secs(2))
+        .set_lobby_checkin_tolerance(Duration::from_secs(2))
+        .set_compute_deadline(Duration::from_secs(4))
         .run()
         .await;
     let http_client = reqwest::Client::new();
@@ -375,7 +498,13 @@ async fn test_large_lobby_with_slow_compute_users() {
 
 #[tokio::test]
 async fn test_various_contributors() {
-    let harness = Arc::new(run_test_harness().await);
+    let harness = Builder::new()
+        .set_compute_deadline(Duration::from_millis(4000))
+        .set_lobby_checkin_frequency(Duration::from_millis(2000))
+        .set_lobby_checkin_tolerance(Duration::from_millis(2000))
+        .run()
+        .await;
+    let harness = Arc::new(harness);
     let client = Arc::new(reqwest::Client::new());
     let n = 40;
     let handles = (0..n).into_iter().map(|i| {
@@ -398,7 +527,7 @@ async fn test_various_contributors() {
     });
 
     let post_conditions = futures::future::join_all(handles).await;
-    let final_transcript = harness.read_transcript_file().await;
+    let final_transcript = actions::get_transcript(harness.as_ref(), client.as_ref()).await;
     post_conditions
         .into_iter()
         .map(|r| r.expect("must terminate successfully"))
@@ -471,9 +600,9 @@ async fn test_wrong_ecdsa_signature() {
     )
     .await;
 
-    let transcript = harness.read_transcript_file().await;
+    let transcript = actions::get_transcript(&harness, &http_client).await;
 
-    assert_includes_contribution(&transcript, &contribution, &user, false, true)
+    actions::assert_includes_contribution(&transcript, &contribution, &user, false, true)
 }
 
 #[tokio::test]
@@ -503,5 +632,68 @@ async fn test_wrong_bls_signature() {
 
     let transcript = harness.read_transcript_file().await;
 
-    assert_includes_contribution(&transcript, &contribution, &user, false, false)
+    actions::assert_includes_contribution(&transcript, &contribution, &user, false, false)
+}
+
+#[tokio::test]
+async fn test_graceful_restart() {
+    let harness = Arc::new(RwLock::new(run_test_harness().await));
+    let client = Arc::new(reqwest::Client::new());
+    let n = 10;
+    let handles = (0..n).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        tokio::spawn(async move {
+            let h = h.read().await;
+            let user = if i % 2 == 0 {
+                h.create_gh_user(format!("user {i}")).await
+            } else {
+                h.create_eth_user().await
+            };
+            // modulus here must be odd to test the full user / participant matrix.
+            match i % 5 {
+                0 => participants::wrong_ecdsa(&h, c.as_ref(), user).await,
+                1 => participants::slow_compute(&h, c.as_ref(), user).await,
+                2 => participants::wrong_bls(&h, c.as_ref(), user).await,
+                _ => participants::well_behaved(&h, c.as_ref(), user).await,
+            }
+        })
+    });
+
+    let post_conditions_pre_restart = futures::future::join_all(handles).await;
+
+    {
+        let mut h = harness.write().await;
+        h.stop().await;
+        h.start().await;
+    }
+
+    let handles = (0..n).into_iter().map(|i| {
+        let h = harness.clone();
+        let c = client.clone();
+        tokio::spawn(async move {
+            let h = h.read().await;
+            let user = if i % 2 == 0 {
+                h.create_gh_user(format!("user restarted {i}")).await
+            } else {
+                h.create_eth_user().await
+            };
+            // modulus here must be odd to test the full user / participant matrix.
+            match i % 5 {
+                0 => participants::wrong_ecdsa(&h, c.as_ref(), user).await,
+                1 => participants::slow_compute(&h, c.as_ref(), user).await,
+                2 => participants::wrong_bls(&h, c.as_ref(), user).await,
+                _ => participants::well_behaved(&h, c.as_ref(), user).await,
+            }
+        })
+    });
+
+    let post_conditions_post_restart = futures::future::join_all(handles).await;
+
+    let final_transcript = harness.read().await.read_transcript_file().await;
+    post_conditions_pre_restart
+        .into_iter()
+        .chain(post_conditions_post_restart.into_iter())
+        .map(|r| r.expect("must terminate successfully"))
+        .for_each(|check| check(&final_transcript));
 }

@@ -103,7 +103,27 @@ impl BatchTranscript {
     }
 }
 
+#[cfg(test)]
+pub mod tests {
+    use crate::{
+        BatchTranscript, CeremoniesError::UnexpectedNumContributions, DefaultEngine, Identity,
+    };
+
+    #[test]
+    fn test_verify_add() {
+        let mut transcript = BatchTranscript::new([(2, 2), (3, 3)].iter());
+        let mut contrib = transcript.contribution();
+        contrib.contributions = contrib.contributions[0..1].to_vec();
+        let result = transcript
+            .verify_add::<DefaultEngine>(contrib, Identity::None)
+            .err()
+            .unwrap();
+        assert_eq!(result, UnexpectedNumContributions(2, 1));
+    }
+}
+
 #[cfg(feature = "bench")]
+#[cfg(not(tarpaulin_include))]
 #[doc(hidden)]
 pub mod bench {
     use super::*;

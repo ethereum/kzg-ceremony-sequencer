@@ -135,9 +135,9 @@ pub async fn auth_client_link(
     Extension(eth_client): Extension<EthOAuthClient>,
     Extension(gh_client): Extension<GithubOAuthClient>,
 ) -> Result<AuthUrl, AuthErrorPayload> {
-    let lobby_size = lobby_state.get_lobby_size().await;
+    let session_count = lobby_state.get_session_count().await;
 
-    if lobby_size >= options.lobby.max_lobby_size {
+    if session_count >= options.lobby.max_sessions_count {
         return Err(AuthErrorPayload::LobbyIsFull);
     }
 
@@ -482,4 +482,12 @@ async fn post_authenticate(
         session_id: session_id.to_string(),
         as_redirect_to: redirect_to,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        assert_eq!(2 + 2, 4);
+    }
 }
