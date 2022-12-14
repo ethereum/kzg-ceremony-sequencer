@@ -2,7 +2,7 @@ FROM rust:1.64 as build-env
 WORKDIR /src
 
 RUN apt-get update &&\
-    apt-get install -y libssl-dev texinfo libcap2-bin &&\
+    apt-get install -y libssl-dev texinfo libcap2-bin protobuf-compiler &&\
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ARG BIN=rust-app
