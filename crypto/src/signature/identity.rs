@@ -149,6 +149,8 @@ mod tests {
         let identity = Identity::None;
         assert_eq!(identity.to_string(), "");
         assert_eq!(identity, "".parse().unwrap());
+        assert_eq!(identity.provider_name(), "None");
+        assert_eq!(identity.nickname(), "<<unauthorized>>");
     }
 
     #[test]
@@ -164,6 +166,21 @@ mod tests {
                 .parse()
                 .unwrap()
         );
+        assert_eq!(
+            "eth|D".parse::<Identity>().err().unwrap(),
+            IdentityError::InvalidEthereumAddress
+        );
+        assert_eq!(
+            "eth|0xD".parse::<Identity>().err().unwrap(),
+            IdentityError::InvalidEthereumAddress
+        );
+        assert_eq!(
+            "eth|0x0000000000000000000000000000000000000000|"
+                .parse::<Identity>()
+                .err()
+                .unwrap(),
+            IdentityError::TooManyFields
+        );
     }
 
     #[test]
@@ -174,5 +191,21 @@ mod tests {
         };
         assert_eq!(identity.to_string(), "git|123|username");
         assert_eq!(identity, "git|123|username".parse().unwrap());
+        assert_eq!(
+            "git|123|username|".parse::<Identity>().err().unwrap(),
+            IdentityError::TooManyFields
+        );
+    }
+
+    #[test]
+    fn test_invalid() {
+        assert_eq!(
+            "|".parse::<Identity>().err().unwrap(),
+            IdentityError::TooManyFields
+        );
+        assert_eq!(
+            "google|".parse::<Identity>().err().unwrap(),
+            IdentityError::UnsupportedType
+        );
     }
 }

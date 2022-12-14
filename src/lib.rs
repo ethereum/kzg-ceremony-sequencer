@@ -150,7 +150,6 @@ pub async fn start_server(
     ));
 
     let app = Router::new()
-        .route("/hello_world", get(hello_world))
         .route("/auth/request_link", get(auth_client_link))
         .route("/auth/callback/github", get(github_callback))
         .route("/auth/callback/eth", get(eth_callback))
@@ -185,11 +184,6 @@ pub async fn start_server(
         );
     let server = Server::try_bind(&addr)?.serve(app.into_make_service());
     Ok(server)
-}
-
-#[allow(clippy::unused_async)] // Required for axum function signature
-async fn hello_world() -> Html<&'static str> {
-    Html("<h1>Server is Running</h1>")
 }
 
 #[allow(clippy::unused_async)] // Required for axum function signature

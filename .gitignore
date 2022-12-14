@@ -5,3 +5,4 @@ transcript.json
 .idea
 *.iml
 storage.db*
+*.profraw

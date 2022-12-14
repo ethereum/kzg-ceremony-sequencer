@@ -196,11 +196,10 @@ pub async fn contribute_successfully(
 ) {
     let response = request_contribute(harness, http_client, session_id, contribution).await;
 
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "Response must be successful"
-    );
+    if response.status() != StatusCode::OK {
+        println!("Response: {:?}", response.text().await);
+        panic!("Response must be successful");
+    }
 
     let response_json = response
         .json::<Value>()
@@ -301,4 +300,20 @@ pub fn assert_includes_contribution(
                 _ => (),
             }
         })
+}
+
+pub async fn get_transcript(harness: &Harness, client: &reqwest::Client) -> BatchTranscript {
+    let response = client
+        .get(harness.app_path("info/current_state"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let from_app = response
+        .json::<BatchTranscript>()
+        .await
+        .expect("must be a valid transcript");
+    let from_file = harness.read_transcript_file().await;
+    assert_eq!(from_app, from_file);
+    from_app
 }

@@ -84,7 +84,67 @@ pub fn get_pot_pubkeys<E: Engine>(entropy: &Entropy) -> Vec<G2> {
     result
 }
 
+#[cfg(test)]
+pub mod tests {
+    use crate::{
+        batch_contribution::derive_taus,
+        contribution::test::{invalid_g2_contribution, valid_contribution},
+        engine::tests::arb_entropy,
+        get_pot_pubkeys,
+        signature::EcdsaSignature,
+        BatchContribution, CeremoniesError, DefaultEngine, G2,
+    };
+    use ark_bls12_381::{Fr, G2Affine};
+    use ark_ec::{AffineCurve, ProjectiveCurve};
+    use proptest::proptest;
+    use secrecy::{ExposeSecret, Secret};
+
+    #[test]
+    fn test_validate() {
+        let mut invalid = BatchContribution {
+            contributions:   vec![
+                valid_contribution(),
+                invalid_g2_contribution(),
+                valid_contribution(),
+            ],
+            ecdsa_signature: EcdsaSignature::empty(),
+        };
+        assert!(matches!(
+            invalid.validate::<DefaultEngine>(),
+            Err(CeremoniesError::InvalidCeremony(1, _))
+        ));
+
+        let mut valid = BatchContribution {
+            contributions:   vec![valid_contribution(), valid_contribution()],
+            ecdsa_signature: EcdsaSignature::empty(),
+        };
+        assert!(valid.validate::<DefaultEngine>().is_ok());
+    }
+
+    #[test]
+    fn test_get_pot_pubkeys() {
+        proptest!(|(entropy in arb_entropy())| {
+            let secret = Secret::new(entropy);
+            let result = get_pot_pubkeys::<DefaultEngine>(&secret);
+            let taus = derive_taus::<DefaultEngine>(&secret, 4)
+                .into_iter()
+                .map(|tau| *tau.expose_secret());
+            let expected: Vec<_> = taus
+                .map(|tau| {
+                    let fr = Fr::from(&tau);
+                    let g2 = G2Affine::prime_subgroup_generator()
+                        .mul(fr)
+                        .into_affine();
+                    G2::from(g2)
+                })
+                .collect();
+            assert_eq!(result, expected);
+        });
+    }
+}
+
 #[cfg(feature = "bench")]
+#[cfg(not(tarpaulin_include))]
 #[doc(hidden)]
 pub mod bench {
     use super::*;
