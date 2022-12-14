@@ -123,8 +123,43 @@ pub mod tests {
         assert!(BLST::validate_g1(&[g1]).is_err());
         assert!(Arkworks::validate_g1(&[g1]).is_err());
 
-        //ddeserialization_fails_not_in_curve
+        //deserialization_fails_not_in_curve
         let g1 = G1(hex!("8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde0"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        //Exactly the modulus, q
+        let g1 = G1(hex!("9a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+ 
+        //One more than the modulus, q
+        let g1 = G1(hex!("9a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaac"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        //deserialization_fails_infinity_with_true_b_flag
+        let g1 = G1(hex!("c01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        //deserialization_fails_infinity_with_false_b_flag
+        let g1 = G1(hex!("800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        //deserialization_fails_with_wrong_c_flag
+        let g1 = G1(hex!("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        //deserialization_fails_with_b_flag_and_x_nonzero
+        let g1 = G1(hex!("c123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        assert!(BLST::validate_g1(&[g1]).is_err());
+        assert!(Arkworks::validate_g1(&[g1]).is_err());
+
+        //deserialization_fails_with_b_flag_and_a_flag_true
+        let g1 = G1(hex!("e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
         assert!(BLST::validate_g1(&[g1]).is_err());
         assert!(Arkworks::validate_g1(&[g1]).is_err());
     }
