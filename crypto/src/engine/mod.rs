@@ -69,6 +69,7 @@ pub trait Engine {
 #[cfg(all(test, feature = "arkworks", feature = "blst"))]
 pub mod tests {
     use super::*;
+    use crate::DefaultEngine;
     use hex_literal::hex;
     use proptest::{arbitrary::any, proptest, strategy::Strategy};
     use secrecy::ExposeSecret;
@@ -132,17 +133,20 @@ pub mod tests {
         let f = F(hex!(
             "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
         ));
-        let tau = Secret::new(f);
-        let mut g1_for_blst: &mut [G1] = &mut [G1::one(); 16];
-        let mut g1_for_arkworks: &mut [G1] = &mut [G1::one(); 16];
-        let add_g1_blst = BLST::add_tau_g1(&tau, &mut g1_for_blst).unwrap();
-        let add_g1_arkworks = Arkworks::add_tau_g1(&tau, &mut g1_for_arkworks).unwrap();
-        assert_eq!(add_g1_blst, add_g1_arkworks);
-        let mut g2_for_blst: &mut [G2] = &mut [G2::one(); 16];
-        let mut g2_for_arkworks: &mut [G2] = &mut [G2::one(); 16];
-        let add_g2_blst = BLST::add_tau_g2(&tau, &mut g2_for_blst).unwrap();
-        let add_g2_arkworks = Arkworks::add_tau_g2(&tau, &mut g2_for_arkworks).unwrap();
-        assert_eq!(add_g2_blst, add_g2_arkworks);
+        let reduced_f = F(hex!(
+            "fdffffff0100000002480300fab78458f54fbcecef4f8c996f05c5ac59b12418"
+        ));
+        let g1_1 = &mut [G1::one(); 16];
+        let g1_2 = &mut [G1::one(); 16];
+        let add_g1 = DefaultEngine::add_tau_g1(&Secret::new(f), g1_1).unwrap();
+        let add_g1_reduced = DefaultEngine::add_tau_g1(&Secret::new(reduced_f), g1_2).unwrap();
+        assert_eq!(add_g1, add_g1_reduced);
+
+        let g2_1 = &mut [G2::one(); 16];
+        let g2_2 = &mut [G2::one(); 16];
+        let add_g2 = DefaultEngine::add_tau_g2(&Secret::new(f), g2_1).unwrap();
+        let add_g2_reduced = DefaultEngine::add_tau_g2(&Secret::new(reduced_f), g2_2).unwrap();
+        assert_eq!(add_g2, add_g2_reduced);
     }
 
     #[test]
