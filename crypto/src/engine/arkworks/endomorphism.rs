@@ -100,7 +100,7 @@ pub fn g1_endomorphism(p: &G1Affine) -> G1Affine {
 }
 
 #[inline]
-pub fn g2_endomorphism(p: &G2Affine) -> G2Affine {
+fn g2_endomorphism(p: &G2Affine) -> G2Affine {
     // The p-power endomorphism for G2 is defined as follows:
     // 1. Note that G2 is defined on curve E': y^2 = x^3 + 4(u+1).
     //    To map a point (x, y) in E' to (s, t) in E,
@@ -195,6 +195,9 @@ pub mod test {
         super::test::{arb_fr, arb_g1, arb_g2},
         *,
     };
+    use crate::engine::arkworks::test::{
+        arb_g1_probably_not_in_subgroup, arb_g2_probably_not_in_subgroup,
+    };
     use ark_ec::AffineCurve;
     use ark_ff::{BigInteger256, PrimeField};
     use proptest::proptest;
@@ -209,8 +212,16 @@ pub mod test {
     }
 
     #[test]
-    fn test_g1_check() {
-        // TODO: Generate points not in prime order subgroup.
+    fn test_negative_g1_check() {
+        proptest!(|(p in arb_g1_probably_not_in_subgroup())| {
+            let expected = p.is_in_correct_subgroup_assuming_on_curve();
+            let value = g1_subgroup_check(&p);
+            assert_eq!(value, expected);
+        });
+    }
+
+    #[test]
+    fn test_positive_g1_check() {
         proptest!(|(p in arb_g1())| {
             let expected = p.is_in_correct_subgroup_assuming_on_curve();
             let value = g1_subgroup_check(&p);
@@ -238,19 +249,17 @@ pub mod test {
     }
 
     #[test]
-    fn test_g2_endomorphism() {
+    fn test_positive_g2_check() {
         proptest!(|(p in arb_g2())| {
-            let _value = g2_endomorphism(&p);
-            // TODO: Compute expected value
-            // let expected = g2_mul_bigint(&p, &G1_LAMBDA_2).neg().into_affine();
-            // assert_eq!(value, expected);
+            let value = g2_subgroup_check(&p);
+            let expected = p.is_in_correct_subgroup_assuming_on_curve();
+            assert_eq!(value, expected);
         });
     }
 
     #[test]
-    fn test_g2_check() {
-        // TODO: Generate points not in prime order subgroup.
-        proptest!(|(p in arb_g2())| {
+    fn test_negative_g2_check() {
+        proptest!(|(p in arb_g2_probably_not_in_subgroup())| {
             let value = g2_subgroup_check(&p);
             let expected = p.is_in_correct_subgroup_assuming_on_curve();
             assert_eq!(value, expected);
