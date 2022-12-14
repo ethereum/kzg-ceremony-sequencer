@@ -1,4 +1,7 @@
-use crate::{actions, actions::entropy_from_str, AnyTestUser, Harness, TestUser};
+use crate::{
+    actions, actions::entropy_from_str, common::mock_auth_service::EthUser, AnyTestUser, Harness,
+    TestUser,
+};
 use ethers_core::types::Signature;
 use ethers_signers::Signer;
 use http::StatusCode;
@@ -50,7 +53,7 @@ pub async fn well_behaved(
         )
         .expect("Adding entropy must be possible");
 
-    if let AnyTestUser::Eth(wallet) = &user.user {
+    if let AnyTestUser::Eth(EthUser { wallet, .. }) = &user.user {
         contribution.ecdsa_signature = EcdsaSignature(Some(
             wallet
                 .sign_typed_data(&signature::ContributionTypedData::from(&contribution))

@@ -2,12 +2,12 @@ use axum::{
     routing::{get, post, IntoMakeService},
     Extension, Form, Json, Router, TypedHeader,
 };
+use ethers_core::abi::Address;
 use ethers_signers::{LocalWallet, Signer};
 use headers::{authorization::Bearer, Authorization};
 use http::StatusCode;
 use hyper::{server::conn::AddrIncoming, Server};
 use kzg_ceremony_crypto::signature::identity::Identity;
-use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -48,17 +48,22 @@ impl GhUsersState {
 
 #[derive(Default)]
 struct EthUsersState {
-    users:   HashMap<u64, LocalWallet>,
+    users:   HashMap<u64, EthUser>,
     next_id: u64,
 }
 
 impl EthUsersState {
-    fn register(&mut self) -> (u64, LocalWallet) {
+    fn register(&mut self, user: EthUser) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        let wallet = LocalWallet::new(&mut thread_rng());
-        self.users.insert(id, wallet.clone());
-        (id, wallet)
+        self.users.insert(id, user);
+        id
+    }
+
+    fn find_user_by_address(&self, addr: Address) -> Option<&EthUser> {
+        self.users
+            .values()
+            .find(|user| user.wallet.address() == addr)
     }
 }
 
@@ -69,8 +74,20 @@ pub struct GhUser {
 }
 
 #[derive(Clone, Debug)]
+pub struct EthUser {
+    pub wallet: LocalWallet,
+    pub nonce:  usize,
+}
+
+impl EthUser {
+    fn address(&self) -> Address {
+        self.wallet.address()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum AnyTestUser {
-    Eth(LocalWallet),
+    Eth(EthUser),
     Gh(GhUser),
 }
 
@@ -112,11 +129,11 @@ impl AuthState {
         }
     }
 
-    pub async fn register_eth_user(&self) -> TestUser {
-        let (id, wallet) = self.eth_users.write().await.register();
+    pub async fn register_eth_user(&self, user: EthUser) -> TestUser {
+        let id = self.eth_users.write().await.register(user.clone());
         TestUser {
             id,
-            user: AnyTestUser::Eth(wallet),
+            user: AnyTestUser::Eth(user),
         }
     }
 
@@ -129,7 +146,7 @@ impl AuthState {
             .map(Clone::clone)
     }
 
-    pub async fn get_eth_user(&self, auth_code: u64) -> Option<LocalWallet> {
+    pub async fn get_eth_user(&self, auth_code: u64) -> Option<EthUser> {
         self.eth_users
             .read()
             .await
@@ -238,8 +255,24 @@ async fn eth_userinfo(
     }
 }
 
-async fn eth_rpc() -> (StatusCode, Json<Value>) {
-    // ignore the request and just let it through, assuming we're asking for
-    // nonce and returning a number large enough to pass validation
-    (StatusCode::OK, Json(json!({"result": "0x1F"})))
+async fn eth_rpc(
+    Json(body): Json<serde_json::Value>,
+    Extension(state): Extension<AuthState>,
+) -> (StatusCode, Json<Value>) {
+    assert_eq!(body["method"].as_str().unwrap(), "eth_getTransactionCount");
+    let addr = body
+        .get("params")
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .as_str()
+        .unwrap();
+    let state = state.eth_users.read().await;
+    let user = state
+        .find_user_by_address(Address::from_str(addr).unwrap())
+        .unwrap();
+    (
+        StatusCode::OK,
+        Json(json!({ "result": format!("0x{:x}", user.nonce) })),
+    )
 }

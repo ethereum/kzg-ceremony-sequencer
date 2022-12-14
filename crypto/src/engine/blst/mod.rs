@@ -278,17 +278,20 @@ fn random_factors(n: usize) -> (Vec<blst_scalar>, blst_scalar) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::arkworks::bench::{rand_g1, rand_g2};
+    use crate::engine::tests::{arb_g1, arb_g2};
+    use proptest::proptest;
 
     #[test]
     fn test_verify_g1() {
-        let powers = [rand_g1().into()];
-        let tau = rand_g2().into();
-        let _ = BLST::verify_g1(&powers, tau);
+        proptest!(|(g1 in arb_g1(), g2 in arb_g2())| {
+            let powers = [g1];
+            BLST::verify_g1(&powers, g2).unwrap();
+        });
     }
 }
 
 #[cfg(feature = "bench")]
+#[cfg(not(tarpaulin_include))]
 #[doc(hidden)]
 pub mod bench {
     use super::{super::bench::bench_engine, *};

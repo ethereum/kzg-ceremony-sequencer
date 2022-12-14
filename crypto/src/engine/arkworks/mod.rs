@@ -256,7 +256,7 @@ fn bls_keygen(ikm: [u8; 64]) -> Fr {
             return fr;
         }
         hasher = Sha256::new();
-        hasher.update(&salt);
+        hasher.update(salt);
         salt = hasher.finalize();
     }
 }
@@ -330,6 +330,7 @@ pub mod test {
 }
 
 #[cfg(feature = "bench")]
+#[cfg(not(tarpaulin_include))]
 #[doc(hidden)]
 pub mod bench {
     use super::{super::bench::bench_engine, *};
