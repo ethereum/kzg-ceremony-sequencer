@@ -86,7 +86,9 @@ impl IntoResponse for ContributeError {
             Self::InvalidContribution(e) => return CeremoniesErrorFormatter(e).into_response(),
             Self::ReceiptSigning(err) => return err.into_response(),
             Self::StorageError(err) => return err.into_response(),
-            Self::TaskError(_) => (StatusCode::INTERNAL_SERVER_ERROR, error_to_json(&self)),
+            Self::TaskError(_) | Self::TranscriptIOError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, error_to_json(&self))
+            }
         };
 
         (status, body).into_response()

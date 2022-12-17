@@ -263,7 +263,6 @@ fn bls_keygen(ikm: [u8; 64]) -> Fr {
 
 pub fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Fr> {
     // Convert tau
-    // TODO: Throw error instead of reducing
     let tau = Secret::new(Fr::from(tau.expose_secret()));
 
     // Compute powers
@@ -307,10 +306,14 @@ impl From<Fr> for F {
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use ark_bls12_381::{Fq, Fq2, FqParameters};
     use ark_ec::ProjectiveCurve;
-    use ark_ff::BigInteger256;
+    use ark_ff::{BigInteger256, BigInteger384, FpParameters};
     use proptest::{arbitrary::any, strategy::Strategy};
-    use ruint::{aliases::U256, uint};
+    use ruint::{
+        aliases::{U256, U384},
+        uint,
+    };
 
     #[allow(clippy::missing_panics_doc)]
     pub fn arb_fr() -> impl Strategy<Value = Fr> {
@@ -320,8 +323,38 @@ pub mod test {
         })
     }
 
+    fn arb_fq() -> impl Strategy<Value = Fq> {
+        any::<U384>().prop_map(|mut n| {
+            n %= <BigInteger384 as Into<U384>>::into(FqParameters::MODULUS);
+            Fq::from_repr(BigInteger384::from(n)).expect("n is smaller than modulus")
+        })
+    }
+
+    pub fn arb_g1_probably_not_in_subgroup() -> impl Strategy<Value = G1Affine> {
+        arb_fq().prop_map(|mut x| loop {
+            if let Some(p) = G1Affine::get_point_from_x(x, false) {
+                return p;
+            }
+            x += Fq::one();
+        })
+    }
+
     pub fn arb_g1() -> impl Strategy<Value = G1Affine> {
         arb_fr().prop_map(|s| G1Affine::prime_subgroup_generator().mul(s).into_affine())
+    }
+
+    pub fn arb_g2_probably_not_in_subgroup() -> impl Strategy<Value = G2Affine> {
+        arb_fq().prop_flat_map(|x1| {
+            arb_fq().prop_map(move |mut x2| loop {
+                let mut x1 = x1;
+                let x = Fq2::new(x1, x2);
+                if let Some(p) = G2Affine::get_point_from_x(x, false) {
+                    return p;
+                }
+                x1 += Fq::one();
+                x2 += Fq::one() + Fq::one();
+            })
+        })
     }
 
     pub fn arb_g2() -> impl Strategy<Value = G2Affine> {

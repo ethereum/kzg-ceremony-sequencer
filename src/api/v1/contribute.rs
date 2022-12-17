@@ -1,5 +1,5 @@
 use crate::{
-    io::write_json_file,
+    io::{write_json_file, TranscriptIoError},
     keys::{SharedKeys, Signature, SignatureError},
     lobby::SharedLobbyState,
     receipt::Receipt,
@@ -42,6 +42,8 @@ pub enum ContributeError {
     ReceiptSigning(SignatureError),
     #[error("storage error: {0}")]
     StorageError(#[from] StorageError),
+    #[error("Transcript IO error: {0}")]
+    TranscriptIOError(#[from] TranscriptIoError),
     #[error("background task error: {0}")]
     TaskError(#[from] JoinError),
 }
@@ -87,7 +89,7 @@ pub async fn contribute(
             return Err(e);
         }
 
-        write_json_file(
+        let result = write_json_file(
             options.transcript_file,
             options.transcript_in_progress_file,
             shared_transcript,
@@ -96,6 +98,11 @@ pub async fn contribute(
 
         lobby_state.clear_current_contributor().await;
         storage.finish_contribution(&session_id.0).await?;
+
+        if let Err(e) = result {
+            error!("failed to write transcript: {}", e);
+            return Err(ContributeError::TranscriptIOError(e));
+        }
 
         num_contributions.fetch_add(1, Ordering::Relaxed);
 
@@ -291,7 +298,9 @@ mod tests {
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
+        let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone())
+            .await
+            .unwrap();
         assert_eq!(transcript, transcript_1);
         lobby_state
             .insert_session(participant.clone(), create_test_session_info(100))
@@ -315,7 +324,9 @@ mod tests {
         .await;
 
         assert!(matches!(result, Ok(_)));
-        let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone()).await;
+        let transcript = read_json_file::<BatchTranscript>(cfg.transcript_file.clone())
+            .await
+            .unwrap();
         assert_eq!(transcript, transcript_2);
     }
 

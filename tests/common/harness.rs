@@ -61,7 +61,9 @@ pub struct Harness {
 
 impl Harness {
     pub async fn read_transcript_file(&self) -> BatchTranscript {
-        read_json_file(self.options.transcript_file.clone()).await
+        read_json_file(self.options.transcript_file.clone())
+            .await
+            .unwrap()
     }
 
     pub async fn create_gh_user(&self, name: String) -> TestUser {

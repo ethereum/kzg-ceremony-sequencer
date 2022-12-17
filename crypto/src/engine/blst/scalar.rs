@@ -5,6 +5,8 @@ use blst::{
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use std::ops::Deref;
+use zeroize::Zeroize;
 
 pub fn random_fr(entropy: [u8; 32]) -> blst_fr {
     // Use ChaCha20 CPRNG
@@ -114,5 +116,27 @@ impl From<&blst_fr> for F {
             blst_lendian_from_scalar(ret.as_mut_ptr(), &scalar);
         }
         Self(ret)
+    }
+}
+
+pub struct Scalar(blst_scalar);
+
+impl Deref for Scalar {
+    type Target = blst_scalar;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Zeroize for Scalar {
+    fn zeroize(&mut self) {
+        self.0.b.zeroize();
+    }
+}
+
+impl From<blst_scalar> for Scalar {
+    fn from(s: blst_scalar) -> Self {
+        Self(s)
     }
 }

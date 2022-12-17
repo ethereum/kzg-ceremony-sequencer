@@ -5,8 +5,6 @@
 //! * Add support for BLST backend.
 //! * Better API for passing entropy (`Secret<_>` etc.)
 
-#![allow(clippy::missing_errors_doc)] // TODO
-
 #[cfg(feature = "arkworks")]
 mod arkworks;
 #[cfg(feature = "blst")]
@@ -32,31 +30,60 @@ pub trait Engine {
     ///
     /// Valid mean that they are uniquely encoded in compressed ZCash format and
     /// represent curve points in the prime order subgroup.
+    ///
+    /// # Errors
+    /// Returns an error if any of the `points` is not a compressed ZCash format
+    /// point on the curve, or if the point is not in the correct prime order
+    /// subgroup.
     fn validate_g1(points: &[G1]) -> Result<(), CeremonyError>;
 
     /// Verifies that the given G2 points are valid.
     ///
     /// Valid mean that they are uniquely encoded in compressed ZCash format and
     /// represent curve points in the prime order subgroup.
+    ///
+    /// # Errors
+    /// Returns an error if any of the `points` is not a compressed ZCash format
+    /// point on the curve, or if the point is not in the correct prime order
+    /// subgroup.
     fn validate_g2(points: &[G2]) -> Result<(), CeremonyError>;
 
     /// Verify that the pubkey contains the contribution added
     /// from `previous` to `tau`.
+    ///
+    /// # Errors
+    /// Returns an error if any of the points is invalid, or if the pairing
+    /// check fails.
     fn verify_pubkey(tau: G1, previous: G1, pubkey: G2) -> Result<(), CeremonyError>;
 
     /// Verify that `powers` contains a sequence of powers of `tau`.
+    ///
+    /// # Errors
+    /// Returns an error if any of the points is invalid, or if the points are
+    /// not a valid sequence of powers.
     fn verify_g1(powers: &[G1], tau: G2) -> Result<(), CeremonyError>;
 
     /// Verify that `g1` and `g2` contain the same values.
+    ///
+    /// # Errors
+    /// Returns an error if any of the points is invalid, if `g2` is not a valid
+    /// sequence of powers, or if `g1` and `g2` are sequences with different
+    /// exponents.
     fn verify_g2(g1: &[G1], g2: &[G2]) -> Result<(), CeremonyError>;
 
     /// Derive a secret scalar $τ$ from the given entropy.
     fn generate_tau(entropy: &Entropy) -> Tau;
 
     /// Multiply elements of `powers` by powers of $τ$.
+    ///
+    /// # Errors
+    /// Returns an error if any of `powers` is not a valid curve point.
     fn add_tau_g1(tau: &Tau, powers: &mut [G1]) -> Result<(), CeremonyError>;
 
     /// Multiply elements of `powers` by powers of $τ$.
+    ///
+    /// # Errors
+    /// Returns an error if any of `powers` is not a valid curve point.
     fn add_tau_g2(tau: &Tau, powers: &mut [G2]) -> Result<(), CeremonyError>;
 
     /// Sign a message with `CYPHER_SUITE`, using $τ$ as the secret key.
@@ -69,6 +96,8 @@ pub trait Engine {
 #[cfg(all(test, feature = "arkworks", feature = "blst"))]
 pub mod tests {
     use super::*;
+    use crate::DefaultEngine;
+    use hex_literal::hex;
     use proptest::{arbitrary::any, proptest, strategy::Strategy};
     use secrecy::ExposeSecret;
 
@@ -124,6 +153,27 @@ pub mod tests {
 
             assert_eq!(points1, points2);
         });
+    }
+
+    #[test]
+    fn test_tau_larger_than_modulus() {
+        let f = F(hex!(
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ));
+        let reduced_f = F(hex!(
+            "fdffffff0100000002480300fab78458f54fbcecef4f8c996f05c5ac59b12418"
+        ));
+        let g1_1 = &mut [G1::one(); 16];
+        let g1_2 = &mut [G1::one(); 16];
+        DefaultEngine::add_tau_g1(&Secret::new(f), g1_1).unwrap();
+        DefaultEngine::add_tau_g1(&Secret::new(reduced_f), g1_2).unwrap();
+        assert_eq!(g1_1, g1_2);
+
+        let g2_1 = &mut [G2::one(); 16];
+        let g2_2 = &mut [G2::one(); 16];
+        DefaultEngine::add_tau_g2(&Secret::new(f), g2_1).unwrap();
+        DefaultEngine::add_tau_g2(&Secret::new(reduced_f), g2_2).unwrap();
+        assert_eq!(g2_1, g2_2);
     }
 
     #[test]

@@ -12,7 +12,8 @@ pub struct Receipt {
 
 impl Receipt {
     pub async fn sign(&self, keys: &Keys) -> Result<(String, Signature), SignatureError> {
-        let receipt_message = serde_json::to_string(self).unwrap();
+        let receipt_message =
+            serde_json::to_string(self).map_err(|_| SignatureError::SignatureCreation)?;
         keys.sign(&receipt_message)
             .await
             .map(|sig| (receipt_message, sig))
