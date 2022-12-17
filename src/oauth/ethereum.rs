@@ -23,7 +23,7 @@ pub struct EthAuthOptions {
     )]
     pub eth_rpc_url: Secret,
 
-    //// Sign-in-with-Ethereum OAuth2 authorization url.
+    /// Sign-in-with-Ethereum OAuth2 authorization url.
     #[clap(
         long,
         env,
@@ -31,11 +31,11 @@ pub struct EthAuthOptions {
     )]
     pub eth_auth_url: String,
 
-    //// Sign-in-with-Ethereum OAuth2 token url.
+    /// Sign-in-with-Ethereum OAuth2 token url.
     #[clap(long, env, default_value = "https://oidc.signinwithethereum.org/token")]
     pub eth_token_url: String,
 
-    //// Sign-in-with-Ethereum OAuth2 user info url.
+    /// Sign-in-with-Ethereum OAuth2 user info url.
     #[clap(
         long,
         env,
@@ -43,15 +43,15 @@ pub struct EthAuthOptions {
     )]
     pub eth_userinfo_url: String,
 
-    //// Sign-in-with-Ethereum OAuth2 callback redirect url.
+    /// Sign-in-with-Ethereum OAuth2 callback redirect url.
     #[clap(long, env, default_value = "http://127.0.0.1:3000/auth/callback/eth")]
     pub eth_redirect_url: String,
 
-    //// Sign-in-with-Ethereum OAuth2 client access id.
+    /// Sign-in-with-Ethereum OAuth2 client access id.
     #[clap(long, env)]
     pub eth_client_id: Secret,
 
-    //// Sign-in-with-Ethereum OAuth2 client access key.
+    /// Sign-in-with-Ethereum OAuth2 client access key.
     #[clap(long, env)]
     pub eth_client_secret: Secret,
 }
@@ -68,8 +68,6 @@ impl Deref for EthOAuthClient {
         &self.client
     }
 }
-
-// TODO: Log ETH RPC connection
 
 pub fn eth_oauth_client(options: &EthAuthOptions) -> EthOAuthClient {
     EthOAuthClient {
