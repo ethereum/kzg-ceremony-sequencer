@@ -42,7 +42,7 @@ impl Engine for BLST {
             .map(|(&p, tau)| {
                 let p = blst_p1_affine::try_from(p)?;
                 let p = p1_from_affine(&p);
-                Ok(p1_mult(&p, &tau))
+                Ok(p1_mult(&p, tau))
             })
             .collect::<Result<Vec<_>, ParseError>>()?;
 
@@ -66,7 +66,7 @@ impl Engine for BLST {
             .map(|(&p, tau)| {
                 let p = blst_p2_affine::try_from(p)?;
                 let p = p2_from_affine(&p);
-                Ok(p2_mult(&p, &tau))
+                Ok(p2_mult(&p, tau))
             })
             .collect::<Result<Vec<_>, ParseError>>()?;
 

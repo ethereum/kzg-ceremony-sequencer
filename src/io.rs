@@ -1,5 +1,3 @@
-// TODO: Error handling
-
 use crate::SharedTranscript;
 use eyre::eyre;
 use kzg_ceremony_crypto::BatchTranscript;
@@ -83,6 +81,16 @@ impl CeremonySizes {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum TranscriptIoError {
+    #[error("Failed to access file {0}")]
+    IoError(std::io::Error),
+    #[error("Failed to marshall transcript {0}")]
+    SerializationError(serde_json::Error),
+    #[error("Task error {0}")]
+    TaskError(tokio::task::JoinError),
+}
+
 /// Reads a transcript file from disk, or creates it, if it doesn't exist.
 ///
 /// # Errors
@@ -95,48 +103,53 @@ pub async fn read_or_create_transcript(
 ) -> eyre::Result<SharedTranscript> {
     if path.exists() {
         info!(?path, "Opening transcript file");
-        let transcript = read_json_file::<BatchTranscript>(path).await;
+        let transcript = read_json_file::<BatchTranscript>(path).await?;
         ceremony_sizes.validate_batch_transcript(&transcript)?;
         Ok(Arc::new(RwLock::new(transcript)))
     } else {
         warn!(?path, "No transcript found, creating new transcript file");
         let transcript = BatchTranscript::new(&ceremony_sizes.sizes);
         let shared_transcript = Arc::new(RwLock::new(transcript));
-        write_json_file(path, work_path, shared_transcript.clone()).await;
+        write_json_file(path, work_path, shared_transcript.clone()).await?;
         Ok(shared_transcript)
     }
 }
 
 /// Asynchronously reads a JSON file from disk.
-pub async fn read_json_file<T: DeserializeOwned + Send + 'static>(path: PathBuf) -> T {
-    let handle = tokio::task::spawn_blocking::<_, T>(|| {
-        let f = std::fs::File::open(path).expect("can't access transcript file.");
+///
+/// # Errors
+/// If the file does not exist, or if it does not contain correct transcript
+/// data.
+pub async fn read_json_file<T: DeserializeOwned + Send + 'static>(
+    path: PathBuf,
+) -> Result<T, TranscriptIoError> {
+    let handle = tokio::task::spawn_blocking(|| {
+        let f = std::fs::File::open(path).map_err(TranscriptIoError::IoError)?;
         let reader = std::io::BufReader::new(f);
-        serde_json::from_reader::<_, T>(reader).expect("unreadable transcript")
+        serde_json::from_reader::<_, T>(reader).map_err(TranscriptIoError::SerializationError)
     });
-    handle.await.expect("can't read transcript")
+    handle.await.map_err(TranscriptIoError::TaskError)?
 }
 
 /// Asynchroniously writes a JSON file to disk using a tempfile.
 ///
-/// # Panics
-///
-/// * Panics if writing fails.
-// TODO: Return result
+/// # Errors
+/// If either file cannot be written.
 pub async fn write_json_file<T: Serialize + Send + Sync + 'static>(
     target_path: PathBuf,
     work_path: PathBuf,
     data: Arc<RwLock<T>>,
-) {
+) -> Result<(), TranscriptIoError> {
     let handle = tokio::task::spawn_blocking(move || {
         let f = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .open(&work_path)
-            .expect("Can't access work file.");
+            .map_err(TranscriptIoError::IoError)?;
         let guard = data.blocking_read();
-        serde_json::to_writer_pretty(&f, &*guard).expect("Cannot write transcript");
-        std::fs::rename(&work_path, &target_path).unwrap();
+        serde_json::to_writer_pretty(&f, &*guard).map_err(TranscriptIoError::SerializationError)?;
+        std::fs::rename(&work_path, &target_path).map_err(TranscriptIoError::IoError)?;
+        Ok(())
     });
-    handle.await.expect("Cannot write transcript");
+    handle.await.map_err(TranscriptIoError::TaskError)?
 }
