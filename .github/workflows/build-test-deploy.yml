@@ -6,7 +6,7 @@ on:
   - workflow_dispatch
 
 env:
-  RUST_VERSION: "1.64"
+  RUST_VERSION: "1.66"
   NIGHTLY_VERSION: nightly-2022-08-10
   CARGO_TERM_COLOR: always
   # Skip incremental build and debug info generation in CI
