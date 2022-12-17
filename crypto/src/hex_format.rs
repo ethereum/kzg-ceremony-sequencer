@@ -13,8 +13,8 @@ pub fn bytes_to_hex<S: Serializer, const N: usize, const M: usize>(
     serializer: S,
     bytes: [u8; N],
 ) -> Result<S::Ok, S::Error> {
-    if M != 2 + 2 * N {
-        return Err(serde::ser::Error::custom(InvalidLength(M)));
+    if N == 0 || M != 2 + 2 * N {
+        return Err(serde::ser::Error::custom(InvalidLength(N)));
     }
     let mut hex = [0_u8; M];
     hex[0] = b'0';

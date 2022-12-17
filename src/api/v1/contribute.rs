@@ -87,16 +87,6 @@ pub async fn contribute(
             return Err(e);
         }
 
-        let receipt = Receipt {
-            identity: id_token.identity,
-            witness:  contribution.receipt(),
-        };
-
-        let (signed_msg, signature) = receipt
-            .sign(&keys)
-            .await
-            .map_err(ContributeError::ReceiptSigning)?;
-
         write_json_file(
             options.transcript_file,
             options.transcript_in_progress_file,
@@ -108,6 +98,16 @@ pub async fn contribute(
         storage.finish_contribution(&session_id.0).await?;
 
         num_contributions.fetch_add(1, Ordering::Relaxed);
+
+        let receipt = Receipt {
+            identity: id_token.identity,
+            witness:  contribution.receipt(),
+        };
+
+        let (signed_msg, signature) = receipt
+            .sign(&keys)
+            .await
+            .map_err(ContributeError::ReceiptSigning)?;
 
         Ok(ContributeReceipt {
             receipt: signed_msg,
