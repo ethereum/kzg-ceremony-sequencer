@@ -1,9 +1,6 @@
 #![doc = include_str!("../Readme.md")]
 #![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
 #![cfg_attr(any(test, feature = "bench"), allow(clippy::wildcard_imports))]
-// TODO: These lints
-#![allow(clippy::cargo_common_metadata)]
-#![allow(clippy::multiple_crate_versions)]
 #![allow(clippy::module_name_repetitions)]
 
 use crate::{
