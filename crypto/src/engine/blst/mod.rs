@@ -8,7 +8,7 @@ use self::{
     scalar::{fr_from_scalar, fr_mul, fr_one, random_fr, scalar_from_fr},
 };
 use crate::{
-    engine::blst::{g1::p1_to_affine, g2::p2s_mult_pippenger},
+    engine::blst::{g1::p1_to_affine, g2::p2s_mult_pippenger, scalar::Scalar},
     CeremonyError, Engine, Entropy, ParseError, Tau, G1, G2,
 };
 use blst::{
@@ -22,7 +22,7 @@ use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
 };
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, Secret, SecretVec};
 use std::iter;
 
 pub struct BLST;
@@ -34,13 +34,11 @@ impl Engine for BLST {
     }
 
     fn add_tau_g1(tau: &Tau, powers: &mut [G1]) -> Result<(), CeremonyError> {
-        // TODO: BLST returns all zeros if one of the points is zero.
-
         let taus = powers_of_tau(tau, powers.len());
 
         let powers_projective = powers
             .par_iter()
-            .zip(taus)
+            .zip(taus.expose_secret())
             .map(|(&p, tau)| {
                 let p = blst_p1_affine::try_from(p)?;
                 let p = p1_from_affine(&p);
@@ -60,13 +58,11 @@ impl Engine for BLST {
     }
 
     fn add_tau_g2(tau: &Tau, powers: &mut [crate::G2]) -> Result<(), crate::CeremonyError> {
-        // TODO: BLST returns all zeros if one of the points is zero.
-
         let taus = powers_of_tau(tau, powers.len());
 
         let powers_projective = powers
             .par_iter()
-            .zip(taus)
+            .zip(taus.expose_secret())
             .map(|(&p, tau)| {
                 let p = blst_p2_affine::try_from(p)?;
                 let p = p2_from_affine(&p);
@@ -244,13 +240,13 @@ fn pairing(p: &blst_p1_affine, q: &blst_p2_affine) -> blst_fp12 {
     out
 }
 
-// TODO: Ideally we return `SecretVec` here, but `blst_fr` is not Zeroize.
-fn powers_of_tau(tau: &Tau, n: usize) -> Vec<blst_scalar> {
+fn powers_of_tau(tau: &Tau, n: usize) -> SecretVec<Scalar> {
     let tau = tau.expose_secret().into();
-    iter::successors(Some(fr_one()), |x| Some(fr_mul(x, &tau)))
-        .map(|n| scalar_from_fr(&n))
+    let vec = iter::successors(Some(fr_one()), |x| Some(fr_mul(x, &tau)))
+        .map(|n| Scalar::from(scalar_from_fr(&n)))
         .take(n)
-        .collect()
+        .collect();
+    SecretVec::new(vec)
 }
 
 fn random_factors(n: usize) -> (Vec<blst_scalar>, blst_scalar) {
