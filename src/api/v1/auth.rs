@@ -12,6 +12,7 @@ use axum::{
     Extension, Json,
 };
 use chrono::DateTime;
+use eyre::eyre;
 use http::StatusCode;
 use kzg_ceremony_crypto::{signature::identity::Identity, ErrorCode};
 use oauth2::{
@@ -23,7 +24,7 @@ use serde_json::{json, Map, Value};
 use strum::IntoStaticStr;
 use thiserror::Error;
 use tokio::time::Instant;
-use tracing::warn;
+use tracing::{log::error, warn};
 use url::Url;
 
 #[derive(Debug, Error)]
@@ -358,9 +359,12 @@ pub async fn eth_callback(
         &options.ethereum,
     )
     .await
-    .ok_or(AuthError {
-        redirect: payload.redirect_to.clone(),
-        payload:  AuthErrorPayload::CouldNotExtractUserData,
+    .map_err(|e| {
+        error!("Could not get tx count for {address}: {e}");
+        AuthError {
+            redirect: payload.redirect_to.clone(),
+            payload:  AuthErrorPayload::CouldNotExtractUserData,
+        }
     })?;
 
     if tx_count < options.ethereum.eth_min_nonce {
@@ -392,7 +396,7 @@ async fn get_tx_count(
     at_block: &str,
     client: &reqwest::Client,
     options: &EthAuthOptions,
-) -> Option<u64> {
+) -> eyre::Result<u64> {
     let rpc_payload = json!({
         "id": 1,
         "jsonrpc": "2.0",
@@ -404,14 +408,18 @@ async fn get_tx_count(
         .post(options.eth_rpc_url.get_secret())
         .json(&rpc_payload)
         .send()
-        .await
-        .ok()?;
+        .await?;
 
-    let rpc_response_json = rpc_response.json::<serde_json::Value>().await.ok()?;
+    let rpc_response_json = rpc_response.json::<serde_json::Value>().await?;
 
-    let rpc_result = rpc_response_json.get("result")?.as_str()?;
+    let rpc_result = rpc_response_json
+        .get("result")
+        .ok_or(eyre!("malformed response JSON"))?
+        .as_str()
+        .ok_or(eyre!("malformed response JSON"))?;
 
-    u64::from_str_radix(rpc_result.trim_start_matches("0x"), 16).ok()
+    let result = u64::from_str_radix(rpc_result.trim_start_matches("0x"), 16)?;
+    Ok(result)
 }
 
 async fn post_authenticate(
