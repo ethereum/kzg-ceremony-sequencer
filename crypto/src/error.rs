@@ -9,6 +9,8 @@ pub trait ErrorCode {
 pub enum CeremoniesError {
     #[error("Unexpected number of contributions: expected {0}, got {1}")]
     UnexpectedNumContributions(usize, usize),
+    #[error("Inconsistent number of participants: {0} identities and {1} signatures")]
+    InconsistentNumParticipants(usize, usize),
     #[error("Error in contribution {0}: {1}")]
     InvalidCeremony(usize, #[source] CeremonyError),
 }
@@ -25,6 +27,8 @@ impl ErrorCode for CeremoniesError {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Error, IntoStaticStr)]
 pub enum CeremonyError {
+    #[error("Unexpected number of participants: expected {0}, got {1}")]
+    UnexpectedNumParticipants(usize, usize),
     #[error("Unsupported number of G1 powers: {0}")]
     UnsupportedNumG1Powers(usize),
     #[error("Unsupported number of G2 powers: {0}")]
@@ -80,7 +84,9 @@ pub enum CeremonyError {
     #[error("Contribution contains no entropy: pubkey equals generator")]
     ContributionNoEntropy,
     #[error("Mismatch in witness length: {0} products and {1} pubkeys")]
-    WitnessLengthMismatch(usize, usize),
+    WitnessPubkeyLengthMismatch(usize, usize),
+    #[error("Mismatch in witness length: {0} products and {1} signatures")]
+    WitnessSignatureLengthMismatch(usize, usize),
 }
 
 impl ErrorCode for CeremonyError {

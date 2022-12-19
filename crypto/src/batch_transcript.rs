@@ -1,6 +1,6 @@
 use crate::{
     signature::{identity::Identity, ContributionTypedData, EcdsaSignature},
-    BatchContribution, CeremoniesError, Engine, Transcript,
+    BatchContribution, CeremoniesError, CeremonyError, Engine, Transcript,
 };
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use tracing::instrument;
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BatchTranscript {
     pub transcripts:                  Vec<Transcript>,
+    // TODO: Turn into one vector of structs
     pub participant_ids:              Vec<Identity>,
     pub participant_ecdsa_signatures: Vec<EcdsaSignature>,
 }
@@ -33,6 +34,32 @@ impl BatchTranscript {
     #[must_use]
     pub fn num_participants(&self) -> usize {
         self.participant_ids.len() - 1
+    }
+
+    /// Verify that the batch transcript is valid.
+    pub fn validate(&self) -> Result<(), CeremoniesError> {
+        if self.participant_ids.len() != self.participant_ecdsa_signatures.len() {
+            return Err(CeremoniesError::InconsistentNumParticipants(
+                self.participant_ids.len(),
+                self.participant_ecdsa_signatures.len(),
+            ));
+        }
+        for (i, transcript) in self.transcripts.iter().enumerate() {
+            transcript
+                .validate()
+                .map_err(|e| CeremoniesError::InvalidCeremony(i, e))?;
+            if transcript.num_participants() != self.num_participants() {
+                return Err(CeremoniesError::InvalidCeremony(
+                    i,
+                    CeremonyError::UnexpectedNumParticipants(
+                        self.num_participants(),
+                        transcript.num_participants(),
+                    ),
+                ));
+            }
+        }
+        // TODO: Verify signatures
+        Ok(())
     }
 
     /// Creates the start of a new batch contribution.

@@ -57,6 +57,25 @@ impl Transcript {
         self.num_participants() > 0
     }
 
+    /// Verify that the transcript is valid.
+    pub fn validate(&self) -> Result<(), CeremonyError> {
+        if self.witness.products.len() != self.witness.pubkeys.len() {
+            return Err(CeremonyError::WitnessPubkeyLengthMismatch(
+                self.witness.products.len(),
+                self.witness.pubkeys.len(),
+            ));
+        }
+        if self.witness.products.len() != self.witness.signatures.len() {
+            return Err(CeremonyError::WitnessSignatureLengthMismatch(
+                self.witness.products.len(),
+                self.witness.signatures.len(),
+            ));
+        }
+        // TODO: Verify pairing checks.
+        // TODO: Verify signature.
+        Ok(())
+    }
+
     /// Creates the start of a new contribution.
     #[must_use]
     pub fn contribution(&self) -> Contribution {
