@@ -37,7 +37,7 @@ members = [
 [dependencies]
 async-session = "3.0.0"
 axum = { version = "0.5.15", features = ["headers"] }
-axum-extra = { version = "0.3.7", features = ["erased-json"] }
+axum-extra = { version = "0.4.2", features = ["erased-json"] }
 base64 = "0.13"
 chrono = "0.4"
 clap = { version = "4.0", features = ["derive"] }
