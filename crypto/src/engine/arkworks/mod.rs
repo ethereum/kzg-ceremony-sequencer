@@ -211,6 +211,10 @@ impl Engine for Arkworks {
         if !g2_subgroup_check(&pk) {
             return false;
         }
+        if pk.is_zero() {
+            // Rejecting infinite public keys to match BLST behavior
+            return false;
+        }
         let mapper = match MapToCurveBasedHasher::<
             G1Parameters,
             DefaultFieldHasher<Sha256, 128>,

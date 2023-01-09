@@ -13,7 +13,10 @@ impl TryFrom<G1> for blst_p1_affine {
         let mut p = Self::default();
         let result = unsafe { blst_p1_uncompress(&mut p, g1.0.as_ptr()) };
         if result != BLST_ERROR::BLST_SUCCESS {
-            return Err(ParseError::InvalidCompression);
+            return match result {
+                BLST_ERROR::BLST_POINT_NOT_IN_GROUP => Err(ParseError::InvalidSubgroup),
+                _ => Err(ParseError::InvalidCompression),
+            };
         }
         Ok(p)
     }
