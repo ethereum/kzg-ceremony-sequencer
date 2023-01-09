@@ -97,6 +97,7 @@ pub trait Engine {
 pub mod tests {
     use super::*;
     use crate::DefaultEngine;
+    use ark_bls12_381::G1Affine;
     use hex_literal::hex;
     use proptest::{arbitrary::any, proptest, strategy::Strategy};
     use secrecy::ExposeSecret;
@@ -118,6 +119,13 @@ pub mod tests {
     }
 
     #[test]
+    fn test_zeros_in_verify_signature() {
+        let r1 = Arkworks::verify_signature(G1::zero(), b"hello", G2::zero());
+        let r2 = BLST::verify_signature(G1::zero(), b"hello", G2::zero());
+        assert_eq!(r1, r2);
+    }
+
+    #[test]
     fn test_generate_tau() {
         proptest!(|(entropy in arb_entropy())| {
             let entropy = Secret::new(entropy);
@@ -127,17 +135,30 @@ pub mod tests {
         });
     }
 
+    fn run_add_tau_test(tau: F, p: G1, require_success: bool) {
+        let tau = Secret::new(tau);
+        let points1: &mut [G1] = &mut [p; 16];
+        let points2: &mut [G1] = &mut [p; 16];
+
+        let result1 = BLST::add_tau_g1(&tau, points1);
+        let result2 = Arkworks::add_tau_g1(&tau, points2);
+        if require_success {
+            assert_eq!(result1, Ok(()));
+        }
+        assert_eq!(result1, result2);
+        assert_eq!(points1, points2);
+    }
+
+    #[test]
+    fn test_add_tau_g1_zero() {
+        let p = G1::from(G1Affine::get_point_from_x(0.into(), false).unwrap());
+        run_add_tau_test(F::zero(), p, false);
+    }
+
     #[test]
     fn test_add_tau_g1() {
         proptest!(|(tau in arb_f(), p in arb_g1())| {
-            let tau = Secret::new(tau);
-            let points1: &mut [G1] = &mut [p; 16];
-            let points2: &mut [G1] = &mut [p; 16];
-
-            BLST::add_tau_g1(&tau, points1).unwrap();
-            Arkworks::add_tau_g1(&tau, points2).unwrap();
-
-            assert_eq!(points1, points2);
+            run_add_tau_test(tau, p, true);
         });
     }
 

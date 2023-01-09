@@ -134,7 +134,6 @@ pub fn parse_g<P: SWModelParameters, const N: usize>(
                 return Err(ParseError::BigIntError);
             }
             if x >= modulus {
-                println!("this one!");
                 return Err(ParseError::InvalidPrimeField(i));
             }
             let x = Prime::<P>::from_repr(x).ok_or(ParseError::InvalidPrimeField(i))?;
@@ -155,6 +154,13 @@ pub fn parse_g<P: SWModelParameters, const N: usize>(
         }
         return Ok(GroupAffine::<P>::zero());
     }
+
+    // Doing this early check to bring this method to parity with
+    // `blst_p1_uncompress`.
+    if x == Extension::<P>::zero() {
+        return Err(ParseError::InvalidSubgroup);
+    }
+
     let point =
         GroupAffine::<P>::get_point_from_x(x, greatest).ok_or(ParseError::InvalidXCoordinate)?;
     debug_assert!(point.is_on_curve()); // Always true
