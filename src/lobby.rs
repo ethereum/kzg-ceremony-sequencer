@@ -208,15 +208,11 @@ impl SharedLobbyState {
                 }
             })
             .collect::<Vec<_>>();
-        let removed_sessions = sessions_to_remove
-            .into_iter()
-            .filter_map(|id| {
-                let info = lobby_state.sessions_in_lobby.remove(&id)?;
-                Some((id, info))
-            })
-            .collect::<Vec<_>>();
-        for (id, info) in removed_sessions {
-            lobby_state.sessions_out_of_lobby.insert(id, info);
+        for id in sessions_to_remove {
+            let info = lobby_state.sessions_in_lobby.remove(&id);
+            if let Some(info) = info {
+                lobby_state.sessions_out_of_lobby.insert(id, info);
+            }
         }
     }
 
