@@ -18,6 +18,7 @@ async fn await_contribution_slot(
     harness: &Harness,
     client: &reqwest::Client,
     session_id: &str,
+    wait_longer_than_timeout: bool,
 ) -> BatchContribution {
     loop {
         let try_contribute_response =
@@ -31,11 +32,16 @@ async fn await_contribution_slot(
             return contrib;
         }
 
-        tokio::time::sleep(
+        let sleep_duration = if wait_longer_than_timeout {
             harness.options.lobby.lobby_checkin_frequency
-                - harness.options.lobby.lobby_checkin_tolerance,
-        )
-        .await;
+                + harness.options.lobby.lobby_checkin_tolerance
+                + 2 * harness.options.lobby.lobby_flush_interval
+        } else {
+            harness.options.lobby.lobby_checkin_frequency
+                - harness.options.lobby.lobby_checkin_tolerance
+        };
+
+        tokio::time::sleep(sleep_duration).await;
     }
 }
 
@@ -43,9 +49,11 @@ pub async fn well_behaved(
     harness: &Harness,
     client: &reqwest::Client,
     user: TestUser,
+    ping_too_slow: bool,
 ) -> PostConditionCheck {
     let session_id = actions::login(harness, client, &user).await;
-    let mut contribution = await_contribution_slot(harness, client, &session_id).await;
+    let mut contribution =
+        await_contribution_slot(harness, client, &session_id, ping_too_slow).await;
     contribution
         .add_entropy::<BLST>(
             &entropy_from_str(&user.identity().to_string()),
@@ -88,7 +96,7 @@ pub async fn wrong_ecdsa(
     user: TestUser,
 ) -> PostConditionCheck {
     let session_id = actions::login(harness, client, &user).await;
-    let mut contribution = await_contribution_slot(harness, client, &session_id).await;
+    let mut contribution = await_contribution_slot(harness, client, &session_id, false).await;
     contribution
         .add_entropy::<DefaultEngine>(
             &entropy_from_str(&user.identity().to_string()),
@@ -124,7 +132,7 @@ pub async fn wrong_bls(
     user: TestUser,
 ) -> PostConditionCheck {
     let session_id = actions::login(harness, client, &user).await;
-    let mut contribution = await_contribution_slot(harness, client, &session_id).await;
+    let mut contribution = await_contribution_slot(harness, client, &session_id, false).await;
     contribution
         .add_entropy::<DefaultEngine>(
             &entropy_from_str(&user.identity().to_string()),
@@ -156,7 +164,7 @@ pub async fn slow_compute(
     user: TestUser,
 ) -> PostConditionCheck {
     let session_id = actions::login(harness, client, &user).await;
-    let mut contribution = await_contribution_slot(harness, client, &session_id).await;
+    let mut contribution = await_contribution_slot(harness, client, &session_id, false).await;
     tokio::time::sleep(harness.options.lobby.compute_deadline).await;
     contribution
         .add_entropy::<Arkworks>(

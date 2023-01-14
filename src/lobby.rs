@@ -196,9 +196,27 @@ impl SharedLobbyState {
 
     pub async fn clear_lobby(&self, predicate: impl Fn(&SessionInfo) -> bool + Copy + Send) {
         let mut lobby_state = self.inner.lock().await;
-        lobby_state
+        let sessions_to_remove = lobby_state
             .sessions_in_lobby
-            .retain(|_, info| !predicate(info));
+            .iter()
+            .filter_map(|(id, info)| {
+                if predicate(info) {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let removed_sessions = sessions_to_remove
+            .into_iter()
+            .filter_map(|id| {
+                let info = lobby_state.sessions_in_lobby.remove(&id)?;
+                Some((id, info))
+            })
+            .collect::<Vec<_>>();
+        removed_sessions.into_iter().for_each(|(id, info)| {
+            lobby_state.sessions_out_of_lobby.insert(id, info);
+        });
     }
 
     pub async fn clear_session(&self, predicate: impl Fn(&SessionInfo) -> bool + Send) {
