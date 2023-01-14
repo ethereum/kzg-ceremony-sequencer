@@ -194,6 +194,7 @@ impl SharedLobbyState {
         state.active_contributor = ActiveContributor::None;
     }
 
+    #[allow(clippy::needless_collect)]
     pub async fn clear_lobby(&self, predicate: impl Fn(&SessionInfo) -> bool + Copy + Send) {
         let mut lobby_state = self.inner.lock().await;
         let sessions_to_remove = lobby_state
@@ -214,9 +215,9 @@ impl SharedLobbyState {
                 Some((id, info))
             })
             .collect::<Vec<_>>();
-        removed_sessions.into_iter().for_each(|(id, info)| {
+        for (id, info) in removed_sessions {
             lobby_state.sessions_out_of_lobby.insert(id, info);
-        });
+        }
     }
 
     pub async fn clear_session(&self, predicate: impl Fn(&SessionInfo) -> bool + Send) {
