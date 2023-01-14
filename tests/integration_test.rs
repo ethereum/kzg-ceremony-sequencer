@@ -522,7 +522,8 @@ async fn test_various_contributors() {
                 1 => participants::slow_compute(h.as_ref(), c.as_ref(), user).await,
                 2 => participants::wrong_bls(h.as_ref(), c.as_ref(), user).await,
                 _ => {
-                    // only spawn slow lobby ping participants twice, because they make the tests very slow
+                    // only spawn slow lobby ping participants twice, because they make the tests
+                    // very slow
                     participants::well_behaved(h.as_ref(), c.as_ref(), user, i % 20 == 3).await
                 }
             }
