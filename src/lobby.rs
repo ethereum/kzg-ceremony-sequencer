@@ -200,13 +200,7 @@ impl SharedLobbyState {
         let sessions_to_remove = lobby_state
             .sessions_in_lobby
             .iter()
-            .filter_map(|(id, info)| {
-                if predicate(info) {
-                    Some(id.clone())
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(id, info)| predicate(info).then(|| id.clone()))
             .collect::<Vec<_>>();
         for id in sessions_to_remove {
             let info = lobby_state.sessions_in_lobby.remove(&id);
