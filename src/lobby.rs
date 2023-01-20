@@ -15,12 +15,12 @@ fn duration_from_str(value: &str) -> Result<Duration, ParseIntError> {
 #[group(skip)]
 pub struct Options {
     /// Timeout for participants to contribute to the ceremony in seconds.
-    #[clap(long, env, value_parser=duration_from_str, default_value="180")]
+    #[clap(long, env, value_parser=duration_from_str, default_value="192")]
     pub compute_deadline: Duration,
 
     /// How often participants should ping the server to keep their session
     /// alive in seconds.
-    #[clap(long, env, value_parser=duration_from_str, default_value="30")]
+    #[clap(long, env, value_parser=duration_from_str, default_value="32")]
     pub lobby_checkin_frequency: Duration,
 
     /// How much the ping can be late in seconds
@@ -28,11 +28,11 @@ pub struct Options {
     pub lobby_checkin_tolerance: Duration,
 
     /// How often the server should check for dead sessions in seconds.
-    #[clap(long, env, value_parser=duration_from_str, default_value="5")]
+    #[clap(long, env, value_parser=duration_from_str, default_value="4")]
     pub lobby_flush_interval: Duration,
 
     /// Maximum number of participants in the lobby.
-    #[clap(long, env, default_value = "1000")]
+    #[clap(long, env, default_value = "65536")]
     pub max_lobby_size: usize,
 
     /// How long the session is valid if user doesn't take any actions, in

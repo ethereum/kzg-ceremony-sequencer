@@ -19,8 +19,8 @@ processes = []
     ETH_MIN_NONCE="0"
     MULTI_CONTRIBUTION="true"
     COMPUTE_DEADLINE="480"
-    LOBBY_CHECKIN_FREQUENCY="30"
-    LOBBY_CHECKIN_TOLERANCE="15"
+    LOBBY_CHECKIN_FREQUENCY="32"
+    LOBBY_CHECKIN_TOLERANCE="16
 
 # ❯ fly secrets list
 # NAME                    DIGEST                  CREATED AT

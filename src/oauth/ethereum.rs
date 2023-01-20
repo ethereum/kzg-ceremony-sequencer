@@ -6,12 +6,12 @@ use std::{num::ParseIntError, ops::Deref};
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 pub struct EthAuthOptions {
     /// The block height where the users nonce is fetched from.
-    #[clap(long, env, value_parser = dec_to_hex, default_value = "15565180")]
+    #[clap(long, env, value_parser = dec_to_hex, default_value = "16394155")]
     pub eth_nonce_verification_block: String,
 
     /// The minimum nonce required at the specified block height in order to
     /// participate.
-    #[clap(long, env, default_value = "4")]
+    #[clap(long, env, default_value = "3")]
     pub eth_min_nonce: u64,
 
     /// The Ethereum JSON-RPC endpoint to use.
