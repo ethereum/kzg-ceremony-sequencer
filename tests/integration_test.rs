@@ -447,7 +447,7 @@ async fn test_large_lobby() {
             } else {
                 h.create_eth_user().await
             };
-            participants::well_behaved(h.as_ref(), c.as_ref(), user).await
+            participants::well_behaved(h.as_ref(), c.as_ref(), user, false).await
         })
     });
 
@@ -470,7 +470,7 @@ async fn test_large_lobby_with_slow_compute_users() {
         tokio::spawn(async move {
             let user = h.create_gh_user(format!("user {i}")).await;
             if i % 2 == 0 {
-                participants::well_behaved(h.as_ref(), c.as_ref(), user).await
+                participants::well_behaved(h.as_ref(), c.as_ref(), user, false).await
             } else {
                 participants::slow_compute(h.as_ref(), c.as_ref(), user).await
             }
@@ -521,7 +521,11 @@ async fn test_various_contributors() {
                 0 => participants::wrong_ecdsa(h.as_ref(), c.as_ref(), user).await,
                 1 => participants::slow_compute(h.as_ref(), c.as_ref(), user).await,
                 2 => participants::wrong_bls(h.as_ref(), c.as_ref(), user).await,
-                _ => participants::well_behaved(h.as_ref(), c.as_ref(), user).await,
+                _ => {
+                    // only spawn slow lobby ping participants twice, because they make the tests
+                    // very slow
+                    participants::well_behaved(h.as_ref(), c.as_ref(), user, i % 20 == 3).await
+                }
             }
         })
     });
@@ -655,7 +659,7 @@ async fn test_graceful_restart() {
                 0 => participants::wrong_ecdsa(&h, c.as_ref(), user).await,
                 1 => participants::slow_compute(&h, c.as_ref(), user).await,
                 2 => participants::wrong_bls(&h, c.as_ref(), user).await,
-                _ => participants::well_behaved(&h, c.as_ref(), user).await,
+                _ => participants::well_behaved(&h, c.as_ref(), user, false).await,
             }
         })
     });
@@ -683,7 +687,7 @@ async fn test_graceful_restart() {
                 0 => participants::wrong_ecdsa(&h, c.as_ref(), user).await,
                 1 => participants::slow_compute(&h, c.as_ref(), user).await,
                 2 => participants::wrong_bls(&h, c.as_ref(), user).await,
-                _ => participants::well_behaved(&h, c.as_ref(), user).await,
+                _ => participants::well_behaved(&h, c.as_ref(), user, false).await,
             }
         })
     });
