@@ -71,7 +71,7 @@ impl BatchTranscript {
             .enumerate()
             .try_for_each(|(i, (transcript, contribution))| {
                 transcript
-                    .verify::<E>(contribution)
+                    .verify_contribution::<E>(contribution)
                     .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
             })?;
 
@@ -99,6 +99,22 @@ impl BatchTranscript {
 
         self.participant_ids.push(identity);
 
+        Ok(())
+    }
+
+    // Verifies an entire transcript given a vector of expected (num_g1, num_g2) points
+    #[instrument(level = "info", skip_all, fields(n=self.transcripts.len()))]
+    pub fn verify_self<E: Engine>(&mut self, sizes: Vec<(usize, usize)>) -> Result<(), CeremoniesError> {
+        // Verify transcripts in parallel
+        self.transcripts
+            .par_iter_mut()
+            .zip(&sizes)
+            .enumerate()
+            .try_for_each(|(i, (transcript, (num_g1, num_g2)))| {
+                transcript
+                    .verify_self::<E>(*num_g1, *num_g2)
+                    .map_err(|e| CeremoniesError::InvalidCeremony(i, e))
+            })?;
         Ok(())
     }
 }

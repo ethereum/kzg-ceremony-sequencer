@@ -56,6 +56,14 @@ pub trait Engine {
     /// check fails.
     fn verify_pubkey(tau: G1, previous: G1, pubkey: G2) -> Result<(), CeremonyError>;
 
+    /// Verify that every pubkey contains the contribution added
+    /// from `previous` to next `product`/`tau`.
+    ///
+    /// # Errors
+    /// Returns an error if any of the points is invalid, or if the pairing
+    /// check fails.
+    fn verify_all_pubkeys(products: &[G1], pubkeys: &[G2]) -> Result<(), CeremonyError>;
+
     /// Verify that `powers` contains a sequence of powers of `tau`.
     ///
     /// # Errors

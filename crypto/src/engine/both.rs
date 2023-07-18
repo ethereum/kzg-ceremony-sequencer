@@ -36,6 +36,16 @@ impl<A: Engine, B: Engine> Engine for Both<A, B> {
         Ok(())
     }
 
+    fn verify_all_pubkeys(products: &[G1], pubkeys: &[G2]) -> Result<(), CeremonyError> {
+        let (a, b) = join(
+            || A::verify_all_pubkeys(products, pubkeys),
+            || B::verify_all_pubkeys(products, pubkeys),
+        );
+        a?;
+        b?;
+        Ok(())
+    }
+
     fn verify_g1(powers: &[G1], tau: G2) -> Result<(), CeremonyError> {
         let (a, b) = join(|| A::verify_g1(powers, tau), || B::verify_g1(powers, tau));
         a?;

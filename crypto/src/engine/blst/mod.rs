@@ -125,6 +125,35 @@ impl Engine for BLST {
         Ok(())
     }
 
+    fn verify_all_pubkeys(products: &[crate::G1], pubkeys: &[crate::G2]) -> Result<(), CeremonyError> {
+        // Parse ZCash format
+        let products = products
+            .into_par_iter()
+            .map(|p| blst_p1_affine::try_from(*p))
+            .collect::<Result<Vec<_>, _>>()?;
+        let pubkeys = pubkeys
+            .into_par_iter()
+            .map(|p| blst_p2_affine::try_from(*p))
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        // Compute random linear combination
+        let (factors, sum) = random_factors(products.len() - 1);
+        let g2 = unsafe { *blst_p2_generator() };
+
+        let lhs_g1 = p1s_mult_pippenger(&products[..factors.len()], &factors[..]);
+        let lhs_g2 = p2s_mult_pippenger(&pubkeys[..], &factors[..]);
+
+        let rhs_g1 = p1s_mult_pippenger(&products[1..], &factors[..]);
+        let rhs_g2 = p2_to_affine(&p2_mult(&g2, &sum));
+
+        // Check pairing
+        if pairing(&lhs_g1, &lhs_g2) != pairing(&rhs_g1, &rhs_g2) {
+            return Err(CeremonyError::G1PairingFailed);
+        }
+
+        Ok(())
+    }
+
     fn verify_g1(powers: &[crate::G1], tau: crate::G2) -> Result<(), crate::CeremonyError> {
         // Parse ZCash format
         let powers = powers
