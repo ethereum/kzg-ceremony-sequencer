@@ -104,10 +104,10 @@ impl BatchTranscript {
 
     // Verifies an entire transcript given a vector of expected (num_g1, num_g2) points
     #[instrument(level = "info", skip_all, fields(n=self.transcripts.len()))]
-    pub fn verify_self<E: Engine>(&mut self, sizes: Vec<(usize, usize)>) -> Result<(), CeremoniesError> {
+    pub fn verify_self<E: Engine>(&self, sizes: Vec<(usize, usize)>) -> Result<(), CeremoniesError> {
         // Verify transcripts in parallel
         self.transcripts
-            .par_iter_mut()
+            .par_iter()
             .zip(&sizes)
             .enumerate()
             .try_for_each(|(i, (transcript, (num_g1, num_g2)))| {

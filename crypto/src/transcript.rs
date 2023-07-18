@@ -67,7 +67,7 @@ impl Transcript {
         }
     }
 
-
+    
     // Verifies that it is a valid transcript itself
     pub fn verify_self<E: Engine>(&self, num_g1: usize, num_g2: usize) -> Result<(), CeremonyError> {
 
@@ -110,8 +110,13 @@ impl Transcript {
             return Err(CeremonyError::ZeroPubkey);
         }
 
+        // Verify powers match final witness product
+        if self.powers.g1[1] != self.witness.products[self.witness.products.len() - 1] {
+            return Err(CeremonyError::G1ProductMismatch);
+        }
+
         // Verify powers are correctly constructed
-        E::verify_g1(&self.powers.g1, self.witness.pubkeys[self.witness.pubkeys.len() - 1])?;
+        E::verify_g1(&self.powers.g1, self.powers.g2[1])?;
         E::verify_g2(&self.powers.g1[..self.powers.g2.len()], &self.powers.g2)?;
 
         Ok(())

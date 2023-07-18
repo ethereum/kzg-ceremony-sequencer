@@ -77,6 +77,8 @@ pub enum CeremonyError {
     DuplicateG1(usize, usize),
     #[error("g2[{0}] and g2[{1}] are equal")]
     DuplicateG2(usize, usize),
+    #[error("G1[1] and the latest product are not equal")]
+    G1ProductMismatch,
     #[error("Contribution contains no entropy: pubkey equals generator")]
     ContributionNoEntropy,
     #[error("Mismatch in witness length: {0} products and {1} pubkeys")]

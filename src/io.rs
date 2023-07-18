@@ -1,4 +1,4 @@
-use crate::SharedTranscript;
+use crate::{Engine, SharedTranscript};
 use eyre::eyre;
 use kzg_ceremony_crypto::BatchTranscript;
 use serde::{de::DeserializeOwned, Serialize};
@@ -105,6 +105,8 @@ pub async fn read_or_create_transcript(
         info!(?path, "Opening transcript file");
         let transcript = read_json_file::<BatchTranscript>(path).await?;
         ceremony_sizes.validate_batch_transcript(&transcript)?;
+        let sizes = ceremony_sizes.sizes.clone();
+        transcript.verify_self::<Engine>(sizes)?;
         Ok(Arc::new(RwLock::new(transcript)))
     } else {
         warn!(?path, "No transcript found, creating new transcript file");
