@@ -67,10 +67,12 @@ impl Transcript {
         }
     }
 
-    
     // Verifies that it is a valid transcript itself
-    pub fn verify_self<E: Engine>(&self, num_g1: usize, num_g2: usize) -> Result<(), CeremonyError> {
-
+    pub fn verify_self<E: Engine>(
+        &self,
+        num_g1: usize,
+        num_g2: usize,
+    ) -> Result<(), CeremonyError> {
         // Sanity checks on provided num_g1 and num_g2
         assert!(num_g1 >= 2);
         assert!(num_g2 >= 2);
@@ -106,7 +108,12 @@ impl Transcript {
         E::validate_g2(&self.witness.pubkeys)?;
 
         // Non-zero checks
-        if self.witness.pubkeys.iter().any(|pubkey| *pubkey == G2::zero()) {
+        if self
+            .witness
+            .pubkeys
+            .iter()
+            .any(|pubkey| *pubkey == G2::zero())
+        {
             return Err(CeremonyError::ZeroPubkey);
         }
 
@@ -124,7 +131,10 @@ impl Transcript {
 
     /// Verifies a contribution.
     #[instrument(level = "info", skip_all, fields(n1=self.powers.g1.len(), n2=self.powers.g2.len()))]
-    pub fn verify_contribution<E: Engine>(&self, contribution: &Contribution) -> Result<(), CeremonyError> {
+    pub fn verify_contribution<E: Engine>(
+        &self,
+        contribution: &Contribution,
+    ) -> Result<(), CeremonyError> {
         // Compatibility checks
         if self.powers.g1.len() != contribution.powers.g1.len() {
             return Err(CeremonyError::UnexpectedNumG1Powers(

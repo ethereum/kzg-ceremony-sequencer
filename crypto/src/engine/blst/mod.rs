@@ -125,7 +125,10 @@ impl Engine for BLST {
         Ok(())
     }
 
-    fn verify_all_pubkeys(products: &[crate::G1], pubkeys: &[crate::G2]) -> Result<(), CeremonyError> {
+    fn verify_all_pubkeys(
+        products: &[crate::G1],
+        pubkeys: &[crate::G2],
+    ) -> Result<(), CeremonyError> {
         // Parse ZCash format
         let products = products
             .into_par_iter()
@@ -135,7 +138,7 @@ impl Engine for BLST {
             .into_par_iter()
             .map(|p| blst_p2_affine::try_from(*p))
             .collect::<Result<Vec<_>, _>>()?;
-        
+
         // Compute random linear combination
         let (factors, sum) = random_factors(products.len() - 1);
         let g2 = unsafe { *blst_p2_generator() };

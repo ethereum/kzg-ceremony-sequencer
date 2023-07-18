@@ -102,9 +102,13 @@ impl BatchTranscript {
         Ok(())
     }
 
-    // Verifies an entire transcript given a vector of expected (num_g1, num_g2) points
+    // Verifies an entire batch transcript (including all pairing checks)
+    // given a vector of expected (num_g1, num_g2) points
     #[instrument(level = "info", skip_all, fields(n=self.transcripts.len()))]
-    pub fn verify_self<E: Engine>(&self, sizes: Vec<(usize, usize)>) -> Result<(), CeremoniesError> {
+    pub fn verify_self<E: Engine>(
+        &self,
+        sizes: Vec<(usize, usize)>,
+    ) -> Result<(), CeremoniesError> {
         // Verify transcripts in parallel
         self.transcripts
             .par_iter()
