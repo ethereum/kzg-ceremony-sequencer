@@ -89,7 +89,7 @@ impl Engine for Arkworks {
             .into_par_iter()
             .map(|p| G2Affine::try_from(*p))
             .collect::<Result<Vec<_>, _>>()?;
-        
+
         // Compute random linear combination
         let (factors, sum) = random_factors(products.len() - 1);
         let lhs_g1 = VariableBaseMSM::multi_scalar_mul(&products[..factors.len()], &factors[..]);
