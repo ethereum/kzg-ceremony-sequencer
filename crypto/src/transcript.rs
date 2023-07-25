@@ -1,6 +1,7 @@
 use super::{CeremonyError, Contribution, Powers, G1, G2};
 use crate::{engine::Engine, signature::BlsSignature};
 use serde::{Deserialize, Serialize};
+use rayon::iter::{ParallelIterator, IntoParallelRefIterator, IndexedParallelIterator};
 use tracing::instrument;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -111,10 +112,29 @@ impl Transcript {
         if self
             .witness
             .pubkeys
-            .iter()
+            .par_iter()
             .any(|pubkey| *pubkey == G2::zero())
         {
             return Err(CeremonyError::ZeroPubkey);
+        }
+
+        // Pairing check all pubkeys
+        // TODO: could this be perform using E::verify_all_pubkeys ?
+        if self
+            .witness
+            .products
+            .par_iter()
+            .enumerate()
+            .filter(|(i, _)| i >=  &self.witness.products.len())
+            .any(|(i, product)|
+                E::verify_pubkey(
+                    *product,
+                    self.witness.products[i - 1],
+                    self.witness.pubkeys[i],
+                ).is_err()
+            )
+        {
+            return Err(CeremonyError::PubKeyPairingFailed);
         }
 
         // Verify powers match final witness product
