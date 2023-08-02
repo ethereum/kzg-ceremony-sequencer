@@ -79,31 +79,6 @@ impl Engine for Arkworks {
         Ok(())
     }
 
-    fn verify_all_pubkeys(products: &[G1], pubkeys: &[G2]) -> Result<(), CeremonyError> {
-        // Parse ZCash format
-        let products = products
-            .into_par_iter()
-            .map(|p| G1Affine::try_from(*p))
-            .collect::<Result<Vec<_>, _>>()?;
-        let pubkeys = pubkeys
-            .into_par_iter()
-            .map(|p| G2Affine::try_from(*p))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // Compute random linear combination
-        let (factors, sum) = random_factors(products.len() - 1);
-        let lhs_g1 = VariableBaseMSM::multi_scalar_mul(&products[..factors.len()], &factors[..]);
-        let lhs_g2 = VariableBaseMSM::multi_scalar_mul(&pubkeys[..], &factors[..]);
-        let rhs_g1 = VariableBaseMSM::multi_scalar_mul(&products[1..], &factors[..]);
-        let rhs_g2 = G2Affine::prime_subgroup_generator().mul(sum);
-
-        // Check pairing
-        if Bls12_381::pairing(lhs_g1, lhs_g2) != Bls12_381::pairing(rhs_g1, rhs_g2) {
-            return Err(CeremonyError::PubKeyPairingFailed);
-        }
-        Ok(())
-    }
-
     #[instrument(level = "info", skip_all, fields(n=powers.len()))]
     fn verify_g1(powers: &[G1], tau: G2) -> Result<(), CeremonyError> {
         // Parse ZCash format

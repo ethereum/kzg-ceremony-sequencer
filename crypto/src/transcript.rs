@@ -119,7 +119,7 @@ impl Transcript {
         }
 
         // Pairing check all pubkeys
-        // TODO: could this be perform using E::verify_all_pubkeys ?
+        // TODO: figure out how to do this with some kind of batched pairings
         if self
             .witness
             .products
